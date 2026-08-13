@@ -194,7 +194,7 @@ Bob 操作ハブは単一panel内で次を扱う。
 
 ワークフロー作成・編集は単一panel内で次を扱う。
 
-- 標準テンプレートから作成
+- テンプレート調整として、標準テンプレートからの作成、候補選択、typed default、VCS別prompt supplement、readinessを扱う
 - project profile / customization入力
 - 既存`workflow-register/v1`の編集
 - reference analysis、preview、diagnostics、diff
@@ -242,7 +242,7 @@ provider登録は所有元source IDを持ち、同一IDの無警告上書きを�
 - result handoffとartifact provenance
 - Bob workflow factory / messages / task input helper
 - authoring serializer / loader / reference analysis
-- 標準テンプレート、typed defaults、prompt supplement、backup、workspace / symlink境界
+- Builder内のテンプレート調整について、template metadata、typed defaults、VCS別prompt supplement、backup、workspace / symlink境界を検証する
 - Bob 操作ハブのrun表示、操作、diagnostics、step provenance
 - 公開commandが正確に2件であることと廃止IDが存在しないこと
 - Ubuntu / Windowsでcompile、unit test、VSIX package、package policy

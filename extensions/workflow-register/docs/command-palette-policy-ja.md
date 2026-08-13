@@ -2,6 +2,8 @@
 
 3拡張の常時表示Command Palette entryは次の5件に固定します。表示名はVS Codeの`category: title`としてbyte-for-byteで管理します。
 
+workflow-registerの作成・編集入口は、英語の機能領域名 `Bob Workflow` を`category`、日本語の操作名を`title`として、完成表示名を`Bob Workflow: <日本語の操作名>`の形式にします。
+
 | 拡張 | category | title | 完成表示名 | Command ID |
 | --- | --- | --- | --- | --- |
 | workflow-register | `Bob` | `操作ハブを開く` | `Bob: 操作ハブを開く` | `workflowRegister.openOperationHub` |

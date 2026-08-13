@@ -9,6 +9,57 @@ function readDoc(...segments) {
   return fs.readFileSync(path.join(extensionRoot, "docs", ...segments), "utf8")
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function fencedInterfaceBlock(contract, interfaceName) {
+  const match = contract.match(new RegExp(
+    "```(?:ts|typescript)\\r?\\n(interface\\s+" + escapeRegExp(interfaceName) + "\\s*\\{[\\s\\S]*?\\r?\\n\\})\\r?\\n```"
+  ))
+  assert.ok(match, `${interfaceName} must be documented in a fenced TypeScript block`)
+  return match[1]
+}
+
+function assertWorkflowExecutionInputContract(contract) {
+  const actionInput = fencedInterfaceBlock(contract, "ActionExecutionInput")
+  for (const field of ["latestAssistantText", "resultText", "artifactText"]) {
+    assert.match(
+      actionInput,
+      new RegExp(`^\\s*${field}\\?: string\\s*$`, "m"),
+      `ActionExecutionInput must define optional ${field}`
+    )
+  }
+  assert.doesNotMatch(
+    actionInput,
+    /^\s*(?:bobRoot|workspaceRoot)\??\s*:/m,
+    "ActionExecutionInput must not document stale bobRoot or workspaceRoot fields"
+  )
+
+  const agentInput = fencedInterfaceBlock(contract, "AgentExecutionInput")
+  for (const [field, shape] of [
+    ["workflowId", "string"],
+    ["runId", "string"],
+    ["stepId", "string"],
+    ["prompt", "string"],
+    ["inputs", "Record<string, unknown>"],
+    ["state", "Record<string, string>"]
+  ]) {
+    assert.match(
+      agentInput,
+      new RegExp(`^\\s*${field}: ${escapeRegExp(shape)}\\s*$`, "m"),
+      `AgentExecutionInput must define required ${field}`
+    )
+  }
+  for (const field of ["logicalWorkflowId", "workflowRoot", "workflowFile", "workflowFolderName"]) {
+    assert.match(
+      agentInput,
+      new RegExp(`^\\s*${field}\\?: string\\s*$`, "m"),
+      `AgentExecutionInput must define optional ${field}`
+    )
+  }
+}
+
 test("workflow action contract docs describe workflow-register public API and execution inputs", () => {
   const contract = readDoc("workflow-action-contracts-ja.md")
 
@@ -19,16 +70,52 @@ test("workflow action contract docs describe workflow-register public API and ex
     "runWorkflow",
     "runWorkflowStep",
     "runNextStep",
-    "ActionExecutionInput",
-    "AgentExecutionInput",
-    "latestAssistantText",
-    "resultText",
-    "artifactText",
     "result sink",
     "失敗"
   ]) {
     assert.ok(contract.includes(phrase), `workflow action contract must document: ${phrase}`)
   }
+  assertWorkflowExecutionInputContract(contract)
+})
+
+test("workflow execution input assertions reject stale interface field shapes", () => {
+  const contract = readDoc("workflow-action-contracts-ja.md").replace(/\r\n/g, "\n")
+  const missingActionFieldsContract = contract.replace(
+    [
+      "  latestAssistantText?: string",
+      "  resultText?: string",
+      "  artifactText?: string"
+    ].join("\n"),
+    ""
+  )
+  const staleActionFieldsContract = contract.replace(
+    "  latestAssistantText?: string",
+    [
+      "  bobRoot?: string",
+      "  workspaceRoot?: string",
+      "  latestAssistantText?: string"
+    ].join("\n")
+  )
+  const staleAgentContract = contract.replace(
+    ["  runId: string", "  stepId: string"].join("\n"),
+    ["  runId?: string", "  stepId?: string"].join("\n")
+  )
+
+  assert.notEqual(missingActionFieldsContract, contract, "ActionExecutionInput missing-field fixture must change the interface")
+  assert.throws(
+    () => assertWorkflowExecutionInputContract(missingActionFieldsContract),
+    /ActionExecutionInput must define optional latestAssistantText/
+  )
+  assert.notEqual(staleActionFieldsContract, contract, "ActionExecutionInput stale-field fixture must change the interface")
+  assert.throws(
+    () => assertWorkflowExecutionInputContract(staleActionFieldsContract),
+    /ActionExecutionInput must not document stale bobRoot or workspaceRoot fields/
+  )
+  assert.notEqual(staleAgentContract, contract, "AgentExecutionInput mutation fixture must change the interface")
+  assert.throws(
+    () => assertWorkflowExecutionInputContract(staleAgentContract),
+    /AgentExecutionInput must define required runId/
+  )
 })
 
 test("artifact metadata contract docs define additive cross-extension metadata", () => {

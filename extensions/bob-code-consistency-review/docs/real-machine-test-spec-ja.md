@@ -2,504 +2,679 @@
 
 ## 1. 目的
 
-本書は`bob-code-consistency-review`の実機・Extension Host受入契約を定義する。mockでは確認できないVS Code activation、Command Palette、単一の`整合プレレビュー`主GUI、IBM Bob、workflow-register、Git / Bazaar、文書抽出、review-package、Bob出力、指摘確認・振り分け、visual / keyboard操作を確認する。
+本書は `extensions/bob-code-consistency-review` の実機テスト仕様を定義する。単体テストでは mock 化する VS Code Extension Host、IBM Bob、workflow-register、Bob Workflow UI、Webview、実ファイル、Git / Bazaar 差分、Markdown / docx / xlsx 文書、C / C++ ソース、TypeScript / Python / Java などの複数言語ソースを含めて結合動作を確認する。
 
-## 2. 対象
+## 2. テスト対象
 
 | 区分 | 対象 |
 | --- | --- |
-| Extension | `local.bob-code-consistency-review` |
-| Public command | `bobCodeConsistency.openReviewWizard` |
+| Extension ID | `local.bob-code-consistency-review` |
+| 公開 command | `bobCodeConsistency.openReviewWizard` |
 | Primary panel | view type `bobCodeConsistencyReviewWizard`、title `整合プレレビュー` |
 | Optional integrations | `IBM.bob-code`, `local.workflow-register` |
 | Workflow | `.bob/workflows/code-consistency-review/WORKFLOW.md` |
-| Inputs | `review-input.yaml`, traceability catalog, AI draft JSON |
-| Outputs | `.bob-review/review-package`, `.bob-review/bob-output`, `.bob-review/human-triage`, `.bob-trace` |
-| VCS | Git、Bazaar |
-| Documents | Markdown、`.docx`、`.xlsx` |
-| Platforms | UbuntuとWindows |
+| 入力 | `review-input.yaml`, traceability catalog, AI draft JSON |
+| 出力 | `.bob-review/review-package`, `.bob-review/bob-output`, `.bob-review/human-triage`, `.bob-trace` |
+| VCS | Git 差分、Git rename / binary numstat、Bazaar / bzr 差分、diff fixture |
+| 文書形式 | Markdown、Word `.docx`、Excel `.xlsx` |
+| UI | Command Palette、QuickPick、単一の整合プレレビュー GUI（トレーサビリティ整理／レビュー結果取り込み／指摘確認・振り分け）、Bob Workflow UI |
+| 対象 platform | Ubuntu、Windows |
 
-## 3. 前提
+## 3. 前提環境
 
-- 対象commitからVSIXを作成する。
-- Ubuntu / WindowsのHosted Extension Hostは同じhead SHAを使う。
-- manual UATは破棄可能なsandboxで行う。
-- IBM Bob / workflow-registerなしのcaseと、両方ありのcaseを分ける。
-- Developer Tools Console、artifact hash、run state、screenshotを保存できる。
-- 秘密情報、顧客data、credentialを使わない。
+| 項目 | 条件 |
+| --- | --- |
+| OS | Ubuntu と Windows の Hosted Extension Host。manual UATは破棄可能なsandboxで行う。 |
+| VS Code / Bob IDE | `package.json` の `engines.vscode` を満たすバージョン。 |
+| IBM Bob 拡張 | `IBM.bob-code` が導入済みで、有効化できること。 |
+| workflow-register | `local.workflow-register` が導入済みで、有効化できること。 |
+| Node.js / npm | extension build / package が可能なバージョン。 |
+| Git | Git review input を実行する場合に利用可能であること。 |
+| Bazaar CLI | Bazaar review input を実行する場合に利用可能であること。無い場合は diff fixture で代替する。 |
+| テスト workspace | ソース、docs、`.bob` を含む検証用 workspace。 |
+| Evidence | commit SHA、VSIX、OS、VS Code / Bob IDE / companion extensionのversion、artifact hash、screenshot、run stateを保存できること。 |
+| データ | 秘密情報、顧客data、credentialを使用しないこと。 |
 
-## 4. build / package
+## 4. 事前準備
 
-```bash
+### 4.1 拡張機能ビルド
+
+```powershell
+cd extensions\bob-code-consistency-review
 npm ci
 npm run compile
 npm run dependency:policy
 npm run architecture:policy
 npm run source:policy
 npm run unused:report
+npm run audit:prod
 npm test
 npm run package
 npm run package:policy
 ```
 
-VSIX build commitとtested commitが一致しない場合はUATを開始しない。
+VSIXを作成したcommit SHAと実機テスト対象commit SHAが一致しない場合はUATを開始しない。Ubuntu / WindowsのHosted Extension Hostは同じSHAから作成したVSIXを使う。
 
-## 5. Hosted Extension Host matrix
+### 4.2 推奨 workspace 構成
+
+```text
+<workspace>/
+  .git/
+  .bob/
+  docs/
+    requirements.md
+    basic-design.md
+    detailed-design.md
+    test-spec.md
+    qa-ledger.xlsx
+  src/
+    sample.c
+    sample.h
+    payment review.ts
+  tools/
+    reconcile.py
+  app/
+    PaymentReview.java
+  tests/
+    sample_test.c
+```
+
+### 4.3 Markdown 文書例
+
+```markdown
+# Requirements
+
+## REQ-001
+
+入力値を検証し、不正値の場合はエラーを返す。
+
+# Basic Design
+
+## BD-001
+
+入力検証処理は `validate_input` が担当する。
+
+# Detailed Design
+
+## DD-001
+
+`validate_input` は null、範囲外、形式不正を検出する。
+
+# Test Spec
+
+## TC-001
+
+null 入力時にエラーになること。
+```
+
+### 4.4 C ソース例
+
+```c
+int validate_input(const char *value) {
+  if (value == 0) return -1;
+  printf("debug\n");
+  return 0;
+}
+```
+
+### 4.5 Git 複数言語 sample
+
+同梱 sample `docs/workflows/code-consistency-review/examples/multi-language-git-review/` は、TypeScript、Python、Java の変更を baseline / head fixture として持つ。実機 smoke では次を使い、sandbox workspace 内に実 Git repo が作られることを確認する。
+
+```powershell
+powershell -File docs\workflows\code-consistency-review\integration\launch-bob-code-consistency-sandbox.ps1 -NoLaunch -Sample multi-language-git-review
+```
+
+## 5. 共通確認項目
+
+各テストでは可能な範囲で次を確認する。
+
+- VS Code Developer Tools Console に未処理例外が出ていない。
+- コマンド実行後の通知が成功 / warning / error を正しく表す。
+- 生成ファイルが UTF-8 で保存される。
+- workspace root 外への意図しない書き込みがない。
+- `.bob-review`、`.bob-trace`、`.bob` 配下の成果物が設計どおりの path に出力される。
+- Bob Workflow UI から実行した場合、workflow-register の run state と本拡張成果物が対応する。
+- Command Paletteで常時公開するのは `Bob Code Consistency Review: 整合プレレビューを開始` の1件だけである。その他のcommandは同じ主GUI、workflow provider、または `vscode.commands.executeCommand` による技術確認で扱い、独立した利用者向けpanelを作らない。
+
+## 6. Hosted Extension Host matrix
 
 ### CCR-EH-001 activation
 
-Ubuntu / Windowsの両方で拡張をactivateする。
-
-期待結果:
-
-- activationがresolveする。
-- IBM Bob / workflow-register不在でもactivation errorにならない。
-- uncaught exception / unhandled rejectionがない。
+Ubuntu / Windowsの両方で対象VSIXをactivateする。`IBM.bob-code` と `local.workflow-register` の両方を無効化した条件も含め、activationがresolveし、uncaught exception / unhandled rejectionが発生しないことを確認する。
 
 ### CCR-EH-002 exact command inventory
 
-`vscode.commands.getCommands(true)`に次が存在する。
-
-公開command:
-
-```text
-bobCodeConsistency.openReviewWizard
-```
-
-代表hidden command:
-
-```text
-bobCodeConsistency.initializeWorkspace
-bobCodeConsistency.openTraceabilityPrep
-bobCodeConsistency.preprocess
-bobCodeConsistency.captureBobOutput
-bobCodeConsistency.triage
-```
-
-Command Palette policyは公開1件だけを常時表示する。
+`vscode.commands.getCommands(true)` に公開command `bobCodeConsistency.openReviewWizard` が存在する。さらに代表hidden command `bobCodeConsistency.initializeWorkspace`、`bobCodeConsistency.openTraceabilityPrep`、`bobCodeConsistency.preprocess`、`bobCodeConsistency.captureBobOutput`、`bobCodeConsistency.triage` が登録されていること、Command Paletteに常時表示されるのは公開1件だけであることを確認する。
 
 ### CCR-EH-003 primary panel
 
-`Bob Code Consistency Review: 整合プレレビューを開始`を実行する。
-
-期待結果:
-
-- view type: `bobCodeConsistencyReviewWizard`
-- title: `整合プレレビュー`
-- workspace modelとstage navigationがrenderされる。
-- panelを閉じてもdangling callbackがない。
+`Bob Code Consistency Review: 整合プレレビューを開始` を実行し、view type `bobCodeConsistencyReviewWizard`、title `整合プレレビュー` がexact matchすることを確認する。workspace modelとstage navigationがrenderされ、panelを閉じた後にdangling callbackが残らないこと。
 
 ### CCR-EH-004 same-panel stages
 
-`Bob Code Consistency Review: 整合プレレビューを開始`で開いた同じpanel内で、次を順に操作する。
+同じ `bobCodeConsistencyReviewWizard` panelで次の4stageを順に切り替える。
 
 ```text
-入力・根拠選択
+レビュー準備
 トレーサビリティ整理
-前処理 / review-package preview
 レビュー結果取り込み
 指摘確認・振り分け
 ```
 
+`レビュー準備` stage内のaction / contentとして、input、evidence、preprocess、package previewを確認する。これらを独立stageとして扱わない。
+
 期待結果:
 
-- panel identityが変わらない。
-- stage-specific serviceが独立した公開panelを作らない。
-- stage変更、same-stage再遷移、dispose後に古いcompletionが最新modelを上書きしない。
+- panel identityと選択workspaceを維持する。
+- stage変更、同じstageへの再遷移、dispose後に古いasync completionが最新modelを上書きしない。
 - render / post拒否を成功扱いしない。
+- stage-specific serviceが独立した後段panelを作らない。
 
 ### CCR-EH-005 soft dependency availability
 
 | 条件 | 期待結果 |
 | --- | --- |
-| IBM Bobなし | local初期化、入力、前処理、validationを利用できる。Bob投入操作は理由付きで無効。 |
-| workflow-registerなし | local主GUIとserviceを利用できる。workflow provider不在をactivation failureにしない。 |
+| IBM Bob / workflow-registerなし | local初期化、入力、前処理、validationと主GUIを利用でき、activation failureにならない。 |
+| IBM Bobのみ | Bob投入を利用でき、workflow provider不在でもlocal stageを継続できる。 |
+| workflow-registerのみ | providerを登録でき、Bob投入が必要な操作は理由付きで無効になる。 |
 | 両方あり | provider 16件が登録され、同梱workflowを実行できる。 |
-| 後から有効化 | provider registrationが回復する。 |
+| activation後に有効化 | companion extension変更を検知し、provider registration / Bob連携が回復する。 |
 
-## 6. Workspace初期化
+## 7. 実機テスト項目
 
-### CCR-RT-001 create
+### CCR-RT-001 拡張起動と command 登録
 
-workflow未配置のsandboxで主GUIの初期化操作を実行する。
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | 拡張が起動し、公開commandとhidden commandの登録境界が守られることを確認する。 |
+| 手順 | 1. テスト workspace を開く。<br>2. `Developer: Show Running Extensions` で拡張状態を確認する。<br>3. Command Palette で `Bob Code Consistency Review:` を検索する。<br>4. `vscode.commands.getCommands(true)` で代表hidden commandを確認する。 |
+| 期待結果 | Command Paletteには `整合プレレビューを開始` の1件だけが常時表示される。`initializeWorkspace`、`createReviewInput`、`preprocess`、`captureBobOutput`、`validateOutput`、`triage`、traceability系commandは登録済みだがhiddenのままである。 |
 
-期待結果:
+### CCR-RT-002 workflow-register provider 登録
 
-```text
-.bob/workflows/code-consistency-review/WORKFLOW.md
-review-input.yaml
-docs/review-input-placeholder.md
-.gitignore
-```
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | `workflow-register` に action provider が登録されることを確認する。 |
+| 手順 | 1. workflow-register と本拡張を有効化する。<br>2. `workflowRegister.inspect` を実行する。<br>3. 同梱 workflow を実行可能か確認する。 |
+| 期待結果 | `bobCodeConsistency.*` provider を参照する workflow が provider missing にならない。 |
 
-が作成され、workflow / review-inputの個別結果を表示する。
+### CCR-RT-003 workspace 初期化
 
-### CCR-RT-002 workflow backup / update
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | workflow template、review-input 雛形、placeholder document が作成されることを確認する。 |
+| 手順 | 1. `.bob/workflows/code-consistency-review/WORKFLOW.md` と `review-input.yaml` が無い workspace を開く。<br>2. `Bob Code Consistency Review: 整合プレレビューを開始` で主GUIを開き、初期化操作を実行する。<br>3. 既存workflowをbundled bytesと異なる内容にして再初期化する。 |
+| 期待結果 | `.bob/workflows/code-consistency-review/WORKFLOW.md`、`review-input.yaml`、`docs/review-input-placeholder.md` が作成される。既存workflowはbyte-exact backup成功後にbundled bytesへ更新され、workflow結果とreview-input結果を分離表示する。 |
 
-既存workflowをbundled bytesと異なる内容にする。
+### CCR-RT-004 workspace 初期化時の既存 review-input 保護
 
-期待結果:
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | 既存 `review-input.yaml` が上書きされないことを確認する。 |
+| 手順 | 1. CP932または任意non-UTF-8 bytesを含む独自 `review-input.yaml` を配置する。<br>2. 主GUIの初期化操作を実行する。<br>3. workspace外path、symlink / junction parent、identity replacementを用意して再実行する。 |
+| 期待結果 | 既存review-inputのbytesは変更せず、byte-exact backupとbackup pathをworkflow更新結果とは分離して表示する。workspace外、symlink / junction、identity replacementへの書込みは拒否し、partial fileや誤ったbackupを残さない。 |
 
-- 既存bytesをbyte-exact backupする。
-- backup成功後にbundled bytesへ更新する。
-- workflow resultは`updated`とbackup pathを示す。
+### CCR-RT-005 対話式 review-input 作成
 
-### CCR-RT-003 existing review-input backup-only
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Wizard で文書候補を選択し、`review-input.yaml` を生成できることを確認する。 |
+| 手順 | 1. `docs` 配下に requirements / design / test 文書を配置する。<br>2. `Bob Code Consistency Review: 整合プレレビューを開始` で主GUIを開く。<br>3. `レビュー準備` stageの `選択内容から review-input を作成` actionを実行し、QuickPick / input boxに従って入力する。 |
+| 期待結果 | `review-input.yaml` が生成され、artifact path、sections / cases、review_focus が反映される。 |
 
-既存`review-input.yaml`へCP932または任意non-UTF-8 bytesを置く。
+### CCR-RT-006 AI review-input draft prompt 生成
 
-期待結果:
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | AI draft 用 prompt が生成され、clipboard にコピーされることを確認する。 |
+| 手順 | 1. Git repositoryまたはdiff fixtureを用意する。<br>2. hidden commandの技術確認として `vscode.commands.executeCommand("bobCodeConsistency.prepareAiReviewInputDraft")` を実行する。<br>3. base / head / vcsを入力する。 |
+| 期待結果 | `.bob-review/review-input-draft/ai-draft-prompt.md` が作成され、document candidates、diff summary、allowed enum が含まれる。 |
 
-- original fileを変更しない。
--同じbytesのbackupを作る。
-- review-input resultは`unchanged`とbackup pathを示す。
-- workflow更新結果と別に表示する。
+### CCR-RT-007 AI review-input draft JSON 適用
 
-### CCR-RT-004 write boundary
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | AI draft JSON から `review-input.yaml` を生成できることを確認する。 |
+| 手順 | 1. valid `ReviewInputDraft` JSONをclipboardにコピーする。<br>2. hidden commandの技術確認として `vscode.commands.executeCommand("bobCodeConsistency.applyAiReviewInputDraft")` を実行する。 |
+| 期待結果 | `review-input.yaml` が生成または更新され、既存 file がある場合は backup される。 |
 
-workspace外path、symlink / junction parent、identity replacementを用意する。
+### CCR-RT-008 review-input 診断説明
 
-期待結果:
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | 不正な `review-input.yaml` の診断を表示できることを確認する。 |
+| 手順 | 1. required field不足またはmissing artifactを含む `review-input.yaml` を配置する。<br>2. `Bob Code Consistency Review: 整合プレレビューを開始` で主GUIを開き、`レビュー準備` stageで診断説明を実行する。技術確認では `vscode.commands.executeCommand("bobCodeConsistency.explainReviewInputDiagnostics")` を呼ぶ。 |
+| 期待結果 | error / diagnostics が通知または report として表示される。 |
 
-- 書込みを拒否する。
-- partial fileや誤ったbackupを残さない。
+### CCR-RT-009 review-input 自動修復
 
-## 7. review-input
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | legacy / 不完全な `review-input.yaml` の修復導線を確認する。 |
+| 手順 | 1. 修復対象の `review-input.yaml` を配置する。<br>2. hidden commandの技術確認として `vscode.commands.executeCommand("bobCodeConsistency.repairReviewInput")` を実行する。 |
+| 期待結果 | 修復可能な場合は backup 後に更新される。不可の場合は error が表示される。 |
 
-### CCR-RT-010 interactive creation
+### CCR-RT-010 トレーサビリティ整理 stage 起動
 
-主GUIでVCS、base / head、change type、purpose、document candidates、section / case ID、review focusを選択する。
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | 主GUI内のトレーサビリティ整理 stage がcatalogを表示できることを確認する。 |
+| 手順 | 1. `Bob Code Consistency Review: 整合プレレビューを開始` を実行する。<br>2. `トレーサビリティ整理` を選ぶ。<br>3. Domains / Items / Links / Decisions / Gate Report / Preview タブを確認する。 |
+| 期待結果 | 同じ `bobCodeConsistencyReviewWizard` panel 内でstageが表示され、空catalogまたは既存catalogが読み込まれる。 |
 
-期待結果:
+### CCR-RT-011 トレーサビリティ整理の保存と gate report
 
-- validな`review-input.yaml`を生成する。
-- workspace-relative pathだけを保存する。
-- preview、diagnostics、明示確認を行う。
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Webview から catalog を編集・保存し、gate report を生成できることを確認する。 |
+| 手順 | 1. Webview で domain、document、item、link、decision を追加する。<br>2. Save を押す。<br>3. `.bob-trace` 配下を確認する。 |
+| 期待結果 | `traceability-catalog.json` と `gate-report.md` が作成・更新される。既存 catalog は backup される。 |
 
-### CCR-RT-011 AI draft
+### CCR-RT-011A トレーサビリティ整理の承認 UI と escaping
 
-AI draft用promptを生成し、valid / invalid `ReviewInputDraft` JSONを適用する。
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Webview が proposed item / link / decision を人間承認用に表示し、HTML / script 風の文字列を UI text として扱うことを確認する。 |
+| 手順 | 1. `proposed` item、link、decision と、`</script><script>alert(1)</script>` を含む label / reason を catalog に入れる。<br>2. Webview を開き、accepted / rejected / deprecated へ分類する。<br>3. Gate Report と Review Input Preview を確認して Save する。 |
+| 期待結果 | 文字列は実行されず表示 text として escape される。分類結果、gate report、preview が更新され、catalog 保存後も status と reason が保持される。 |
 
-期待結果:
+### CCR-RT-012 traceability catalog 検証
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | catalog validation と gate report 生成を command から確認する。 |
+| 手順 | 1. valid / invalid catalogを用意する。<br>2. `Bob Code Consistency Review: 整合プレレビューを開始` で主GUIを開く。<br>3. `トレーサビリティ整理` stageの `トレーサビリティを検証` actionを実行する。 |
+| 期待結果 | `.bob-trace/gate-report.md` が更新され、error / warning 件数が通知される。 |
 
-- AIは短いdraftだけを作る。
-- hostがenum、path、document existence、sizeを再検証する。
-- invalid draftでfinal YAMLを変更しない。
+### CCR-RT-013 traceability AI draft prompt 生成
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | traceability AI draft 用 prompt が生成されることを確認する。 |
+| 手順 | 1. catalogとdocsを用意する。<br>2. hidden commandの技術確認として `vscode.commands.executeCommand("bobCodeConsistency.prepareAiTraceabilityDraft")` を実行する。 |
+| 期待結果 | `.bob-trace/ai-traceability-draft/ai-draft-prompt.md` が作成され、clipboard にコピーされる。 |
 
-### CCR-RT-012 repair
+### CCR-RT-014 traceability AI draft JSON 適用
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | traceability AI draft JSON を catalog に反映できることを確認する。 |
+| 手順 | 1. valid traceability draft JSONをclipboardにコピーする。<br>2. hidden commandの技術確認として `vscode.commands.executeCommand("bobCodeConsistency.applyAiTraceabilityDraft")` を実行する。 |
+| 期待結果 | catalog が更新され、gate report が再生成される。 |
 
-known legacy enumを持つinputを修復する。
+### CCR-RT-015 traceability catalog から review-input 生成
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | accepted item から `review-input.yaml` を生成できることを確認する。 |
+| 手順 | 1. accepted requirement / design / test itemを含むcatalogを用意する。<br>2. `Bob Code Consistency Review: 整合プレレビューを開始` で主GUIを開く。<br>3. `トレーサビリティ整理` stageの `トレーサビリティから review-input を作成` actionを実行し、review metadataを入力する。 |
+| 期待結果 | accepted item の source path / id が artifacts に反映された `review-input.yaml` が生成される。 |
 
-期待結果:
+### CCR-RT-016 Git preprocess
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Git diff から review-package を生成できることを確認する。 |
+| 手順 | 1. Git repositoryで変更を作成する。<br>2. valid `review-input.yaml` に `review.vcs: git`、base / headを設定する。<br>3. `Bob Code Consistency Review: 整合プレレビューを開始` で主GUIを開く。<br>4. `レビュー準備` stageの `Bob に渡すレビュー資料を作成` actionを実行する。 |
+| 期待結果 | `.bob-review/review-package` に manifest、changed files、evidence index、bob-input.md などが生成される。 |
 
-- diff previewとconfirmationを表示する。
-- cancel時は変更しない。
-- 承認時はbackup後に修復する。
+### CCR-RT-016A Git 複数言語 preprocess
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | C / C++ 以外の変更でも Git 差分からコード根拠を生成できることを確認する。 |
+| 手順 | 1. `multi-language-git-review` sample sandbox を作成する。<br>2. `feature/multi-language-git-review` と `main` を比較する `review-input.yaml` を使う。<br>3. preprocess を実行する。 |
+| 期待結果 | `changed-files.json` に `typescript`、`python`、`java` が入り、`evidence-index.json` と `code-slices/*.md` に `SRC-*` の汎用コード根拠が生成される。 |
 
-## 8. トレーサビリティ整理
+### CCR-RT-017 Bazaar preprocess
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Bazaar / bzr 指定時に Bazaar 差分で review-package を生成できることを確認する。 |
+| 手順 | 1. Bazaar workspace または fixture を用意する。<br>2. `review.vcs: bazaar` または `bzr` を設定する。<br>3. preprocess を実行する。 |
+| 期待結果 | Bazaar 差分が取り込まれ、`--no-aliases` 経路で review-package が生成される。Bazaar CLI が無い環境では fixture による代替結果を確認する。 |
 
-### CCR-RT-020 AI proposed-only draft
+### CCR-RT-018 Markdown 文書抽出
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Markdown の見出し / section selector から evidence が生成されることを確認する。 |
+| 手順 | 1. ID 付き Markdown 文書を artifacts に指定する。<br>2. preprocess を実行する。<br>3. `document-index.json` と `document-excerpts.md` を確認する。 |
+| 期待結果 | 指定 section が evidence として抽出される。 |
 
-文書候補からAI draft promptを作り、proposed-only JSONを取り込む。
+### CCR-RT-019 docx 文書抽出
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Word `.docx` の heading / paragraph / table 抽出を確認する。 |
+| 手順 | 1. `.docx` 文書を artifacts に指定する。<br>2. preprocess を実行する。 |
+| 期待結果 | heading、paragraph、table が document evidence として抽出される。 |
 
-期待結果:
+### CCR-RT-020 xlsx 文書抽出
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Excel `.xlsx` の sheet / row 抽出を確認する。 |
+| 手順 | 1. `.xlsx` 文書を artifacts に指定する。<br>2. sheets / rows selector を設定する。<br>3. preprocess を実行する。 |
+| 期待結果 | 指定 sheet / row が table evidence として抽出され、`tables/*.md` が生成される。 |
 
-- AI draftがaccepted / rejected / deprecatedを確定しない。
-- proposed item / linkをcatalogへmergeする。
-- raw AI draftはignored作業領域へ保存する。
+### CCR-RT-021 C / C++ 変更解析
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | 変更関数、callee / caller、global、RT 禁止候補の抽出を確認する。 |
+| 手順 | 1. C / C++ source を変更する。<br>2. preprocess を実行する。<br>3. `changed-symbols.json` と `code-slices/*.md` を確認する。 |
+| 期待結果 | changed function、callee / caller、RT 禁止候補が warning / evidence に含まれる。 |
 
-### CCR-RT-021 human transition
+### CCR-RT-021A 汎用コード根拠 fallback
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | 詳細解析できない言語、または C / C++ header / define-only 変更で関数 evidence が無い場合も Bob が参照できる根拠が残ることを確認する。 |
+| 手順 | 1. TypeScript / Python / Java 変更、または関数本体を含まない header 変更を用意する。<br>2. preprocess を実行する。<br>3. `changed-symbols.json`、`diff-context.md`、`code-slices/*.md` を確認する。 |
+| 期待結果 | file scope の汎用 symbol と `SRC-*` evidence が生成され、Bob output validator が参照可能な evidence として扱う。 |
 
-`トレーサビリティ整理`stageで候補をaccepted / rejected / deprecatedへ変更する。
+### CCR-RT-022 review-package 内容確認
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | review-package の必須ファイルが揃うことを確認する。 |
+| 手順 | 1. preprocess を実行する。<br>2. `.bob-review/review-package` のファイル一覧を確認する。 |
+| 期待結果 | `manifest.yaml`、`input-normalized.json`、`changed-files.json`、`changed-symbols.json`、`document-index.json`、`evidence-index.json`、`traceability-map.json`、Markdown summary、`bob-input.md`、`prompts/` が存在する。 |
 
-期待結果:
-
--人間操作だけが正式状態を変更する。
-- catalog revisionとidentityを再検証する。
-- backup後に保存する。
-- gate reportを再生成する。
-
-### CCR-RT-022 gate
-
-missing link、unapproved domain、duplicate ID、stale anchor、unresolved QA / review findingを用意する。
-
-期待結果:
-
-- error / warningを分類して表示する。
-- errorがある状態でreview-input生成へ進めない。
-
-### CCR-RT-023 route / recovery
-
-hidden workflow commandからtraceability routeを呼ぶ。
-
-期待結果:
-
-- 既存`整合プレレビュー`panelが`トレーサビリティ整理`stageへ移動する。
--初回catalog read failure時に二重readやgate report writeを行わない。
-- failure後は利用可能なreview stageへ戻る。
-
-## 9. VCS / document / code evidence
-
-### CCR-RT-030 Git
-
-- base / head差分
-- rename
-- 空白入りpath
-- binary numstat
-- untracked option
-
-をtemporary repositoryで確認する。
-
-### CCR-RT-031 Bazaar
-
-`bzr --no-aliases`、revision / range / working tree、CP932、timeout、output capを確認する。
-
-### CCR-RT-032 Markdown
-
-section ID、heading、table、list、line rangeを抽出する。
-
-### CCR-RT-033 Word
-
-`.docx`のheading、paragraph、list、tableをdocument orderで抽出する。
-
-### CCR-RT-034 Excel
-
-`.xlsx`のsheet、saved value、row number、cell rangeを抽出する。formulaを再計算しない。
-
-### CCR-RT-035 code evidence
-
-- C / C++変更関数と周辺候補
-- TypeScript / Python / Javaのdiff hunk根拠
-- binary / unsupported language warning
-- caller / callee / global / struct option
-
-を確認する。
-
-## 10. review-package
-
-### CCR-RT-040 deterministic build
-
-valid inputで前処理を実行する。
-
-期待結果:
-
-```text
-manifest.yaml
-input-normalized.json
-changed-files.json
-changed-symbols.json
-document-index.json
-evidence-index.json
-traceability-map.json
-change-summary.md
-diff-context.md
-document-excerpts.md
-deterministic-checks.md
-bob-input.md
-prompts/
-code-slices/
-tables/
-```
-
-が整合して生成される。
+### CCR-RT-023 Bob Workflow UI から preprocess 実行
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | workflow-register 経由で本拡張 provider が呼ばれることを確認する。 |
+| 手順 | 1. `initializeWorkspace` 済み workspace を開く。<br>2. Bob Workflow UI から `code-consistency-review` workflow を開始する。<br>3. `preprocess-review-package` step を実行する。 |
+| 期待結果 | review-package が生成され、workflow run state に command step 結果が反映される。 |
+
+### CCR-RT-024 Bob へ bob-input.md を投入する
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | 生成された `bob-input.md` を Bob に渡してプレレビューできることを確認する。 |
+| 手順 | 1. preprocess 後の `bob-input.md` を開く。<br>2. Bob Workflow UI の agent step または Bob chat で内容を使う。 |
+| 期待結果 | Bob が review-package の根拠に基づく YAML 出力を生成できる。 |
+
+### CCR-RT-025 Bob output capture: clipboard
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | clipboard から Bob 出力 YAML を取り込めることを確認する。 |
+| 手順 | 1. valid Bob output YAMLをclipboardにコピーする。<br>2. `Bob Code Consistency Review: 整合プレレビューを開始` で開いた同じpanelの `レビュー結果取り込み` stageから取り込む。 |
+| 期待結果 | `.bob-review/bob-output/bob-output.yaml` が保存される。 |
+
+### CCR-RT-026 Bob output capture: workflow handoff
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | workflow-register result handoff / action input から Bob output を取り込めることを確認する。 |
+| 手順 | 1. Bob Workflow UI で agent step 後の `capture-bob-output` step を実行する。<br>2. run state と output file を確認する。 |
+| 期待結果 | assistant output が `bob-output.yaml` として保存される。 |
+
+### CCR-RT-027 Bob output validation OK
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | schema と evidence index に合う Bob output が OK になることを確認する。 |
+| 手順 | 1. valid Bob outputとreview-packageを用意する。<br>2. 同じ主GUIの `レビュー結果取り込み` stageで検証する。 |
+| 期待結果 | status ok、error 0 件が通知される。 |
+
+### CCR-RT-028 Bob output validation error
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | unknown evidence_id や schema 不一致が error になることを確認する。 |
+| 手順 | 1. unknown evidence_idを含むoutputを保存する。<br>2. `Bob Code Consistency Review: 整合プレレビューを開始` で主GUIを開く。<br>3. `レビュー結果取り込み` stageの `保存済みの Bob 出力を検証` actionを実行する。必要な技術確認では `vscode.commands.executeCommand("bobCodeConsistency.validateOutput")` を呼ぶ。 |
+| 期待結果 | validation error が表示され、対象 evidence_id が report に含まれる。 |
+
+### CCR-RT-029 指摘確認・振り分け成果物の生成
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | 主GUIの指摘確認・振り分けstageからhuman triage成果物を生成できることを確認する。 |
+| 手順 | 1. valid Bob output を保存する。<br>2. `Bob Code Consistency Review: 整合プレレビューを開始` を実行する。<br>3. `指摘確認・振り分け` を選び、判定一覧を生成する。 |
+| 期待結果 | `.bob-review/human-triage` に `triage-result.yaml`、`accepted-findings.md`、`questions-to-author.md`、`rejected-findings.md`、`follow-up-actions.md` が生成される。 |
+
+### CCR-RT-030 End-to-End: Command Palette 経由
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Command Paletteから公開主GUIを開き、同じpanel内で初期化から指摘確認・振り分けまで実行できることを確認する。 |
+| 手順 | 1. Command Paletteで `Bob Code Consistency Review: 整合プレレビューを開始` を実行する。<br>2. 同じpanelで初期化、review-input作成またはAI draft適用、preprocess、Bob output capture、validation、指摘確認・振り分けを順に実行する。 |
+| 期待結果 | review-package、bob-output、human-triage が生成され、重大な未処理例外が出ない。 |
+
+### CCR-RT-031 End-to-End: Bob Workflow UI 経由
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | workflow-register / IBM Bob UI から同梱 workflow を実行できることを確認する。 |
+| 手順 | 1. initializeWorkspace。<br>2. workflow-register reload。<br>3. Bob Workflow UI で `code-consistency-review` workflow を起動する。<br>4. preprocess、agent、capture、validate、triage の各 step を実行する。 |
+| 期待結果 | run state と本拡張成果物が対応し、各 command step が成功する。 |
+
+### CCR-RT-032 Multi-root workspace
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | `.bob` root と VCS / source root が異なる構成で動作することを確認する。 |
+| 手順 | 1. `.bob` を持つ workspace と source repository を multi-root で開く。<br>2. `workflowRoot` / `workspaceRoot` / `vcs_root` を指定して preprocess を実行する。 |
+| 期待結果 | review-input と成果物は Bob workspace 側、差分と source 読み込みは指定 VCS / source root 側で解決される。 |
+
+### CCR-RT-033 文字コード: Shift-JIS / CP932
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Shift-JIS / CP932 の文書やソースを `auto` または明示 encoding で読めることを確認する。 |
+| 手順 | 1. Shift-JIS / CP932 文書またはソースを用意する。<br>2. `bobCodeConsistency.textEncoding` を `auto` / `cp932` に設定して preprocess を実行する。 |
+| 期待結果 | 日本語が大きく文字化けせず、document evidence / code slices に出力される。 |
+
+### CCR-RT-034 path escape 防止
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | workspace 外 artifact path が拒否されることを確認する。 |
+| 手順 | 1. `review-input.yaml` に `../outside.md` を指定する。<br>2. preprocess または review-input builder 経路を実行する。 |
+| 期待結果 | error になり、workspace 外ファイルは読み込まれない。 |
+
+### CCR-RT-035 large diff / large document warning
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | 大きい diff / 文書で処理が破綻せず warning 付きで進むことを確認する。 |
+| 手順 | 1. 大きめの diff または文書を用意する。<br>2. preprocess を実行する。 |
+| 期待結果 | 上限や warning が成果物に記録され、Extension Host が停止しない。 |
 
 ### CCR-RT-041 caps
 
-raw diff、document excerpt、code slice、Bob input上限を小さくする。
-
-期待結果:
-
-- hard capを超えない。
-- truncation / omission理由をmanifestへ記録する。
-- required metadataだけでも収まらない場合はfailする。
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | review-packageのraw diff、document excerpt、code slice、Bob inputのhard capが守られることを確認する。 |
+| 手順 | 1. 各上限を小さく設定する。<br>2. 上限を超えるdiff、文書、code sliceを用意してpreprocessする。<br>3. required metadataだけでも収まらないfixtureを試す。 |
+| 期待結果 | 各artifactはhard capを超えず、truncation / omission理由をmanifestへ記録する。required metadataが収まらない場合は不完全packageを生成せずfailする。 |
 
 ### CCR-RT-042 transaction failure
 
-stagingまたはrenameで意図的に失敗させる。
-
-期待結果:
-
-- partial packageをinstallしない。
-- existing packageを保持する。
-- temp / staging cleanup結果を報告する。
-
-## 11. IBM Bob Workflow E2E
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | review-packageのstagingまたはrename失敗時に既存packageを保護できることを確認する。 |
+| 手順 | 1. 正常な既存packageを用意する。<br>2. staging writeまたはatomic renameで意図的に失敗させる。<br>3. packageとtemp / stagingを比較する。 |
+| 期待結果 | partial packageをinstallせず、existing packageのbytesを保持し、temp / staging cleanup結果を報告する。 |
 
 ### CCR-RT-050 preprocess
 
-Bob Workflow UIで同梱workflowを開始し、review-packageを作る。
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Bob Workflow UIで同梱workflowを開始し、review-packageを生成できることを確認する。 |
+| 手順 | 1. valid review-inputを用意する。<br>2. Bob Workflow UIで `code-consistency-review` を開始する。<br>3. preprocess stepを実行する。 |
+| 期待結果 | package identityとrun stateが対応し、必要artifactがtransactionalに生成される。 |
 
 ### CCR-RT-051 Bob agent
 
-Bobが`bob-input.md`とpackage内evidenceだけを使い、final approvalを行わないことを確認する。
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Bob agentがreview-package内の根拠だけを用い、人間の最終承認を代行しないことを確認する。 |
+| 手順 | 1. `bob-input.md` をBob agent stepへ渡す。<br>2. 使用したevidence IDと出力statusを確認する。 |
+| 期待結果 | Bobはpackage内evidenceだけを参照し、accepted / rejected / deprecatedや最終decisionを人間操作なしで確定しない。 |
 
 ### CCR-RT-052 result handoff
 
-Bob resultを次stepへhandoffする。
-
-期待結果:
-
-- `args[0]` / explicit result fieldから同じoutputを取得する。
-- handoff failureをsuccess扱いしない。
--必要なsnapshotをboundedに保存する。
-
-## 12. レビュー結果取り込み
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Bob resultをworkflowの次stepへboundedにhandoffできることを確認する。 |
+| 手順 | 1. agent stepからvalid outputを返す。<br>2. `args[0]` とexplicit result fieldの各経路でcapture stepへ渡す。<br>3. handoff failureも発生させる。 |
+| 期待結果 | 両経路から同じoutputを取得し、必要snapshotだけをboundedに保存する。handoff failureをsuccess扱いしない。 |
 
 ### CCR-RT-060 valid output
 
-同じpanelの`レビュー結果取り込み`stageでvalid YAMLを保存する。
-
-期待結果:
-
-- stage初期化時のworkspace rootを固定する。
-- raw / canonical / primary outputを保存する。
-- schema、review ID、package ID、evidence IDを検証する。
-- 保存後に`指摘確認・振り分け`へ進める。
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | 同じ主GUIの `レビュー結果取り込み` stageでvalid YAMLを安全に保存できることを確認する。 |
+| 手順 | 1. stage初期化時にworkspace rootとpackage identityを選ぶ。<br>2. valid YAMLを取り込み、保存する。 |
+| 期待結果 | stage初期化時のworkspace rootを固定し、raw / canonical / primary outputを保存する。schema、review ID、package ID、evidence IDを検証し、保存後に `指摘確認・振り分け` へ進める。 |
 
 ### CCR-RT-061 invalid evidence
 
-unknown evidence IDまたはfinal approvalを含むYAMLを入力する。
-
-期待結果:
-
-- issue pathとmessageを表示する。
--正式outputを保存しない。
-- success notificationを出さない。
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | unknown evidence ID、schema不一致、AIによるfinal approvalを拒否できることを確認する。 |
+| 手順 | 1. 各invalid YAMLを同じ `レビュー結果取り込み` stageへ入力する。<br>2. validation結果と保存先を確認する。 |
+| 期待結果 | issue pathとmessageを表示し、正式outputを保存せず、success notificationを出さない。 |
 
 ### CCR-RT-062 render / dispose
 
-render拒否、panel dispose、stage変更中に保存を完了させる。
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | render拒否、panel dispose、stage変更と保存完了が競合してもdomain / UI stateが壊れないことを確認する。 |
+| 手順 | 1. render / post拒否を発生させる。<br>2. 保存中にpanelをdisposeまたはstage変更する。<br>3. outputとConsoleを確認する。 |
+| 期待結果 | domain writeが未完了ならinstallしない。完了済みdomain writeを別stage modelへ誤反映せず、拒否をsuccess扱いせず、unhandled rejectionを残さない。 |
 
-期待結果:
+## 8. 実機テスト結果記録テンプレート
 
-- domain writeが未完了ならinstallしない。
--完了済みdomain writeを別stage modelへ誤反映しない。
-- unhandled rejectionがない。
+| 項目 | 記入欄 |
+| --- | --- |
+| テスト日 |  |
+| テスト担当 |  |
+| OS / バージョン |  |
+| VS Code / Bob IDE バージョン |  |
+| IBM Bob 拡張バージョン |  |
+| workflow-register commit / VSIX |  |
+| bob-code-consistency-review commit / VSIX |  |
+| VSIX SHA-256 / artifact hash |  |
+| workspace path |  |
+| 実施した testcase ID |  |
+| 合格 |  |
+| 不合格 |  |
+| 保留 |  |
+| 主な不具合 / 備考 |  |
 
-## 13. 指摘確認・振り分け Integrity 実機テスト
+## 9. 合格基準
 
-### CCR-RT-070 generate / save / reload
+- CCR-RT-001 から CCR-RT-008 までの起動・初期化・review-input 作成の基本導線が合格する。
+- CCR-RT-016 から CCR-RT-022 までの preprocess / review-package 生成が合格する。複数言語 sample では `SRC-*` の汎用コード根拠が生成される。
+- CCR-RT-025 から CCR-RT-029 までの Bob output capture / validation / triage が合格する。
+- Bob Workflow UI 経由の command provider 実行が少なくとも preprocess / capture / validate / triage で成功する。
+- Developer Tools Console に未処理例外が残らない。
+- workspace root 外への意図しない読み書きがない。
 
-- source snapshotを生成する。
-- accepted / rejected / investigation / questionとowner / reason / follow-upを入力する。
-- 保存してpanelを閉じ、再度`指摘確認・振り分け`stageを開く。
+## 10. 回帰確認の優先度
 
-期待結果:
+| 優先度 | 対象 |
+| --- | --- |
+| P0 | 起動、workspace 初期化、review-input 検証、preprocess、Bob output capture、validate、triage。 |
+| P1 | workflow-register provider、Bob Workflow UI、traceability Webview、AI draft 適用、Git / Bazaar 差分、multi-language Git sample。 |
+| P2 | docx / xlsx 抽出、C / C++ 解析、汎用コード根拠 fallback、multi-root、Shift-JIS / CP932、large diff。 |
+| P3 | repair、diagnostics 説明、UI 表示細部、OS 差分。 |
 
-- decisionが再表示される。
-- source hashが変わらない。
-- decision revisionが1増える。
-- projectionがdecisionと一致する。
+<!-- REMEDIATION-2026-07-11 -->
+## 2026-07-11 追加リリースゲート
 
-### CCR-RT-071 source conflict
+1. Windows と Ubuntu の CI が成功していること。
+2. timeout / cancel 後に Git / Bazaar 子プロセスが残留しないこと。
+3. companion extension を無効化した状態で通常 command が起動し、再有効化後に provider が回復すること。
+4. multi-root workspace で Bob root と VCS root が混同されないこと。
+5. IBM Bob 実環境で workflow source、step review、result handoff、MCP、Webview の代表 smoke を実施し、結果を release evidence に保存すること。
+6. workflow-contracts CI が repository 内の全対象 WORKFLOW.md を検証し成功していること。
 
-panelを開いたままBob outputを再生成し、古いpanelから保存する。
+<!-- TRIAGE-INTEGRITY-2026-07-12 -->
+## 2026-07-12 指摘確認・振り分け Integrity 実機テスト
 
-期待結果:
+### CCR-RT-036 Generate / edit / save / reload
 
-- source changed errorになる。
-- new source / projectionを上書きしない。
-- reopen後に最新sourceを表示する。
+| 項目 | 内容 |
+| --- | --- |
+| 手順 | Bob outputをcapture・validateし、指摘確認・振り分け画面で生成する。findingをaccepted、questionをquestionとして必要fieldを入力し保存後、GUIを閉じて再度開く。 |
+| 期待結果 | source contextとsource hashは不変で、人間decision、owner、reason、comment、follow-upが再表示される。decision revisionは成功saveごとに1だけ増え、accepted / question / follow-up Markdown projectionが保存decisionと一致する。 |
 
-### CCR-RT-072 revision conflict
+### CCR-RT-037 Source change conflict
 
-2つのpanel generationで同じdecision revisionを開き、先行save後に後続saveする。
+| 項目 | 内容 |
+| --- | --- |
+| 手順 | GUIを開いたままBob outputを変更してtriageを再生成し、古い画面から保存する。 |
+| 期待結果 | `TRIAGE_SOURCE_CHANGED`で保存を拒否し、新しいsourceとprojectionを上書きせず、success notificationを出さない。再読込後は新sourceを表示する。 |
 
-期待結果:
+### CCR-RT-038 Two-window decision revision conflict
 
--後続saveがrevision conflictになる。
--先行decisionを保持する。
-- conflict時にsuccess notificationを出さない。
+| 項目 | 内容 |
+| --- | --- |
+| 手順 | 指摘確認・振り分け画面を2画面で開き、画面Aで保存後、古い画面Bから保存する。 |
+| 期待結果 | 画面Bは`TRIAGE_REVISION_CONFLICT`となる。Aのdecisionと生成成果物を保持し、conflict時にsuccess notificationを出さず、再読込後に最新revisionを表示する。 |
 
-### CCR-RT-073 legacy migration
+### CCR-RT-039 Legacy migration
 
-legacy `triage-result.yaml`だけを配置して生成する。
+| 項目 | 内容 |
+| --- | --- |
+| 手順 | legacy `triage-result.yaml`だけを配置し、matching IDとunmatched IDを含めてtriageを生成する。 |
+| 期待結果 | matching decisionだけが`triage-decisions.yaml`へ移り、旧resultのbyte-exact backupと`migration-report.md`が作成される。unmatched IDは判断へ混入しない。 |
 
-期待結果:
+### CCR-RT-040 Backup and projection inspection
 
-- matching decisionを移行する。
-- unknown itemをdecision storeへ入れない。
-- migration reportとbackupを作る。
+| 項目 | 内容 |
+| --- | --- |
+| 手順 | decisionを複数回保存し、triage directoryのsource、decisions、互換YAML、各Markdown、backupを比較する。projectionを手編集した再保存と、write途中で失敗するfixtureも試す。 |
+| 期待結果 | `triage-source.yaml`をGUI保存が変更せず、decision revisionが成功ごとに1増える。Markdownはdecision分類から再生成され、手編集を正本として取り込まない。backup名は衝突せず、failed saveではnew projectionをinstallしない。 |
 
-### CCR-RT-074 projection / backup
+Phase 1の実機合格にはCCR-RT-036からCCR-RT-040の結果と、Developer Tools Consoleに未処理例外がないことをrelease evidenceへ記録する。
 
-複数回saveし、projectionを手編集して再saveする。
+## 11. Manual visual / accessibility gate
 
-期待結果:
+Ubuntu / Windowsの代表環境で次を確認する。
 
-- revisionが成功saveごとに1だけ増える。
-- projectionがdecisionから再生成される。
-- backup名が衝突しない。
-- failed saveでnew projectionをinstallしない。
+- 200% zoomとVS Code / Windows High Contrastでstage、field label、source context、editable field、status、button、focus境界を識別できる。
+- Tab / Shift+Tabだけで全主要actionとeditable fieldへ移動でき、select、checkbox、date inputなどのform controlをkeyboardで操作できる。
+- source contextと人間が編集できるfieldを区別でき、suggested ownerをowner inputへ自動入力せず、未判断itemをacceptedとして見せない。
+- validation、source conflict、revision conflictを色だけに依存せず区別できる。
+- screenshotに秘密情報、顧客data、credential、absolute user pathを含めない。
 
-詳細UATは`triage-integrity-ibm-bob-uat-runbook-ja.md`を使う。
+## 12. Console gate
 
-## 14. Multi-root
+各scenario前にDeveloper Tools Consoleをclearし、終了後に `uncaught`、`unhandled`、`rejection`、`exception`、`CSP`、`webview`、`provider` を検索する。合格条件はuncaught exception、unhandled rejection、CSP violation、save failure後のsecondary exception、panel dispose / deactivate後のdangling callbackがすべて0件であること。
 
-同じreview IDを持つ2つのworkspaceを開く。
+## 13. Cross-extension hosted acceptance
 
-期待結果:
-
-- selected / workflow rootをrequest内で固定する。
-- package、output、decisionを別rootへ書かない。
-- source / revision conflictをroot間で混同しない。
-- workspace picker後のactive editor変更でrootを変えない。
-
-## 15. Manual visual / accessibility gate
-
-UbuntuとWindowsの代表環境で確認する。
-
-- 200% zoomでstage、field label、source context、editable field、status、buttonを識別できる。
-- VS Code High Contrast / Windows High Contrastで境界とfocusを識別できる。
-- Tab / Shift+Tabだけで全主要actionとeditable fieldへ移動できる。
-- select、checkbox、date inputをkeyboardで操作できる。
-- source contextと人間editable fieldを区別できる。
-- suggested ownerをowner inputへ自動入力しない。
-- 未判断itemをacceptedとして見せない。
-- validation、source conflict、revision conflictを色だけに依存せず区別する。
-- screenshotに秘密情報、顧客data、absolute user pathを含めない。
-
-## 16. Console gate
-
-各scenario前にConsoleをclearし、終了後に次を検索する。
-
-```text
-uncaught
-unhandled
-rejection
-exception
-CSP
-webview
-provider
-MCP
-```
-
-合格条件:
-
-- uncaught exception 0
-- unhandled rejection 0
-- CSP violation 0
-- save failure後のsecondary exception 0
-- panel close / deactivate後のdangling callback 0
-
-## 17. Cross-extension hosted acceptance
-
-同一head SHAで次を満たす。
+同一commit SHAから作成したVSIX群で、次の5 public commandが登録され、4 primary panelのview type / titleがexact matchすることを確認する。
 
 ```text
-workflowRegister.openOperationHub      -> workflowRegisterOperationHub / Bob 操作ハブ
-workflowRegister.openWorkflowBuilder   -> workflowRegisterBuilder / ワークフロー作成・編集
-bobBazaar.openReviewGui                -> bobBazaarReviewGui / Bazaar レビュー
-bobCodeConsistency.openReviewWizard    -> bobCodeConsistencyReviewWizard / 整合プレレビュー
+workflowRegister.openOperationHub
+workflowRegister.openWorkflowBuilder
+bobBazaar.openReviewGui
+bobBazaar.authorProjectRulesFromDocuments
+bobCodeConsistency.openReviewWizard
+
+workflowRegisterOperationHub / Bob 操作ハブ
+workflowRegisterBuilder / ワークフロー作成・編集
+bobBazaarReviewGui / Bazaar レビュー
+bobCodeConsistencyReviewWizard / 整合プレレビュー
 ```
 
-さらに5件すべてのpublic commandと代表hidden commandがUbuntu / Windowsで登録される。4panelを開閉してunhandled rejectionがない。
+4 panelを開閉し、uncaught exception / unhandled rejection / dangling callbackがないことも確認する。
 
-## 18. 完了条件
+## 14. 完了条件
 
-- automated full suite / policy / package gateがpass。
-- Ubuntu / Windows Extension Hostが同一SHAでpass。
-- public command / panel type / titleがexact match。
-- initializer、traceability、review-package、Bob output、decision UATがpass。
-- visual / keyboard / Console gateがpass。
-- evidenceにcommit、VSIX、OS、versions、artifact hashesを記録する。
+- build / policy / audit / package gateが合格する。
+- Ubuntu / Windows Hosted Extension Hostが同一commit SHAのVSIXで合格する。
+- public command inventory、primary panel type / title、same-panel、soft-dependency、visual / accessibility、Console、cross-extensionの各gateが合格する。
+- canonical CCR-RT-001からCCR-RT-040と、非衝突のCCR-RT-041 / 042 / 050–052 / 060–062が合格する。
+- evidenceにcommit SHA、VSIX SHA-256、OS、各version、artifact hashを記録する。

@@ -79,7 +79,7 @@ manifestの`main`は`./out/extension.js`である。`IBM.bob-code`と`local.work
 
 ### 5.1 panel lifecycle
 
-`bobCodeConsistency.openReviewWizard`はview type `bobCodeConsistencyReviewWizard`、title `整合プレレビュー`のpanelを開く。
+`bobCodeConsistency.openReviewWizard`は`src/webview/consistencyReviewWizard.ts`の`openConsistencyReviewWizard`を呼び、view type `bobCodeConsistencyReviewWizard`、title `整合プレレビュー`のpanelを開く。
 
 - 現在実装はcommand呼び出しごとに新しいWebview panelを生成する。
 - `enableScripts: true`、`retainContextWhenHidden: true`を使用する。
@@ -101,7 +101,7 @@ close / reopen後はdisk上のreview-input、catalog、Bob output、decisionを�
 
 workspace初期化、レビュー入力作成、traceabilityからの入力生成、validation、preprocessはreview stage内のactionであり、独立したruntime stageではない。
 
-`traceabilityPrepWebview.ts`、`consistencyResultCapture.ts`、`consistencyHumanTriage.ts`は独立panelを作らず、同じ主GUIへmodel、HTML、action handlerを提供する。
+`traceabilityPrepWebview.ts`、`consistencyResultCapture.ts`、`consistencyHumanTriage.ts`は同じ主GUIの`embedded stage` serviceであり、独立panelを作らずmodel、HTML、action handlerを提供する。
 
 stale render token、古いstage generation、異なるworkspace、古いsource SHA / decision revisionを拒否する。
 

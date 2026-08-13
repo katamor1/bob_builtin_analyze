@@ -283,6 +283,14 @@ running、paused、reviewing、held、checkpoint、completed、failedを用意�
 - outside / alias pathへ書き込まない。
 - backupやtemporary fileを不完全な状態で残さない。
 
+### WR-RT-036 Builder内のテンプレート調整
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | 現行Builderの`standard-template` modeでテンプレート調整を行い、安全な生成・上書きとreadinessを確認する。 |
+| 手順 | 1. `workflowRegister.openWorkflowBuilder`で`ワークフロー作成・編集`を開く。<br>2. 標準テンプレートを選択し、`targetLanguage`、`vcs.type`、phase artifact root、input defaultを編集する。<br>3. Preview / Diff / Readinessを確認する。<br>4. 保存し、既存生成物がある状態でもう一度保存する。 |
+| 期待結果 | 候補はtemplate metadataと一致し、number / boolean / null defaultsが保持される。Bazaar profileだけ`bzr --no-aliases` prompt supplementを持ち、Git profileには混入しない。workspace外またはsymlink escapeの生成先は拒否され、既存profile / customization / workflowはbackup後に更新される。 |
+
 ## 9. workflow runtime gate
 
 ### WR-RT-RUNTIME-001 Bob source登録

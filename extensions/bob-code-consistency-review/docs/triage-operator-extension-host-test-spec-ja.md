@@ -1,6 +1,6 @@
 # 指摘確認・振り分け Operator Extension Host テスト仕様
 
-> **現行UI:** triage成果物／domain moduleの歴史的名称は内部互換のため維持する。operatorはstandalone panelを使わず、`整合プレレビュー`主GUI内の`指摘確認・振り分け`stageを開く。
+> **現行UI:** `整合プレレビュー`主GUI → `指摘確認・振り分け` embedded stageの順で開く。triage成果物／domain moduleの歴史的名称は内部互換のため維持する。
 
 ## 1. 目的
 

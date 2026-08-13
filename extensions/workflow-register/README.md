@@ -19,8 +19,8 @@ Command Paletteに常時表示する入口は次の2件だけです。
 
 `package.json`の`main`は`./out/extensionWithAuthoring.js`です。
 
-- `IBM.bob-code`はBob UI登録・Bob task実行時だけ使うsoft dependencyです。
-- IBM Bobがない場合も、workflow作成・編集、validation、standalone execution、run inspectionは利用できます。
+- IBM Bob 拡張: `IBM.bob-code`（Bob UI 登録時のみ必須）はsoft dependencyです。Bob task実行連携を使う場合にも利用します。
+- IBM Bobがない場合も、authoring / validation / standalone workflow execution は利用でき、workflow作成・編集とrun inspectionも継続できます。
 - `bob-bazaar-review`と`bob-code-consistency-review`もoptional integrationです。
 - optional extensionがない場合、`Bob 操作ハブ`はcommand not found例外に頼らず、操作を無効化して理由を表示します。
 
@@ -53,6 +53,8 @@ run cardのmutationはworkspace root、run ID、表示時revisionを再検証し
 3. 既存workflowを編集
 
 標準テンプレートから作成する場合も、生成結果はin-memory Builder modelへ入り、通常のPreview / Diagnostics / Diff / 明示確認 / backup / transactional saveを通ります。直接ファイルを書いて安全確認を迂回しません。
+
+`テンプレート調整`は別panelではなく、Builder内で標準templateを選択・編集し、同じ保存契約へ渡す操作です。
 
 保存契約:
 
@@ -132,6 +134,8 @@ steps:
 | `result` | state / literal / agent結果をsinkへ渡す |
 
 `includeState`、manual `form.resultKey`、manual `approval.resultKey`、artifact `producedBy`はproducerの存在と順序を検証します。
+
+現行実装では`src/bobStepRuntime.ts`がBob UI実行用の`StepRuntime`を提供します。`StepRuntime`はheld/manual stepの一覧と選択、run / step期待値の照合、form・approval入力とstate keyの検証、result handoff、Bob task完了と待機中stepの解決を担当します。
 
 ## 実行状態
 
@@ -289,6 +293,8 @@ Command ID、provider ID、sink type、artifact schema、`run.json` contractは�
 | `workflowRegister.runs.retention.maxCompletedRuns` | `100` | 終了run保持目安 |
 | `workflowRegister.runs.retention.maxTotalBytes` | `524288000` | 保存容量目安 |
 
+既定では Bob chat messages を含めません。必要な場合だけ`workflowRegister.taskSnapshots.includeMessages`を明示的に`true`へ変更します。
+
 `workflowRegister.runs.retention.*`は現行設定です。廃止済みview IDと混同してrenameしません。
 
 ## ビルドと検証
@@ -316,6 +322,41 @@ node --test \
 ```
 
 Ubuntu / WindowsのExtension Host gateは、activation、2つの公開command、代表hidden command、2つのpanel、unhandled rejection不在を同一SHAで確認します。
+
+## 保守・配布ポリシー
+
+### 生成物
+
+主な生成物はワークスペース内の`.bob/workflows`と`.bob/workflows/runs`です。`.bob/workflows/*/WORKFLOW.md`はワークフロー定義、`.bob/workflows/runs/<runId>/run.json`はstandalone実行状態、task snapshotはBob UI実行時の復旧・診断用データです。利用者の要求・設計・レビュー内容が含まれる場合があるため、共有前に内容を確認してください。
+
+### VSIX サイズ
+
+`npm run package:policy`はVSIX サイズの上限を`1200000` bytesとして確認します。配布前は`npm run package`と`npm run package:policy`を続けて実行してください。`out/**/*.map`と開発用の`docs/**`はVSIXに同梱しません。
+
+### 暗黙依存
+
+`IBM.bob-code`はBob UIへworkflow sourceを登録する場合だけ必要です。authoring、validation、standalone実行、診断は`IBM.bob-code`なしで動作します。連携先が未導入の環境では、Bob UI登録ではなくstandalone commandを使ってください。
+
+### 必要 CLI
+
+開発と検証にはNode.jsとnpmが必要です。CIと同じ入口は次です。
+
+```powershell
+npm ci
+npm run dependency:policy
+npm run architecture:policy
+npm run unused:report
+npm run audit:prod
+npm test
+npm run package
+npm run package:policy
+```
+
+### Trusted Workspace
+
+ワークフロー定義、実行状態、task snapshotは開いているworkspaceの`.bob`配下だけを対象にします。信頼できないworkspaceでは、外部コマンドを実行するcommand step、result sink、AI provider commandの利用範囲を確認してから実行してください。
+
+Run retentionでは、`inspectRunStorage`と`previewRunCleanup`だけがuntrusted workspaceでread-only利用可能です。`cleanupCompletedRuns`、`deleteSelectedRuns`、`pinRun`、`unpinRun`はtrustが確立するまでroot discovery、run selection、service construction、filesystem accessを開始しません。
 
 ## セキュリティとprivacy
 

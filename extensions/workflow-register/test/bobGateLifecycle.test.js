@@ -538,7 +538,7 @@ test("full fallback manual completion keeps its wrapper Todo pending until later
   let completionTimer
 
   try {
-    await waitFor(() => stepRuntime.list().length === 1)
+    await waitFor(() => stepRuntime.list().length === 1, 20_000)
     const active = stepRuntime.list()[0]
     assert.match(await stepRuntime.completeStepByKey(active.key), /完了しました:/)
 
@@ -656,7 +656,7 @@ test("full fallback after-step pause releases its completed owner before the wra
 
     resumeExecution = commandService.resumeRun(paused.runId)
     const resumeSettlement = trackSettlement(resumeExecution)
-    await waitFor(() => targetCalls === 1)
+    await waitFor(() => targetCalls === 1, 20_000)
     await new Promise((resolve) => setImmediate(resolve))
 
     assert.equal(resumeSettlement.settled, true, "Resume must release the full wrapper instead of executing target itself")

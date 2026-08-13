@@ -42,7 +42,7 @@ test("operator documentation defines formats, AI consent, ownership, recovery, a
 
   assert.match(guide, /AI.{0,20}(?:送信|共有).{0,80}(?:明示承認|同意)/s)
   assert.match(guide, /source logical name.{0,80}(?:chunk|byte)/si)
-  assert.match(guide, /Human Triage[\s\S]*(?:accept|採用)[\s\S]*(?:reject|却下)[\s\S]*(?:edit|編集)/i)
+  assert.match(guide, /規約候補の確認・適用[\s\S]*(?:accept|採用)[\s\S]*(?:reject|却下)[\s\S]*(?:edit|編集)/i)
   assert.match(guide, /apply preview|適用 preview/i)
   assert.match(guide, /VS Code.{0,40}(?:再起動|restart)[\s\S]*(?:再開|resume)/i)
   assert.match(guide, /incomplete transaction[\s\S]*(?:rollback|recovery)/i)

@@ -100,7 +100,7 @@ jobs:
       - name: Extension Host surface smoke
         env:
           SMOKE_EXTENSION_ID: local.workflow-register
-          SMOKE_COMMANDS: workflowRegister.openOperationHub,workflowRegister.openWorkflowBuilder,workflowRegister.runWorkflow
+          SMOKE_COMMANDS: workflowRegister.openOperationHub,workflowRegister.openWorkflowBuilder,workflowRegister.runWorkflow,workflowRegister.inspectRunStorage,workflowRegister.previewRunCleanup,workflowRegister.cleanupCompletedRuns,workflowRegister.deleteSelectedRuns,workflowRegister.pinRun,workflowRegister.unpinRun
           SMOKE_EXTRA_FILES: ../../scripts/three-extension-surface-extension-host.test.js
           SMOKE_WORKSPACE_FOLDER: test/fixtures/gui-surface-workspace
           SURFACE_PUBLIC_COMMANDS: workflowRegister.openOperationHub,workflowRegister.openWorkflowBuilder
@@ -269,7 +269,7 @@ jobs:
         include:
           - extension: workflow-register
             extension_id: local.workflow-register
-            smoke_commands: workflowRegister.openOperationHub,workflowRegister.openWorkflowBuilder,workflowRegister.runWorkflow
+            smoke_commands: workflowRegister.openOperationHub,workflowRegister.openWorkflowBuilder,workflowRegister.runWorkflow,workflowRegister.inspectRunStorage,workflowRegister.previewRunCleanup,workflowRegister.cleanupCompletedRuns,workflowRegister.deleteSelectedRuns,workflowRegister.pinRun,workflowRegister.unpinRun
             extra_test_files: "../../scripts/three-extension-surface-extension-host.test.js"
             workspace_folder: "test/fixtures/gui-surface-workspace"
             surface_public_commands: workflowRegister.openOperationHub,workflowRegister.openWorkflowBuilder

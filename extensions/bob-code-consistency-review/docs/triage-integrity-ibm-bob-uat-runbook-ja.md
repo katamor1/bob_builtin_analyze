@@ -1,5 +1,7 @@
 # 指摘確認・振り分け整合性 IBM Bob UAT Runbook
 
+> **現行UI:** `整合プレレビュー`主GUI → `指摘確認・振り分け` embedded stageの順で操作する。旧standalone UIは削除済みであり、後続操作も同じ主GUI内で行う。
+
 - 対象: `extensions/bob-code-consistency-review`
 - 対象機能: `整合プレレビュー` 主GUI内の `レビュー結果取り込み` / `指摘確認・振り分け`
 - ステータス: ready to run / 実IBM Bob環境での実施待ち

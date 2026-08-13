@@ -165,6 +165,8 @@ catalog revisionとidentityを再検証し、backup後に保存する。stale wr
 実テスト:
 
 - traceability catalog / draft / gate / Webview tests
+- `test/traceabilityPrepWebviewAssets.test.js`: CSP-safe assetとscript終端escaping
+- `test/traceabilityPrepController.test.js`: 人間decision遷移、restore、gate model
 - `test/traceabilityPrepConcurrency.test.js`
 - `test/traceabilityPrepWebview.test.js`
 - `test/consistencyTraceabilityRecovery.test.js`
@@ -173,7 +175,7 @@ catalog revisionとidentityを再検証し、backup後に保存する。stale wr
 
 ### CCR-UT-VCS-001 Git
 
-temporary repositoryでbase / head、rename、空白入りpath、binary numstat、untracked optionを検証する。
+一時 Git repositoryでbase / head、rename、空白入りpath、binary numstat、untracked optionを検証する。revision、path、rename、binary分類の現行mappingは`test/vcsValidation.test.js`である。
 
 ### CCR-UT-VCS-002 Bazaar
 
@@ -186,6 +188,8 @@ shellを使わずargument arrayを使う。abort、timeout、buffer超過、non-
 ### CCR-UT-VCS-004 resource caps
 
 raw diff、file count、per-file context、aggregate Bob input上限をUTF-8 bytesで検証する。
+
+設定range、document / excerpt、raw diff、aggregate Bob input、package truncationの現行mappingは`test/sizeLimits.test.js`である。
 
 ## 9. 文書抽出
 
@@ -316,6 +320,7 @@ workflow-register未導入でもactivationとlocal serviceを維持し、後か�
 主な実テスト:
 
 - workflow provider registration / action input tests
+- `test/workflowProviderRegistration.test.js`: provider inventory、soft dependency recovery、registration lifecycle
 
 ## 15. Cross-extension documentation contract
 

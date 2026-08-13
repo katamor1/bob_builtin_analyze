@@ -17,6 +17,69 @@ const specs = {
   CCR: read(repoRoot, "extensions", "bob-code-consistency-review", "docs", "real-machine-test-spec-ja.md"),
   PRA: read(repoRoot, "extensions", "bob-bazaar-review", "docs", "project-rule-authoring-windows-uat.md")
 }
+const consistencyPackage = readJson(repoRoot, "extensions", "bob-code-consistency-review", "package.json")
+const consistencyReviewWizardHtml = read(
+  repoRoot,
+  "extensions",
+  "bob-code-consistency-review",
+  "src",
+  "webview",
+  "consistencyReviewWizardHtml.ts"
+)
+const canonicalTestCaseHeadings = {
+  "BZR-RT-004": "`.bob` workspace / workflow template 初期化",
+  "BZR-RT-006": "Bazaar レビュー主GUI 起動",
+  "BZR-RT-007": "GUI singleRevision target 読み込み",
+  "BZR-RT-008": "GUI revisionRange target 読み込み",
+  "BZR-RT-009": "GUI workingTreeSinceRevision target 読み込み",
+  "BZR-RT-010": "GUI review packet 生成と Bob context 追加",
+  "BZR-RT-017": "workflow collectReviewContext",
+  "BZR-RT-018": "workflow loadReviewRules",
+  "BZR-RT-019": "review-result capture: clipboard",
+  "BZR-RT-020": "review-result capture: active editor",
+  "BZR-RT-021": "review-result capture: workflow handoff",
+  "BZR-RT-022": "invalid review-result capture",
+  "BZR-RT-023": "active editor JSON validation OK",
+  "BZR-RT-024": "active editor JSON validation error",
+  "BZR-RT-025": "MCP initialize / tools/list",
+  "BZR-RT-026": "MCP Bazaar tools",
+  "BZR-RT-027": "MCP project rules tools",
+  "BZR-RT-027A": "MCP allowed roots",
+  "BZR-RT-028": "MCP review result tools",
+  "BZR-RT-029": "multi-root `.bob` / `.bzr` 分離",
+  "BZR-RT-030": "Shift-JIS / CP932 decode",
+  "BZR-RT-034": "End-to-End: Bob Workflow UI 経由",
+  "BZR-RT-035": "End-to-End: Command Palette 経由",
+  "BZR-RT-044": "レビュー実行開始とartifact関連付け",
+  "BZR-RT-045": "VS Code再起動後の再開",
+  "BZR-RT-046": "decision別の指摘確認・振り分け validation",
+  "BZR-RT-047": "Metricsの自動計測と補正",
+  "CCR-RT-008": "review-input 診断説明",
+  "CCR-RT-010": "トレーサビリティ整理 stage 起動",
+  "CCR-RT-011": "トレーサビリティ整理の保存と gate report",
+  "CCR-RT-011A": "トレーサビリティ整理の承認 UI と escaping",
+  "CCR-RT-012": "traceability catalog 検証",
+  "CCR-RT-013": "traceability AI draft prompt 生成",
+  "CCR-RT-014": "traceability AI draft JSON 適用",
+  "CCR-RT-015": "traceability catalog から review-input 生成",
+  "CCR-RT-016": "Git preprocess",
+  "CCR-RT-016A": "Git 複数言語 preprocess",
+  "CCR-RT-019": "docx 文書抽出",
+  "CCR-RT-020": "xlsx 文書抽出",
+  "CCR-RT-021A": "汎用コード根拠 fallback",
+  "CCR-RT-022": "review-package 内容確認",
+  "CCR-RT-023": "Bob Workflow UI から preprocess 実行",
+  "CCR-RT-024": "Bob へ bob-input.md を投入する",
+  "CCR-RT-025": "Bob output capture: clipboard",
+  "CCR-RT-026": "Bob output capture: workflow handoff",
+  "CCR-RT-027": "Bob output validation OK",
+  "CCR-RT-028": "Bob output validation error",
+  "CCR-RT-029": "指摘確認・振り分け成果物の生成",
+  "CCR-RT-030": "End-to-End: Command Palette 経由",
+  "CCR-RT-031": "End-to-End: Bob Workflow UI 経由",
+  "CCR-RT-034": "path escape 防止",
+  "PRA-WIN-001": "標準 DOCX / XLSX / text PDF"
+}
 
 function assertSafeRelativePath(value, label) {
   assert.equal(path.isAbsolute(value), false, `${label} must be relative`)
@@ -25,6 +88,14 @@ function assertSafeRelativePath(value, label) {
 
 function assertFunctionNames(source, names) {
   for (const name of names) assert.match(source, new RegExp(`function ${name}`))
+}
+
+function readMarkdownSection(source, headingPattern) {
+  const heading = source.match(new RegExp(`^#{2,4}\\s+${headingPattern}.*$`, "m"))
+  assert.ok(heading, `missing Markdown heading: ${headingPattern}`)
+  const tail = source.slice(heading.index)
+  const nextHeading = tail.slice(heading[0].length).search(/\n#{2,4}\s+/)
+  return nextHeading < 0 ? tail : tail.slice(0, heading[0].length + nextHeading)
 }
 
 test("manifest defines the approved six P0 + P1 scenarios", () => {
@@ -55,6 +126,100 @@ test("manifest defines the approved six P0 + P1 scenarios", () => {
       assert.match(specs[family], new RegExp(`^#{3,4}\\s+${escapeRegExp(testCaseId)}(?:\\s|$)`, "m"))
     }
   }
+})
+
+test("manifest test cases retain their canonical pre-consolidation meanings", () => {
+  const manifest = readJson(manifestPath)
+  const referencedIds = [...new Set(manifest.scenarios
+    .flatMap(({ testCases }) => testCases)
+    .filter((testCaseId) => /^(?:(?:BZR|CCR)-RT-|PRA-WIN-)/.test(testCaseId)))]
+    .sort()
+  assert.deepEqual(Object.keys(canonicalTestCaseHeadings).sort(), referencedIds)
+
+  for (const testCaseId of referencedIds) {
+    const family = testCaseId.startsWith("BZR-")
+      ? "BZR"
+      : testCaseId.startsWith("CCR-")
+        ? "CCR"
+        : "PRA"
+    const headings = [...specs[family].matchAll(
+      new RegExp(`^#{3,4}\\s+${escapeRegExp(testCaseId)}\\s+(.+?)\\s*$`, "gm")
+    )]
+    assert.equal(headings.length, 1, `${testCaseId} must have exactly one canonical definition`)
+    assert.equal(
+      headings[0][1],
+      canonicalTestCaseHeadings[testCaseId],
+      `${testCaseId} must retain its canonical scenario meaning`
+    )
+  }
+})
+
+test("code-consistency UAT uses the production stage inventory and explicit hidden-command routes", () => {
+  const commandsById = Object.fromEntries(consistencyPackage.contributes.commands
+    .map(({ command, category, title }) => [command, `${category}: ${title}`]))
+  const paletteEntries = consistencyPackage.contributes.menus.commandPalette
+  const publicCommandIds = paletteEntries
+    .filter(({ when }) => when !== "false")
+    .map(({ command }) => command)
+  assert.deepEqual(publicCommandIds, ["bobCodeConsistency.openReviewWizard"])
+  const publicDisplayName = commandsById[publicCommandIds[0]]
+
+  const mainGuiRoutes = {
+    "CCR-RT-005": ["レビュー準備", "選択内容から review-input を作成"],
+    "CCR-RT-012": ["トレーサビリティ整理", "トレーサビリティを検証"],
+    "CCR-RT-015": ["トレーサビリティ整理", "トレーサビリティから review-input を作成"],
+    "CCR-RT-016": ["レビュー準備", "Bob に渡すレビュー資料を作成"],
+    "CCR-RT-028": ["レビュー結果取り込み", "保存済みの Bob 出力を検証"]
+  }
+  for (const [testCaseId, routeLabels] of Object.entries(mainGuiRoutes)) {
+    const testCase = readMarkdownSection(specs.CCR, escapeRegExp(testCaseId))
+    assert.ok(testCase.includes(publicDisplayName), `${testCaseId} must enter through the public primary GUI command`)
+    for (const label of routeLabels) {
+      assert.ok(testCase.includes(label), `${testCaseId} must route through the primary GUI action: ${label}`)
+    }
+  }
+
+  const hiddenTechnicalRoutes = {
+    "CCR-RT-006": "bobCodeConsistency.prepareAiReviewInputDraft",
+    "CCR-RT-007": "bobCodeConsistency.applyAiReviewInputDraft",
+    "CCR-RT-009": "bobCodeConsistency.repairReviewInput",
+    "CCR-RT-013": "bobCodeConsistency.prepareAiTraceabilityDraft",
+    "CCR-RT-014": "bobCodeConsistency.applyAiTraceabilityDraft"
+  }
+  for (const [testCaseId, commandId] of Object.entries(hiddenTechnicalRoutes)) {
+    const testCase = readMarkdownSection(specs.CCR, escapeRegExp(testCaseId))
+    assert.equal(
+      paletteEntries.find(({ command }) => command === commandId)?.when,
+      "false",
+      `${commandId} must remain hidden from the Command Palette`
+    )
+    assert.ok(
+      testCase.includes(`vscode.commands.executeCommand("${commandId}")`),
+      `${testCaseId} must identify its hidden technical command by ID`
+    )
+    assert.match(testCase, /技術確認/)
+  }
+
+  for (const [, displayName] of specs.CCR.matchAll(
+    /`(Bob (?:Code Consistency Review|コード整合プレレビュー): [^`]+)`/g
+  )) assert.equal(displayName, publicDisplayName, `operator steps must not advertise a hidden command: ${displayName}`)
+
+  const productionStages = [...consistencyReviewWizardHtml.matchAll(
+    /<button\b[^>]*data-stage="[^"]+"[^>]*>([^<]+)<\/button>/g
+  )].map(([, label]) => label)
+  assert.deepEqual(productionStages, [
+    "レビュー準備",
+    "トレーサビリティ整理",
+    "レビュー結果取り込み",
+    "指摘確認・振り分け"
+  ])
+  const stageSection = readMarkdownSection(specs.CCR, "CCR-EH-004")
+  const documentedStages = stageSection.match(/```text\r?\n([\s\S]*?)\r?\n```/)?.[1]
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  assert.deepEqual(documentedStages, productionStages)
+  assert.match(stageSection, /レビュー準備[^\n]*input[^\n]*evidence[^\n]*preprocess[^\n]*package preview/i)
 })
 
 test("operator template and checklists never pre-pass manual UAT", () => {

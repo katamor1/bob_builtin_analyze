@@ -97,7 +97,7 @@ extensions/bob-code-consistency-review/
 
 ### 4.1 panel生成
 
-`src/webview/consistencyReviewWizard.ts`だけがview type `bobCodeConsistencyReviewWizard`を生成する。
+`src/webview/consistencyReviewWizard.ts`の`openConsistencyReviewWizard`だけがview type `bobCodeConsistencyReviewWizard`を生成する。
 
 - title: `整合プレレビュー`
 - `enableScripts: true`
@@ -128,7 +128,7 @@ type ConsistencyReviewStage =
 
 `initializeWorkspace`、`createReviewInput`、`createReviewInputFromTraceability`、`validateTraceability`、`preprocess`は`review` stage内のactionであり、独立stageではない。
 
-`traceabilityPrepWebview.ts`、`consistencyResultCapture.ts`、`consistencyHumanTriage.ts`は同じ公開panel内のstage serviceである。独立した公開Command Palette panelを作成しない。
+`traceabilityPrepWebview.ts`、`consistencyResultCapture.ts`、`consistencyHumanTriage.ts`は同じ公開panel内の`embedded stage` serviceである。独立した公開Command Palette panelを作成しない。
 
 ### 4.3 message ownershipとfailure recovery
 
@@ -156,6 +156,8 @@ workspace rootはopen workspace folderまたはworkflow contextから解決す�
 
 `bobCodeConsistency.initializeWorkspace`は次を扱う。
 
+`src/commands/workspaceCommands.ts`はcommand / workflow optionからworkspace rootと`reviewInputPath`を解決し、`src/workspaceInitializer.ts`へ初期化を委譲する。
+
 ```text
 .bob/workflows/code-consistency-review/WORKFLOW.md
 review-input.yaml
@@ -168,7 +170,7 @@ workflow template更新は`src/workspaceInitializer.ts`でtransaction lockを取
 - same bytesなら`unchanged`
 - existing workflowはsnapshot identityとbytesを再確認する
 - same-directory temporary fileを排他的に作成する
-- current workflowのhard-link backupを作成する
+- current workflowのhard-linkバックアップ（backup）を作成する
 - temporary fileをtargetへpublishする
 - publication後にtargetとbackupのidentity / bytesを検証する
 -途中失敗時は所有権を確認してrollbackする
@@ -233,7 +235,18 @@ open時revisionとsave時revisionを比較し、stale revisionでは更新せず
 
 ### 8.2 document evidence
 
-`documentExtractor.ts`はMarkdown、DOCX、XLSX等からsource locator付きexcerptを生成する。XLSXではsheet / cell range / rowを保持し、formula評価やmacro実行を行わない。document、sheet、row、excerpt、aggregate bytesの上限を適用する。
+`documentExtractor.ts`はMarkdown、DOCX、XLSX等からsource locator付きexcerptを生成する。`documentXlsxExtractor.ts`は`read-excel-file/node`でworkbookを読み、sheet / cell range / rowを保持し、formula評価やmacro実行を行わない。
+
+preprocess commandは次の設定を読込み、document、sheet、row、excerpt、raw diff、`bob-input.md`の上限を適用する。
+
+| 設定 | 既定値 | 現行責務 |
+|---|---:|---|
+| `bobCodeConsistency.maxDocumentBytes` | `5242880` | 文書1件の読込み上限。Markdownはbounded read、DOCXとExcel workbookは超過時に抽出を中止する |
+| `bobCodeConsistency.maxWorkbookSheets` | `20` | workbookから選択する最大sheet数 |
+| `bobCodeConsistency.maxRowsPerSheet` | `500` | 各sheetから抽出する最大data row数 |
+| `bobCodeConsistency.maxExcerptBytesPerDocument` | `65536` | 文書またはcode evidence 1件のUTF-8 byte上限 |
+| `bobCodeConsistency.maxRawDiffBytes` | `1048576` | レビュー資料とBob入力へ含める未加工diffのUTF-8 byte上限 |
+| `bobCodeConsistency.maxBobInputBytes` | `2097152` | 生成する`bob-input.md`とaggregate evidenceのUTF-8 byte上限 |
 
 ### 8.3 code evidence
 
@@ -268,6 +281,8 @@ manifestはreview ID、package ID、VCS range、input hash、tool version、arti
 validation errorがある場合はcurrent outputを置換しない。stage serviceはvalidated outputを保存した後、必要なtriage sourceを準備して`triage` stageへ遷移する。
 
 ## 11. 指摘確認・振り分けdomain
+
+`src/triage/triageTypes.ts`はsource item、decision record、Webview view item、workspace state、projectionの共有型契約を定義する。
 
 ### 11.1 source snapshot
 
