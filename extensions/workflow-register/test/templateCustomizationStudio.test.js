@@ -34,6 +34,14 @@ function renderTemplateCustomizationStudioHtml(options) {
   return renderWorkflowBuilderStandardTemplateHtml({ ...options, sessionToken: "test-session" })
 }
 
+function alternateWindowsPathCase(value) {
+  return process.platform === "win32" ? value.toUpperCase() : value
+}
+
+function isSameResolvedPath(left, right) {
+  return path.relative(path.resolve(String(left)), path.resolve(String(right))) === ""
+}
+
 async function tempRoot() {
   return fs.mkdtemp(path.join(os.tmpdir(), "template-studio-"))
 }
@@ -528,7 +536,7 @@ test("a readiness request that becomes stale while waiting for the root lock nev
 
 for (const [failedIndex, label] of [[0, "first"], [1, "second"]]) {
   test(`a partially written ${label} readiness replacement restores both originals`, async () => {
-    const root = await studioWorkspace()
+    const root = alternateWindowsPathCase(await studioWorkspace())
     const library = await listTemplateLibrary(root)
     const model = createDefaultStudioModel(library.templates[0])
     model.projectId = `partial-${label}-project`
@@ -545,7 +553,7 @@ for (const [failedIndex, label] of [[0, "first"], [1, "second"]]) {
     const originalRename = fs.rename
     let injected = false
     fs.rename = async (source, target) => {
-      if (!injected && path.resolve(String(target)) === path.resolve(targets[failedIndex]) && String(source).includes(".workflow-txn-")) {
+      if (!injected && isSameResolvedPath(target, targets[failedIndex]) && String(source).includes(".workflow-txn-")) {
         injected = true
         await originalRename(source, target)
         throw new Error(`simulated partial ${label} replacement`)
