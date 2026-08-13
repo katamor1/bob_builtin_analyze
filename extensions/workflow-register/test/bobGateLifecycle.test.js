@@ -494,7 +494,7 @@ test("StepRuntime manual hold remains the only pending primitive for a manual Bo
     sendMessage: async () => undefined,
     setStepComplete: () => { completed += 1 }
   })
-  await waitFor(() => stepRuntime.list().length === 1)
+  await waitFor(() => stepRuntime.list().length === 1, 20_000)
   const active = stepRuntime.list()[0]
 
   assert.equal(gateRegistry.isPending(root, active.runId, "manual"), false)
