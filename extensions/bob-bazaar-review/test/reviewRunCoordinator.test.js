@@ -63,7 +63,7 @@ test("records captured result paths and advances to result", async () => {
     jsonPath: path.join(workspaceRoot, ".bob/review/results/review-1.json"),
     markdownPath: path.join(workspaceRoot, ".bob/review/results/review-1.md"),
     metadataPath: path.join(workspaceRoot, ".bob/review/results/review-1.artifact-metadata.json")
-  })
+  }, "2026-07-12T00:01:00.000Z")
   assert.equal(resultRun.phase, "result")
   assert.equal(resultRun.artifacts.reviewResultJsonPath, ".bob/review/results/review-1.json")
   assert.equal(resultRun.artifacts.reviewResultMarkdownPath, ".bob/review/results/review-1.md")

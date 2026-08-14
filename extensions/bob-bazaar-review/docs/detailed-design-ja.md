@@ -232,7 +232,7 @@ Webview route stageとReview Run phaseを同一の型として扱わない。
 
 ### 5.3 mutationとatomic save
 
-`src/reviewRuns/reviewRunCoordinator.ts`はReview Run identityごとのmutation queueで更新を直列化する。`src/reviewRuns/reviewRunStore.ts`は次を行う。
+`src/reviewRuns/reviewRunState.ts`はReview Runの生成、legacy stateのnormalize、phase前進、tracked phaseごとのrequired artifact検証を担う。`src/reviewRuns/reviewRunCoordinator.ts`はReview Run identityごとのmutation queueで更新を直列化する。`src/reviewRuns/reviewRunStore.ts`は次を行う。
 
 1. memory上でnormalizeとschema検証を行う。
 2. `expectedUpdatedAt`が指定された場合、永続化済み`updatedAt`と比較する。
@@ -292,7 +292,7 @@ invalid resultまたはreview ID不一致をReview Runへ接続しない。
 
 ## 8. 指摘確認・振り分けとレビュー実績
 
-`src/records/reviewTriage.ts`と`src/ui/humanTriageGui.ts`はfinding ID、decision、owner、reason、action、summary countを検証する。triage draftの保存時は`triageYamlPath`を記録し、完了時にtracked `triage`を完了してtracked `record`を開始する。
+`src/records/reviewTriage.ts`と`src/ui/humanTriageGui.ts`はfinding ID、decision、owner、reason、action、summary countを検証する。`src/records/reviewRecordCommands.ts`はcampaign初期化、record / triageの作成・検証、campaign summary生成commandを登録し、永続化を`src/records/reviewRecordStore.ts`へ委譲する。triage draftの保存時は`triageYamlPath`を記録し、完了時にtracked `triage`を完了してtracked `record`を開始する。
 
 `src/reviewRuns/reviewRunCoordinator.ts`はfinalize時に次を行う。
 
@@ -349,7 +349,7 @@ confirmationはbackupより前、backupはreplacementより前である。cancel
 
 ## 11. workflow-register provider
 
-`src/workflow/workflowProviders.ts`の`registerWorkflowProvidersWithRetry`は`local.workflow-register`の遅延activationを監視し、1秒、3秒、10秒のbounded retryを行う。providerはsource owner `local.bob-bazaar-review`で登録し、返された`Disposable`をextension contextで所有する。
+`src/workflow/workflowActions.ts`はReview providerのreview context収集とproject rule bundle読込を実装する。`src/workflow/workflowProviders.ts`の`registerWorkflowProvidersWithRetry`は`local.workflow-register`の遅延activationを監視し、1秒、3秒、10秒のbounded retryを行う。providerはsource owner `local.bob-bazaar-review`で登録し、返された`Disposable`をextension contextで所有する。
 
 Review provider:
 

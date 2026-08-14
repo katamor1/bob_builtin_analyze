@@ -182,7 +182,7 @@ test("campaign selection precedence is active Review Run then explicit request t
   })
 
   const activeRunHost = dashboardHost({
-    workspaceRoot: "/workspace",
+    workspaceRoot: extensionRoot,
     campaignId: "campaign-a"
   })
   await createBazaarReviewResultsStage(activeRunHost, { campaignId: "campaign-b" }).initialize()
@@ -310,7 +310,7 @@ function dashboardHost(activeReviewRun) {
     },
     getActiveReviewRun() { return activeReviewRun },
     commitActiveReviewRun() { return false },
-    getWorkspaceRoot() { return "/workspace" },
+    getWorkspaceRoot() { return extensionRoot },
     async showStage() { return false }
   }
   Object.defineProperty(host, "html", { get: () => host.renders.at(-1) ?? "" })
@@ -324,7 +324,7 @@ function loadDashboardStage(overrides = {}) {
   Module._load = function load(request, parent, isMain) {
     if (request === "vscode") {
       return {
-        workspace: { workspaceFolders: [{ uri: { fsPath: "/workspace" } }] },
+        workspace: { workspaceFolders: [{ uri: { fsPath: extensionRoot } }] },
         window: { showInformationMessage: overrides.showInformationMessage ?? (async () => undefined) }
       }
     }

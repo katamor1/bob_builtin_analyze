@@ -50,14 +50,36 @@ interface ActionExecutionInput {
   workflowRoot?: string
   workflowFile?: string
   workflowFolderName?: string
-  bobRoot?: string
-  workspaceRoot?: string
   runId?: string
   stepId?: string
+  latestAssistantText?: string
+  resultText?: string
+  artifactText?: string
 }
 ```
 
 providerは`args`、`inputs`、`state`をuntrusted inputとして扱い、許可field、workspace containment、ID、pathをhost側で再検証します。
+
+## AgentExecutionInput
+
+`AgentExecutionInput`は`agent` stepを実行する`AgentProvider.run`へ渡す入力です。任意の`args`を受け取る`ActionExecutionInput`と異なり、template展開済みの`prompt`、current runの`inputs` / `state`、workflow / run / step identityを必須入力として渡します。physical workflow metadataは定義に存在する場合だけ渡します。
+
+```ts
+interface AgentExecutionInput {
+  workflowId: string
+  logicalWorkflowId?: string
+  workflowRoot?: string
+  workflowFile?: string
+  workflowFolderName?: string
+  runId: string
+  stepId: string
+  prompt: string
+  inputs: Record<string, unknown>
+  state: Record<string, string>
+}
+```
+
+agent providerは同期または非同期でtextを返します。provider未登録、throw / rejected promise、configured commandがstring相当の出力を返さない場合は`agent` stepを失敗にし、run stateへerrorを保存して後続stepへ成功扱いで進みません。
 
 ## Result handoff
 

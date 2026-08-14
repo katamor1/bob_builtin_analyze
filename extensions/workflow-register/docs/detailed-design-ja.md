@@ -352,6 +352,10 @@ back transition時は対象rangeのstep state、result key、artifact effectを�
 
 task snapshotは補助証跡であり、run再開の正本ではない。既定ではBob message本文を保存せず、bounded metadata、last assistant text候補、task export候補を扱う。
 
+| 設定 | 既定値 | 責務 |
+|---|---:|---|
+| `workflowRegister.taskSnapshots.includeMessages` | `false` | Bob chat message本文は既定で保存せず、必要な場合だけoperatorが明示的に有効化する |
+
 artifact importは次の順序で行う。
 
 ```text
@@ -463,7 +467,7 @@ workspace変更、stale revision、target消失、unsafe pathではrefresh-requi
 - `standard-template`: 標準テンプレートから作成、project profile、customization、readiness。
 - `edit`: 既存`workflow-register/v1`をloaderでmodel化。
 
-標準テンプレート選択やreadinessを別公開surfaceへ分離しない。
+`standard-template` modeが現行のテンプレート調整を担い、template metadataからの候補、typed default、VCS別prompt supplement、preview / diff / readiness、backup付き保存をBuilder内で扱う。標準テンプレート選択やreadinessを別公開surfaceへ分離しない。
 
 ### 15.3 previewとsave
 
@@ -570,7 +574,7 @@ IBM Bobとcompanion extensionはsoft dependencyである。manifestの`extension
 - task snapshot preview、safe default、digest。
 - artifact reuse、checksum、hydration、definition mismatch。
 - OperationHubProvider lifecycle、watcher、mutation revision、serialization。
-- Builder mode、render token、preview、diff、backup、atomic save。
+- Builder mode、テンプレート調整、render token、preview、diff、backup、atomic save。
 - retention inventory、planner、lease、quarantine、rollback。
 
 ### 20.2 package / host

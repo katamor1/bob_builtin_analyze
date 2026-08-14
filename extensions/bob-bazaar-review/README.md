@@ -74,6 +74,17 @@ revisionとrepository-relative pathを検証し、shell文字列連結を行い�
 
 multi-rootではphysical path identityを確認し、別rootのreview session、artifact、recordを混在させません。
 
+## 現行実装パス
+
+| Path | 責務 |
+|---|---|
+| `src/workflow/workflowRegisterBridge.ts` | `workflow-register`のsoft dependency、action input、workflow stateを拡張内の型へ変換する |
+| `src/bazaar/bazaarReviewCommands.ts` | revision / rangeを収集し、Bazaar review packetの表示、保存、Bob context連携を調整する |
+| `src/projectRules/reviewResultValidationCommand.ts` | active editorのreview-result JSONを検証し、有効な結果のMarkdown summaryを表示する |
+| `src/ui/` | 主GUIと各stageのWebview lifecycle、message境界を実装する |
+| `src/workflow/` | workflow action providerの登録、input変換、service呼出しを実装する |
+| `src/workspace/` | Bob / Bazaar root解決と`.bob` assetの初期化・更新を実装する |
+
 ## Review Runと成果物
 
 ```text
@@ -93,14 +104,23 @@ multi-rootではphysical path identityを確認し、別rootのreview session、
     dashboard.csv
 
 .bob/review/results/
-  <reviewId>.json
-  <reviewId>.md
-  <reviewId>.artifact-metadata.json
+  <review_id>.json
+  <review_id>.md
+  <review_id>.artifact-metadata.json
 ```
 
 `review-run.json`は進行stageとresume identityの正本です。review-result、decision、record、metrics本体の正本を置き換えません。
 
 同一campaignでrecord directoryが存在する場合は、`-02`、`-03`のようなsuffixをatomic directory予約で割り当てます。既存recordを暗黙上書きしません。
+
+review record操作は内部互換Command IDとして次を維持します。
+
+| Command ID | 生成・更新する内容 |
+|---|---|
+| `bobBazaar.records.initCampaign` | `.bob-review-records`のcampaign templateをmissing-onlyで初期化する |
+| `bobBazaar.records.createRecord` | `review-packet.md`を含むreview artifactを関連付け、`record.yaml`を生成・検証する |
+| `bobBazaar.records.createTriage` | 保存済みreview-resultから`triage.yaml`の人間判断雛形を生成・検証する |
+| `bobBazaar.records.generateSummary` | campaignのrecordを集計し、`summary.json`と`summary.md`を生成する |
 
 ## レビュー結果取り込み
 
@@ -119,9 +139,9 @@ raw JSON、fenced JSON、text中のbalanced JSON objectを候補として抽出�
 validated resultだけを次へ保存します。
 
 ```text
-.bob/review/results/<reviewId>.json
-.bob/review/results/<reviewId>.md
-.bob/review/results/<reviewId>.artifact-metadata.json
+.bob/review/results/<review_id>.json
+.bob/review/results/<review_id>.md
+.bob/review/results/<review_id>.artifact-metadata.json
 ```
 
 stage開始時のworkspace rootを固定し、active editorやworkspace selectionの変化を同じrequestへ混在させません。
@@ -162,11 +182,11 @@ rateの分母が0の場合は`0%`ではなく`n/a`です。JSON / Markdown / CSV
 1. current fileとbundled templateの`diff preview`を作る。
 2. operatorへ`明示確認`を求める。
 3. cancel時no-changeを保証する。
-4. 承認後、既存fileを一意なbackupへcopyする。
-5. backup成功後にtargetを置換する。
+4. 承認後、既存fileを一意なバックアップ（backup）へcopyする。
+5. バックアップ成功後にtargetを置換する。
 6. post-write validationを行う。
 
-確認より前にbackupやreplacementを開始しません。backup failure、stale expectation、unsafe pathではno-changeとします。
+確認より前にバックアップやreplacementを開始しません。バックアップ失敗、stale expectation、unsafe pathではno-changeとします。
 
 ## 資料からプロジェクト規約を作成
 
@@ -178,9 +198,9 @@ rateの分母が0の場合は`0%`ではなく`n/a`です。JSON / Markdown / CSV
 - directoryの暗黙再帰走査、macro実行、formula再計算、external link refreshを行いません。
 - AIへ渡すのはoperatorが承認したbounded evidenceだけです。
 - AI proposalは正式assetを直接変更しません。
-- applyはbase hash、decision revision、preview digest、journal、backup、transaction、rollback、final hashを検証します。
+- applyはbase hash、decision revision、preview digest、journal、バックアップ、transaction、rollback、final hashを検証します。
 
-詳細は`docs/project-rule-authoring.md`を参照します。
+詳細は`docs/project-rule-authoring.md`、Windows release UATは`docs/project-rule-authoring-windows-uat.md`を参照します。
 
 ## MCP境界
 
@@ -232,6 +252,45 @@ npm run package:smoke
 
 Ubuntu / Windowsの同一source headでExtension Host smokeまで実行します。実IBM Bob / Bazaar UATではkeyboard-only、200% zoom、High Contrast、Developer Tools Console、MCP、result handoffを確認します。
 
+## 保守・配布契約
+
+### 生成物
+
+workspace初期化とレビュー実行の主な生成物は`.bob/mcp.json`、`.bob/review`配下のchecklist / schema / `review-result`、`.bob-review-records`配下のpacket / triage / record / summaryです。source本文、差分、AI output、人間decisionを含み得るため、共有前に内容を確認します。
+
+### VSIX サイズと依存関係
+
+`npm run package:policy`はVSIX サイズの上限を`12000000` bytesとして検査し、production dependencyがVSIXへ収録されていることも確認します。runtime dependencyはproposal検証用の`ajv`、DOCX抽出用の`cheerio`と`mammoth`、review record YAML用の`js-yaml`、XLSX抽出用の`read-excel-file`です。
+
+### 暗黙依存
+
+`IBM.bob-code`と`workflow-register`はoptional integrationであり、manifestのhard dependencyではありません。前者はreview packetのBob context連携、後者は同梱workflowとaction providerを使う場合に必要です。両方が未導入でも主GUIとdirect review serviceは利用できます。
+
+### 必要 CLIとrelease gate
+
+実行時はBazaar CLIを`bzr --no-aliases`で使用します。PDF抽出には設定済みの`pdftotext`が必要です。開発・配布検証にはNode.jsとnpmが必要で、clean installから次を実行します。
+
+```powershell
+npm ci
+npm run compile
+npm run dependency:policy
+npm run architecture:policy
+npm run source:policy
+npm run unused:policy
+npm run unused:report
+npm run artifact:policy
+npm run audit:prod
+npm test
+npm run package
+npm run package:policy
+npm run package:smoke
+npm run package:metrics
+```
+
+### Trusted Workspace
+
+規約資料、Bazaar差分、workspace内の`.bob` assetを確認し、Trusted Workspaceとして信頼できる場合に処理します。未信頼workspaceではworkspace設定の`bobBazaar.bzrPath`を採用せず、global設定または既定の`bzr`を使用します。
+
 ## セキュリティ
 
 - Bazaarは`execFile`とargument arrayで実行します。
@@ -241,4 +300,4 @@ Ubuntu / Windowsの同一source headでExtension Host smokeまで実行します
 - WebviewはCSP nonce、render token、host-side action allowlistを使います。
 - MCPはread-onlyを既定にします。
 - AI outputと人間decisionを分離します。
-- source本文、raw AI output、backup、run-local stateをremote共有しません。
+- source本文、raw AI output、バックアップ、run-local stateをremote共有しません。

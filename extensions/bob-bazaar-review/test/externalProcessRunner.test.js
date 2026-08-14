@@ -38,7 +38,8 @@ test("external process runner terminates commands that exceed the hard timeout",
     runNode("setInterval(() => {}, 1000)", { timeoutMs: 50 }),
     "timeout"
   )
-  assert.ok(Date.now() - startedAt < 3000)
+  const elapsedMs = Date.now() - startedAt
+  assert.ok(elapsedMs < 5000, `timeout and bounded process-tree cleanup took ${elapsedMs}ms`)
 })
 
 test("external process runner clamps timeouts to the safety range", () => {

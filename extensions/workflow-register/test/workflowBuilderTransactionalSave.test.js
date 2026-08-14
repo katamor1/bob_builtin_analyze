@@ -1,9 +1,10 @@
 const assert = require("node:assert/strict")
+const { AsyncLocalStorage } = require("node:async_hooks")
 const fs = require("node:fs")
 const Module = require("node:module")
 const os = require("node:os")
 const path = require("node:path")
-const { test } = require("node:test")
+const { after, test } = require("node:test")
 const vm = require("node:vm")
 
 const { createAuthoringModelFromTemplate } = require("../out/core/workflowAuthoringDefaults")
@@ -13,6 +14,11 @@ const { validateWorkflowText } = require("../out/core/workflowValidator")
 const { renderWorkflowBuilderClientScript } = require("../out/webview/workflowBuilderClientScript")
 const { renderWorkflowBuilderStepDraftScript } = require("../out/webview/workflowBuilderStepDraftScript")
 const { createDefaultStudioModel } = require("../out/template/templateStudioModel")
+
+const harnessLinkContext = new AsyncLocalStorage()
+const harnessLinkRegistrations = new Set()
+const nativeHarnessLink = fs.promises.link
+const nativeHarnessWriteFile = fs.promises.writeFile
 
 function loadPanelWithVscode(vscode) {
   const originalLoad = Module._load
@@ -28,6 +34,77 @@ function loadPanelWithVscode(vscode) {
     Module._load = originalLoad
   }
 }
+
+function isSameHarnessTarget(left, right) {
+  const physicalTarget = (target) => {
+    const resolved = path.resolve(target)
+    return path.join(fs.realpathSync.native(path.dirname(resolved)), path.basename(resolved))
+  }
+  try {
+    return path.relative(physicalTarget(left), physicalTarget(right)) === ""
+  } catch {
+    return false
+  }
+}
+
+function isSameLexicalTarget(left, right) {
+  return path.relative(path.resolve(left), path.resolve(right)) === ""
+}
+
+async function dispatchHarnessLink(source, target) {
+  const targetPath = String(target)
+  const active = harnessLinkContext.getStore()
+  let owner
+  if (active && harnessLinkRegistrations.has(active)) {
+    if (
+      isSameLexicalTarget(targetPath, active.fixture.target) ||
+      isSameHarnessTarget(targetPath, active.fixture.target)
+    ) owner = active
+  } else {
+    const registrations = [...harnessLinkRegistrations]
+    owner = registrations.find((candidate) => isSameLexicalTarget(targetPath, candidate.fixture.target))
+  }
+  if (owner) await owner.state.beforeTargetWrite(targetPath)
+  return nativeHarnessLink(source, target)
+}
+
+async function dispatchHarnessWriteFile(target, ...args) {
+  if (/^WORKFLOW\.backup-.*\.md$/.test(path.basename(String(target)))) {
+    const active = harnessLinkContext.getStore()
+    let owner
+    if (active && harnessLinkRegistrations.has(active)) owner = active
+    else if (harnessLinkRegistrations.size === 1) owner = [...harnessLinkRegistrations][0]
+    if (owner) await owner.state.beforeBackupWrite(String(target))
+  }
+  return nativeHarnessWriteFile(target, ...args)
+}
+
+function installHarnessIoDispatchers() {
+  if (fs.promises.link === nativeHarnessLink) fs.promises.link = dispatchHarnessLink
+  else assert.equal(fs.promises.link, dispatchHarnessLink, "unexpected fs.promises.link test wrapper")
+  if (fs.promises.writeFile === nativeHarnessWriteFile) fs.promises.writeFile = dispatchHarnessWriteFile
+  else assert.equal(fs.promises.writeFile, dispatchHarnessWriteFile, "unexpected fs.promises.writeFile test wrapper")
+}
+
+function registerHarnessIo(t, fixture, state) {
+  const registration = { fixture, state }
+  if (harnessLinkRegistrations.size === 0) installHarnessIoDispatchers()
+  harnessLinkRegistrations.add(registration)
+  t.after(() => {
+    harnessLinkRegistrations.delete(registration)
+    if (harnessLinkRegistrations.size === 0) {
+      if (fs.promises.link === dispatchHarnessLink) fs.promises.link = nativeHarnessLink
+      if (fs.promises.writeFile === dispatchHarnessWriteFile) fs.promises.writeFile = nativeHarnessWriteFile
+    }
+  })
+  return registration
+}
+
+after(() => {
+  harnessLinkRegistrations.clear()
+  if (fs.promises.link === dispatchHarnessLink) fs.promises.link = nativeHarnessLink
+  if (fs.promises.writeFile === dispatchHarnessWriteFile) fs.promises.writeFile = nativeHarnessWriteFile
+})
 
 function existingWorkflow(t, options = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-builder-transaction-"))
@@ -72,25 +149,7 @@ function createPanelHarness(t, options = {}) {
     warningResponses: [],
     warnings: []
   }
-  const originalLink = fs.promises.link
-  const instrumentedLink = async (source, target) => {
-    const relative = path.relative(fixture.root, String(target))
-    if (path.basename(String(target)) === "WORKFLOW.md" && !relative.startsWith("..") && !path.isAbsolute(relative)) {
-      await state.beforeTargetWrite(String(target))
-    }
-    return originalLink(source, target)
-  }
-  fs.promises.link = instrumentedLink
-  t.after(() => { if (fs.promises.link === instrumentedLink) fs.promises.link = originalLink })
-  const originalWriteFile = fs.promises.writeFile
-  const instrumentedWriteFile = async (target, ...args) => {
-    if (/^WORKFLOW\.backup-.*\.md$/.test(path.basename(String(target)))) {
-      await state.beforeBackupWrite(String(target))
-    }
-    return originalWriteFile(target, ...args)
-  }
-  fs.promises.writeFile = instrumentedWriteFile
-  t.after(() => { if (fs.promises.writeFile === instrumentedWriteFile) fs.promises.writeFile = originalWriteFile })
+  const linkRegistration = registerHarnessIo(t, fixture, state)
   let receiveMessage
   let disposeListener
   let disposed = false
@@ -227,10 +286,67 @@ function createPanelHarness(t, options = {}) {
     showFixture,
     state,
     token: () => currentSessionToken(webview.html),
-    send: (message) => receiveMessage({ ...message, sessionToken: currentSessionToken(webview.html) }),
-    sendRaw: (message) => receiveMessage(message)
+    linkInContext: (source, target) => harnessLinkContext.run(
+      linkRegistration,
+      () => fs.promises.link(source, target)
+    ),
+    writeFileInContext: (target, bytes) => harnessLinkContext.run(
+      linkRegistration,
+      () => fs.promises.writeFile(target, bytes)
+    ),
+    send: (message) => harnessLinkContext.run(
+      linkRegistration,
+      () => receiveMessage({ ...message, sessionToken: currentSessionToken(webview.html) })
+    ),
+    sendRaw: (message) => harnessLinkContext.run(linkRegistration, () => receiveMessage(message))
   }
 }
+
+test("the transaction harness routes physical aliases to their active owner and restores native file hooks", { skip: process.platform !== "win32" }, async (t) => {
+  const nativeLink = fs.promises.link
+  const nativeWriteFile = fs.promises.writeFile
+  const outer = createPanelHarness(t)
+  const aliasRoot = `${outer.root}-target-alias`
+  fs.symlinkSync(outer.root, aliasRoot, "junction")
+  t.after(() => fs.rmSync(aliasRoot, { recursive: true, force: true }))
+  const inner = createPanelHarness(t, {
+    fixture: {
+      root: aliasRoot,
+      target: path.join(aliasRoot, path.relative(outer.root, outer.target)),
+      oldText: outer.oldText,
+      model: outer.model
+    }
+  })
+  let outerWrites = 0
+  let innerWrites = 0
+  let outerBackups = 0
+  let innerBackups = 0
+  outer.state.beforeTargetWrite = async () => { outerWrites += 1 }
+  inner.state.beforeTargetWrite = async () => { innerWrites += 1 }
+  outer.state.beforeBackupWrite = async () => { outerBackups += 1 }
+  inner.state.beforeBackupWrite = async () => { innerBackups += 1 }
+  t.after(() => {
+    assert.equal(fs.promises.link, nativeLink)
+    assert.equal(fs.promises.writeFile, nativeWriteFile)
+  })
+
+  await assert.rejects(inner.linkInContext(outer.target, outer.target), { code: "EEXIST" })
+  assert.deepEqual([outerWrites, innerWrites], [0, 1])
+
+  await assert.rejects(outer.linkInContext(inner.target, inner.target), { code: "EEXIST" })
+  assert.deepEqual([outerWrites, innerWrites], [1, 1])
+
+  await inner.writeFileInContext(path.join(outer.root, "WORKFLOW.backup-inner-probe.md"), "inner")
+  await outer.writeFileInContext(path.join(aliasRoot, "WORKFLOW.backup-outer-probe.md"), "outer")
+  assert.deepEqual([outerBackups, innerBackups], [1, 1])
+
+  outerWrites = 0
+  innerWrites = 0
+  inner.state.warningResponses.push("変更を反映")
+  await inner.send({ type: "save", model: editedModel(inner.model, "Alias-owned production save.") })
+  assert.deepEqual([outerWrites, innerWrites], [0, 1])
+  assert.match(fs.readFileSync(outer.target, "utf8"), /Alias-owned production save/)
+})
 
 async function createStandardPanelHarness(t) {
   const harness = createPanelHarness(t, { mode: "edit", setupRoot: copyStandardTemplateLibrary })
@@ -1000,18 +1116,28 @@ test("an older no-change save cannot replace the latest preview model", async (t
 })
 
 test("a committed older save writes its payload but cannot replace the latest preview model", async (t) => {
+  const transactionModule = require("../out/core/authoring/workflowAuthoringFileTransaction")
+  const originalCommit = transactionModule.commitAuthoringFileAtomically
+  const commitFinished = deferred()
+  const releaseCommit = deferred()
+  transactionModule.commitAuthoringFileAtomically = async (...args) => {
+    const result = await originalCommit(...args)
+    if (result === "committed") {
+      commitFinished.resolve()
+      await releaseCommit.promise
+    }
+    return result
+  }
+  t.after(() => { transactionModule.commitAuthoringFileAtomically = originalCommit })
   const harness = createPanelHarness(t)
-  const writeStarted = deferred()
-  const releaseWrite = deferred()
-  harness.state.beforeTargetWrite = async () => { writeStarted.resolve(); await releaseWrite.promise }
   harness.state.warningResponses.push("変更を反映")
   const older = editedModel(harness.model, "Older committed payload.")
   const latest = editedModel(harness.model, "Latest preview remains hosted.")
 
   const save = harness.send({ type: "save", model: older })
-  await writeStarted.promise
+  await commitFinished.promise
   await harness.send({ type: "preview", model: latest })
-  releaseWrite.resolve()
+  releaseCommit.resolve()
   await save
 
   assert.match(fs.readFileSync(harness.target, "utf8"), /Older committed payload/)

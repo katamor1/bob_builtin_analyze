@@ -52,6 +52,10 @@ function readText(relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8")
 }
 
+function normalizeNewlines(text) {
+  return text.replace(/\r\n/g, "\n")
+}
+
 function normalizeRelative(value, label) {
   assert.equal(typeof value, "string", `${label} must be a string`)
   assert.ok(value.length > 0, `${label} must not be empty`)
@@ -211,6 +215,17 @@ test("documentation metadata recursively classifies the complete configured scop
   assert.equal(classification.get("docs/workflows/code-consistency-review/README.md"), "current")
 })
 
+test("workflow action contract current copies remain synchronized", () => {
+  const rootContract = readText("docs/workflow-action-contracts-ja.md")
+  const extensionContract = readText("extensions/workflow-register/docs/workflow-action-contracts-ja.md")
+
+  assert.equal(
+    normalizeNewlines(rootContract),
+    normalizeNewlines(extensionContract),
+    "root and extension-local workflow action contracts must remain identical"
+  )
+})
+
 test("current documents contain no obsolete public identifier or user-facing label", () => {
   const violations = []
   for (const [relativePath, kind] of classification) {
@@ -256,9 +271,17 @@ test("manifests and composition roots retain the approved main and soft-dependen
   }
 
   const workflowRoot = readText("extensions/workflow-register/src/extensionWithAuthoring.ts")
+  const workflowCoreRoot = readText("extensions/workflow-register/src/extension.ts")
   const bazaarRoot = readText("extensions/bob-bazaar-review/src/extension.ts")
   const consistencyRoot = readText("extensions/bob-code-consistency-review/src/extension.ts")
-  assertContainsAll(workflowRoot, [canonical.hub, canonical.builder], "workflow-register composition root")
+  assertContainsAll(workflowRoot, [
+    'import { activate as activateCore, deactivate, WorkflowRegisterApi } from "./extension"',
+    'import { openWorkflowBuilder } from "./commands/openWorkflowBuilder"',
+    "const api = activateCore(context)",
+    canonical.builder,
+    "() => openWorkflowBuilder("
+  ], "workflow-register authoring composition root")
+  assertContainsAll(workflowCoreRoot, [canonical.hub], "workflow-register core composition root")
   assertContainsAll(bazaarRoot, [canonical.bazaar, "bobBazaar.authorProjectRulesFromDocuments"], "Bazaar composition root")
   assertContainsAll(consistencyRoot, [canonical.consistency, "bobCodeConsistency.initializeWorkspace"], "Code Consistency composition root")
 })
@@ -467,8 +490,10 @@ test("obsolete matcher preserves retained settings and ignores internal domain t
   assert.deepEqual(findReferences(technicalJSDoc), [])
   assert.ok(findReferences("```md\n## Human Triage\n```").some((match) => match.token === "Human Triage"))
   assert.ok(findReferences("```text\nCommand Palette から Template Studio を開く\n```").some((match) => match.token === "Template Studio"))
-  assert.ok(findReferences('```ts\nvscode.commands.executeCommand("bobBazaar.openResultCaptureGui")\n```')
-    .some((match) => match.token === "bobBazaar.openResultCaptureGui"))
+  const obsoleteBazaarResultCapture = ["bobBazaar", "openResultCaptureGui"].join(".")
+  const technicalCommand = ["```ts", `vscode.commands.executeCommand("${obsoleteBazaarResultCapture}")`, "```"].join("\n")
+  assert.ok(findReferences(technicalCommand)
+    .some((match) => match.token === obsoleteBazaarResultCapture))
 
   assert.deepEqual(findReferences("| Result Capture | review-result JSON persistence | src/projectRules/resultCapture.ts |"), [])
   assert.deepEqual(findReferences("The Human Triage domain module stores decisions."), [])

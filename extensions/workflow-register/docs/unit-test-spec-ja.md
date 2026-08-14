@@ -155,7 +155,7 @@ source、manifest、current documentationへ廃止済みcommand / view / panel i
 - `includeState`、`stateKey`、`artifact.producedBy`、`requiredWhen`のproducer削除・移動を検出する。
 - step draftの利用者向けmessage、button label、confirmationを検証する。
 
-### WR-UT-BUILDER-004 標準テンプレートから作成
+### WR-UT-BUILDER-004 標準テンプレートから作成・テンプレート調整
 
 - metadataから選択肢とtyped defaultを生成する。
 - project profile、customization、preview、diff、readinessを同一sessionで扱う。
@@ -170,6 +170,26 @@ source、manifest、current documentationへ廃止済みcommand / view / panel i
 - target path単位のqueueとtransaction lockで直列化する。
 - backup作成後にtemporary fileからatomic commitする。
 - stale generation、external change、validation errorでは保存しない。
+
+### WR-UT-036 Builderテンプレート調整: metadataから候補と既定値を作る
+
+- 入力: 標準テンプレートmetadata。
+- 期待結果: `targetLanguage` / `vcs.type`の選択肢がmetadataと一致し、Git profileにはBazaar prompt supplementが入らない。
+
+### WR-UT-037 Builderテンプレート調整: input defaultの型を保持する
+
+- 入力: `string` / `number` / `boolean` / `null`を含むworkflow input defaults。
+- 期待結果: Builder HTMLとclient parserが型を保持し、生成されるprofile / customizationで文字列化されない。
+
+### WR-UT-038 Builderテンプレート調整: unsafe output pathとsymlink escapeを拒否する
+
+- 入力: `../outside`、workspace外へ向くsymlink配下の生成先。
+- 期待結果: workflow / profile / customizationは書き込まれず、readinessまたはgenerate resultにerrorが含まれる。
+
+### WR-UT-039 Builderテンプレート調整: 既存生成物をbackupしてから上書きする
+
+- 入力: 既存のprofile、customization、`WORKFLOW.md`を持つworkspace。
+- 期待結果: 一意なbackupが作成され、生成結果とbackup pathがreportに含まれる。
 
 実テスト:
 

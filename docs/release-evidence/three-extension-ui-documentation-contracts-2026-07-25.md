@@ -84,9 +84,9 @@ scripts/code-consistency-documentation-parity.test.js
 
 #### workflow-register
 
-Operation Hub、Builder、run-state codecは実装と設計が一致していたため、誤修正せず次を回帰契約へ固定した。
+Bob 操作ハブ、Builder、run-state codecは実装と設計が一致していたため、誤修正せず次を回帰契約へ固定した。
 
-- Operation Hubはcached panelを`reveal()`する。
+- Bob 操作ハブはcached panelを`reveal()`する。
 - Builderはsingle current panelを持ち、`empty / standard-template / edit`の3モードを扱う。
 - writable run-state codecのcurrent schemaは`workflow-register/run-state/v1`。
 - unversioned stateはv1へmigrationし、future versionはread-onlyで扱う。

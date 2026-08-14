@@ -40,7 +40,25 @@ workflow、validation、record、capture、decision、retention用の内部comma
 - template生成も通常のPreview / Diff / confirmation / backup / transactional saveを通る。
 - 保存後にworkflow catalogが更新される。
 
-## 3. Bazaar Review UAT
+## 3. 整合プレレビュー UAT
+
+1. `Bob Code Consistency Review: 整合プレレビューを開始`を開く。
+2. workflowがない場合だけ初期化cardが表示されることを確認する。
+3. workflow templateが異なる場合はbackup後に更新され、既存`review-input.yaml`は上書きされずbackupだけが作成されることを確認する。
+4. input / evidenceを選択する。
+5. 同じpanel内で`トレーサビリティ整理を開く`を実行し、proposed itemを承認・棄却・廃止する。
+6. review-inputを生成し、preprocessing / package previewを確認する。
+7. 同じpanel内の`レビュー結果取り込み`stageでBob outputをcapture・validateする。
+8. 同じpanel内の`指摘確認・振り分け`stageでdecisionを保存する。
+9. source change conflict、two-window revision conflict、legacy migration、backup / projectionを確認する。
+
+合格条件:
+
+- traceability、capture、decisionの各serviceが独立した公開panel / commandを持たない。
+- AIはproposed候補までを担当し、accepted / rejected / deprecatedを確定しない。
+- source contextと人間decisionを別成果物として維持する。
+
+## 4. Bazaar Review UAT
 
 1. `Bob Bazaar Review: レビューを開始`を開く。
 2. campaign、target mode、revision / range、review IDを確認する。
@@ -58,7 +76,7 @@ workflow、validation、record、capture、decision、retention用の内部comma
 - invalid result、stale revision、unsafe workspace rootを保存前に拒否する。
 - MCPはread-only既定で、write toolは明示opt-inとallowed rootを要求する。
 
-## 4. 資料からproject rules作成 UAT
+## 5. 資料からproject rules作成 UAT
 
 1. `Bob Bazaar Review: 資料からプロジェクト規約を作成`を開く。
 2. source選択、抽出preview、AI送信対象の名称・件数・byte数を確認する。
@@ -66,24 +84,6 @@ workflow、validation、record、capture、decision、retention用の内部comma
 4. proposalを規約候補の確認・適用で個別判定する。
 5. apply preview、backup、journal、transaction、rollback契約を確認する。
 6. MCPの`project_rules_init`が`BOB_BAZAAR_ENABLE_WRITE_TOOLS=1`と`BOB_BAZAAR_ALLOWED_ROOTS`なしでは公開・実行されないことを確認する。
-
-## 5. Code Consistency Review UAT
-
-1. `Bob Code Consistency Review: 整合プレレビューを開始`を開く。
-2. workflowがない場合だけ初期化cardが表示されることを確認する。
-3. workflow templateが異なる場合はbackup後に更新され、既存`review-input.yaml`は上書きされずbackupだけが作成されることを確認する。
-4. input / evidenceを選択する。
-5. 同じpanel内の`トレーサビリティ整理`stageでproposed itemを承認・棄却・廃止する。
-6. review-inputを生成し、preprocessing / package previewを確認する。
-7. 同じpanel内の`レビュー結果取り込み`stageでBob outputをcapture・validateする。
-8. 同じpanel内の`指摘確認・振り分け`stageでdecisionを保存する。
-9. source change conflict、two-window revision conflict、legacy migration、backup / projectionを確認する。
-
-合格条件:
-
-- traceability、capture、decisionの各serviceが独立した公開panel / commandを持たない。
-- AIはproposed候補までを担当し、accepted / rejected / deprecatedを確定しない。
-- source contextと人間decisionを別成果物として維持する。
 
 ## 6. Bob 操作ハブ / run UAT
 

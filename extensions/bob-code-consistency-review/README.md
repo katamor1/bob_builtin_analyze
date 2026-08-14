@@ -93,9 +93,13 @@ review_focus:
   - requirement-code-consistency
   - design-code-consistency
   - test-gap
+analysis_options:
+  max_call_depth: 1
 ```
 
 AI支援は短い`ReviewInputDraft` JSONの候補作成に限定します。候補path、enum、文書実在性はhost側builder / validatorで再検証します。
+
+`review-input.yaml`の対話生成とAI draft適用のcommand処理は`src/commands/reviewInputCommands.ts`に分離されています。
 
 ## トレーサビリティ整理
 
@@ -112,7 +116,7 @@ AI支援は短い`ReviewInputDraft` JSONの候補作成に限定します。候�
 
 AIは`status: proposed`の候補だけを作れます。人間だけがaccepted / rejected / deprecatedを確定できます。
 
-内部Command ID `bobCodeConsistency.openTraceabilityPrep`は独立Webviewを開かず、既存の`整合プレレビュー`panelを`トレーサビリティ整理`stageへ移動します。
+`トレーサビリティ整理画面`は独立Webviewではありません。内部Command ID `bobCodeConsistency.openTraceabilityPrep`は、既存の`整合プレレビュー`panelを`トレーサビリティ整理`stageへ移動します。
 
 ## VCSと文書
 
@@ -145,7 +149,7 @@ code-slices/
 tables/
 ```
 
-`manifest.yaml`と`evidence-index.json`をpackage identityの正本として扱います。Bob outputが参照するevidence IDは保存前に検証します。
+`manifest.yaml`の`artifact_metadata`と`evidence-index.json`をpackage identityの正本として扱います。Bob outputが参照するevidence IDは保存前に検証します。
 
 ## レビュー結果取り込み
 
@@ -195,6 +199,8 @@ sourceと人間decisionを分離します。
 
 Bobはdecisionを自動確定しません。
 
+内部Command ID `bobCodeConsistency.triage`（表示名`指摘確認・振り分け一覧を作成`）は、主GUIの`指摘確認・振り分け`stageから呼び出され、独立panelを開かず一覧成果物を生成・更新します。
+
 ## workflow連携
 
 同梱workflowと`workflow-register` action providerは、初期化、review-input、traceability、preprocess、Bob output、decision serviceを呼び出します。
@@ -234,6 +240,39 @@ npm run package:policy
 ```
 
 Ubuntu / Windowsの同一source headでExtension Host smokeまで実行します。実IBM Bob UATではkeyboard-only、200% zoom、High Contrast、Developer Tools Console、result handoffを確認します。
+
+## 保守・配布ポリシー
+
+### 生成物
+
+主な生成物は`.bob-review/review-package`、`.bob-review/bob-output/`、`.bob-review/human-triage/`、`.bob-trace/traceability-catalog.json`、`.bob-trace/gate-report.md`です。review-packageにはmanifest、document excerpts、diff context、evidence index、Bob投入用`bob-input.md`が含まれます。コード、文書抜粋、Bob出力、triage判断を含むため、共有前に内容を確認してください。
+
+### VSIX サイズ
+
+`npm run package:policy`はVSIX サイズの上限を`11000000` bytesとして確認します。配布前は`npm run package`と`npm run package:policy`を続けて実行してください。`out/**/*.map`と開発用の`docs/**`はVSIXに同梱しません。
+
+### 暗黙依存
+
+`IBM.bob-code`と`workflow-register`はoptional integrationです。Bob投入、workflow action provider、Bob output captureを使う場合だけ、必要な連携先が導入済みであることを確認してください。Excel読み取りはproduction dependencyの`read-excel-file`を使い、既知脆弱性のある`xlsx`には依存しません。
+
+### 必要 CLI
+
+差分取得には`git`またはBazaar CLIが必要です。Bazaarを使う場合はaliasの影響を避けるため`bzr --no-aliases`を前提にします。開発と検証にはNode.jsとnpmが必要です。
+
+```powershell
+npm ci
+npm run dependency:policy
+npm run architecture:policy
+npm run unused:report
+npm run audit:prod
+npm test
+npm run package
+npm run package:policy
+```
+
+### Trusted Workspace
+
+`review-input.yaml`、文書path、review-package path、Bob output path、triage path、traceability catalog pathはworkspace内を基準に検証します。Trusted Workspaceでない環境では、外部path opt-inやVCS command実行の設定を確認してから前処理を実行してください。
 
 ## 関連文書
 

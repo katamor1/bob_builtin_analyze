@@ -22,11 +22,12 @@ Bob Bazaar Review: 資料からプロジェクト規約を作成
 | composition root | command、panel、provider、serviceの組立 | `src/extension.ts` |
 | Bazaar主GUI | single-panel lifecycleとstage route | `src/ui/reviewGui.ts` |
 | review session | review identity、stage、artifact path、resume | `src/reviewRuns/` |
-| Bazaar collection | revision / range / working tree、packet | `src/bazaar/` |
-| result / decision | result検証、指摘確認・振り分け | `src/projectRules/`, `src/ui/` |
-|レビュー実績|record、metrics、campaign summary|`src/records/`|
+| Bazaar collection | revision / rangeの収集、packet表示・保存、Bob context連携 | `src/bazaar/bazaarReviewCommands.ts` |
+| result validation | active editorのreview-result JSON検証とMarkdown summary表示 | `src/projectRules/reviewResultValidationCommand.ts` |
+| result / decision UI | レビュー結果取り込み、指摘確認・振り分け | `src/projectRules/`, `src/ui/` |
+| レビュー実績 | record、triage、metrics、campaign summary | `src/records/*` |
 | 規約作成 | source抽出、proposal、decision、safe apply | `src/ruleAuthoring/`, `src/ui/` |
-| workflow連携 | provider登録とinput変換 | `src/workflow/` |
+| workflow連携 | soft dependencyの解決、provider inputとworkflow stateの変換 | `src/workflow/workflowRegisterBridge.ts`、`src/workflow/` |
 | workspace | `.bob`初期化、template refresh、root解決 | `src/workspace/` |
 | MCP | read tools、write opt-in、allowed roots | `src/mcp/` |
 
@@ -37,6 +38,7 @@ Bob Bazaar Review: 資料からプロジェクト規約を作成
 ```text
 .bob/review/results/<reviewId>.json
 .bob/review/results/<reviewId>.md
+.bob/review/results/<review_id>.artifact-metadata.json
 
 .bob-review-records/
   campaigns/<campaignId>/
@@ -51,6 +53,14 @@ Bob Bazaar Review: 資料からプロジェクト規約を作成
 ```
 
 `review-run.json`は主GUIのstageとresume identityを保持する。review-result、decision、record、metrics本体の正本を置き換えない。
+
+result sidecarの`producer_version`は固定値ではなく、extension package versionを正本として記録する。
+
+## MCP安全境界
+
+- `BOB_BAZAAR_ALLOWED_ROOTS`はMCP toolが受け付けるcwdをreal pathで限定し、未設定時は既定拒否する。
+- `BOB_BAZAAR_ENABLE_WRITE_TOOLS=1`は副作用を持つwrite toolを明示的に有効化するが、cwd検証を迂回しない。
+- `BOB_BAZAAR_ALLOW_UNRESTRICTED_CWD=1`はallowed roots未設定時の拒否を解除する明示的な手動検証用例外であり、通常運用では使用しない。
 
 ## 設計書
 
@@ -67,6 +77,8 @@ Bob Bazaar Review: 資料からプロジェクト規約を作成
 
 - `unit-test-spec-ja.md`  
   public command inventory、主GUI lifecycle、review session、Bazaar subprocess、result、decision、record、provider、template refresh、MCPの単体contractを定義する。
+
+  record coreのcampaign初期化、record / triage保存、summary生成、path containmentは`test/reviewRecordsCore.test.js`へ対応付ける。
 
 - `real-machine-test-spec-ja.md`  
   Ubuntu / Windows、VS Code、IBM Bob、Bazaar CLI、主GUI、MCP、multi-root、200% zoom、High Contrast、keyboard、Consoleを含む実機gateを定義する。

@@ -34,6 +34,23 @@ function renderTemplateCustomizationStudioHtml(options) {
   return renderWorkflowBuilderStandardTemplateHtml({ ...options, sessionToken: "test-session" })
 }
 
+async function alternateWindowsWorkspacePath(value, context) {
+  if (process.platform !== "win32") return value
+  const alias = `${value}-alias`
+  await fs.symlink(value, alias, "junction")
+  context.after(() => fs.unlink(alias))
+  return alias.toUpperCase()
+}
+
+async function physicalTargetPath(value) {
+  const resolved = path.resolve(String(value))
+  return path.join(await fs.realpath(path.dirname(resolved)), path.basename(resolved))
+}
+
+async function isSamePhysicalTarget(left, right) {
+  return path.relative(await physicalTargetPath(left), await physicalTargetPath(right)) === ""
+}
+
 async function tempRoot() {
   return fs.mkdtemp(path.join(os.tmpdir(), "template-studio-"))
 }
@@ -527,8 +544,8 @@ test("a readiness request that becomes stale while waiting for the root lock nev
 })
 
 for (const [failedIndex, label] of [[0, "first"], [1, "second"]]) {
-  test(`a partially written ${label} readiness replacement restores both originals`, async () => {
-    const root = await studioWorkspace()
+  test(`a partially written ${label} readiness replacement restores both originals`, async (context) => {
+    const root = await alternateWindowsWorkspacePath(await studioWorkspace(), context)
     const library = await listTemplateLibrary(root)
     const model = createDefaultStudioModel(library.templates[0])
     model.projectId = `partial-${label}-project`
@@ -545,9 +562,9 @@ for (const [failedIndex, label] of [[0, "first"], [1, "second"]]) {
     const originalRename = fs.rename
     let injected = false
     fs.rename = async (source, target) => {
-      if (!injected && path.resolve(String(target)) === path.resolve(targets[failedIndex]) && String(source).includes(".workflow-txn-")) {
-        injected = true
+      if (!injected && String(source).includes(".workflow-txn-") && await isSamePhysicalTarget(target, targets[failedIndex])) {
         await originalRename(source, target)
+        injected = true
         throw new Error(`simulated partial ${label} replacement`)
       }
       return originalRename(source, target)
@@ -562,6 +579,7 @@ for (const [failedIndex, label] of [[0, "first"], [1, "second"]]) {
 
     assert.equal(injected, true)
     assert.equal(committed.status, "error")
+    assert.match(committed.diagnostics.join("\n"), new RegExp(`simulated partial ${label} replacement`))
     assert.equal(await fs.readFile(targets[0], "utf8"), "old json\n")
     assert.equal(await fs.readFile(targets[1], "utf8"), "old markdown\n")
   })

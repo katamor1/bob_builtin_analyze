@@ -76,9 +76,9 @@ test("bob-bazaar-review docs reflect current module layout and MCP safety gates"
   }
 
   const detailedDesign = fs.readFileSync(path.join(extensionRoot, "docs", "detailed-design-ja.md"), "utf8")
-  assert.ok(detailedDesign.includes("## 22. テスト設計"))
-  assert.ok(detailedDesign.includes("## 23. 変更時の注意点"))
-  assert.ok(!detailedDesign.includes("## 25. 変更時の注意点"))
+  assert.ok(detailedDesign.includes("## 13. security / privacy"))
+  assert.ok(detailedDesign.includes("## 14. test / acceptance gate"))
+  assert.ok(!detailedDesign.includes("## 22. テスト設計"))
 })
 
 test("bob-bazaar-review metadata version uses the package version source", () => {
