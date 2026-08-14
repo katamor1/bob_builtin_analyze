@@ -132,7 +132,14 @@ async function extractRuleDocumentWithContext(
     }
     extracted = mediaType === "docx"
       ? await extractDocx(absolutePath, { sourceId, maxChunkBytes: limits.maxChunkBytes })
-      : await extractXlsx(absolutePath, { sourceId, maxChunkBytes: limits.maxChunkBytes })
+      : await extractXlsx(absolutePath, {
+        sourceId,
+        maxChunkBytes: limits.maxChunkBytes,
+        ooxmlEntryNames: preflight.entryNames,
+        ooxmlDeclaredUncompressedBytes: preflight.declaredUncompressedBytes,
+        ooxmlArchiveByteLength: preflight.archiveByteLength,
+        ooxmlEntries: preflight.entries
+      })
   } else {
     extracted = await extractPdf(absolutePath, {
       ...request.pdf,

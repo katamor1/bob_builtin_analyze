@@ -3,18 +3,24 @@ import type { RuleAuthoringLimits } from "../ruleAuthoringLimits"
 
 const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50
 const CENTRAL_DIRECTORY_ENTRY_SIGNATURE = 0x02014b50
+const LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50
+const DATA_DESCRIPTOR_SIGNATURE = 0x08074b50
 const ZIP64_END_OF_CENTRAL_DIRECTORY_LOCATOR_SIGNATURE = 0x07064b50
 const ZIP64_EXTRA_FIELD_ID = 0x0001
 const END_OF_CENTRAL_DIRECTORY_BYTES = 22
 const MAX_ZIP_COMMENT_BYTES = 0xffff
 const ZIP64_LOCATOR_BYTES = 20
 const CENTRAL_DIRECTORY_ENTRY_BYTES = 46
+const LOCAL_FILE_HEADER_BYTES = 30
+const DATA_DESCRIPTOR_BYTES = 12
+const SIGNED_DATA_DESCRIPTOR_BYTES = 16
 const MAX_CENTRAL_DIRECTORY_BYTES = 32 * 1024 * 1024
 const MAX_OOXML_ENTRIES = 5_000
 const MAX_OOXML_DECLARED_UNCOMPRESSED_BYTES = 250 * 1024 * 1024
 const ZIP64_UINT16_MARKER = 0xffff
 const ZIP64_UINT32_MARKER = 0xffffffff
 const ENCRYPTION_FLAGS = 0x0001 | 0x0040 | 0x2000
+const DATA_DESCRIPTOR_FLAG = 0x0008
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/
 const WINDOWS_DRIVE_PATH = /^[A-Za-z]:/
 
@@ -30,6 +36,20 @@ export interface OoxmlPreflightResult {
   declaredUncompressedBytes: number
   entryNames: string[]
   documentKind: OoxmlDocumentKind
+  archiveByteLength: number
+  entries: OoxmlPreflightEntry[]
+}
+
+export interface OoxmlPreflightEntry {
+  name: string
+  flags: number
+  compressionMethod: 0 | 8
+  crc32: number
+  compressedSize: number
+  uncompressedSize: number
+  localHeaderOffset: number
+  dataOffset: number
+  dataEnd: number
 }
 
 interface EffectiveOoxmlLimits {
@@ -45,6 +65,24 @@ interface EndOfCentralDirectory {
   entryCount: number
   centralDirectorySize: number
   centralDirectoryOffset: number
+}
+
+interface CentralDirectoryEntry {
+  name: string
+  fileNameBytes: Buffer
+  flags: number
+  compressionMethod: 0 | 8
+  crc32: number
+  compressedSize: number
+  uncompressedSize: number
+  localHeaderOffset: number
+}
+
+interface ParsedCentralDirectory {
+  declaredUncompressedBytes: number
+  entryNames: string[]
+  documentKind: OoxmlDocumentKind
+  entries: CentralDirectoryEntry[]
 }
 
 export async function preflightOoxmlArchive(
@@ -98,7 +136,16 @@ export async function preflightOoxmlArchive(
       end.centralDirectoryOffset,
       "OOXML ZIP central directory"
     )
-    return parseCentralDirectory(centralDirectory, end, effectiveLimits)
+    const parsed = parseCentralDirectory(centralDirectory, end, effectiveLimits)
+    const entries = await validateLocalEntries(file, parsed.entries, end.centralDirectoryOffset)
+    return {
+      entryCount: parsed.entryNames.length,
+      declaredUncompressedBytes: parsed.declaredUncompressedBytes,
+      entryNames: parsed.entryNames,
+      documentKind: parsed.documentKind,
+      archiveByteLength: stats.size,
+      entries
+    }
   } finally {
     await file.close()
   }
@@ -206,8 +253,9 @@ function parseCentralDirectory(
   buffer: Buffer,
   end: EndOfCentralDirectory,
   limits: EffectiveOoxmlLimits
-): OoxmlPreflightResult {
+): ParsedCentralDirectory {
   const entryNames: string[] = []
+  const entries: CentralDirectoryEntry[] = []
   const normalizedNames = new Set<string>()
   let declaredUncompressedBytes = 0
   let offset = 0
@@ -220,6 +268,7 @@ function parseCentralDirectory(
 
     const flags = buffer.readUInt16LE(offset + 8)
     const compressionMethod = buffer.readUInt16LE(offset + 10)
+    const crc32 = buffer.readUInt32LE(offset + 16)
     const compressedSize = buffer.readUInt32LE(offset + 20)
     const uncompressedSize = buffer.readUInt32LE(offset + 24)
     const fileNameLength = buffer.readUInt16LE(offset + 28)
@@ -231,7 +280,8 @@ function parseCentralDirectory(
     assertAvailable(buffer, offset, entryLength, `entry ${index}`)
 
     const fileNameStart = offset + CENTRAL_DIRECTORY_ENTRY_BYTES
-    const fileName = buffer.toString("utf8", fileNameStart, fileNameStart + fileNameLength)
+    const fileNameBytes = Buffer.from(buffer.subarray(fileNameStart, fileNameStart + fileNameLength))
+    const fileName = fileNameBytes.toString("utf8")
     const extraStart = fileNameStart + fileNameLength
     const extra = buffer.subarray(extraStart, extraStart + extraLength)
 
@@ -258,6 +308,9 @@ function parseCentralDirectory(
         `OOXML ZIP entry uses unsupported compression method ${compressionMethod}: ${fileName || index}`
       )
     }
+    if (compressionMethod === 0 && compressedSize !== uncompressedSize) {
+      throw new Error(`OOXML ZIP stored entry size mismatch: ${fileName || index}`)
+    }
 
     const normalizedName = normalizeSafeEntryName(fileName)
     if (normalizedNames.has(normalizedName)) {
@@ -265,6 +318,16 @@ function parseCentralDirectory(
     }
     normalizedNames.add(normalizedName)
     entryNames.push(fileName)
+    entries.push({
+      name: fileName,
+      fileNameBytes,
+      flags,
+      compressionMethod,
+      crc32,
+      compressedSize,
+      uncompressedSize,
+      localHeaderOffset
+    })
 
     declaredUncompressedBytes += uncompressedSize
     if (
@@ -283,11 +346,151 @@ function parseCentralDirectory(
   }
 
   return {
-    entryCount: entryNames.length,
     declaredUncompressedBytes,
     entryNames,
-    documentKind: detectDocumentKind(new Set(entryNames))
+    documentKind: detectDocumentKind(new Set(entryNames)),
+    entries
   }
+}
+
+async function validateLocalEntries(
+  file: fs.FileHandle,
+  centralEntries: readonly CentralDirectoryEntry[],
+  centralDirectoryOffset: number
+): Promise<OoxmlPreflightEntry[]> {
+  const validated: Array<OoxmlPreflightEntry & { physicalEnd: number }> = []
+
+  for (const entry of centralEntries) {
+    const header = await readExactly(
+      file,
+      LOCAL_FILE_HEADER_BYTES,
+      entry.localHeaderOffset,
+      `OOXML ZIP local header for ${entry.name}`
+    )
+    if (header.readUInt32LE(0) !== LOCAL_FILE_HEADER_SIGNATURE) {
+      throw new Error(`OOXML ZIP local-header signature is invalid: ${entry.name}`)
+    }
+
+    const localFlags = header.readUInt16LE(6)
+    const localCompressionMethod = header.readUInt16LE(8)
+    const localCrc32 = header.readUInt32LE(14)
+    const localCompressedSize = header.readUInt32LE(18)
+    const localUncompressedSize = header.readUInt32LE(22)
+    const localFileNameLength = header.readUInt16LE(26)
+    const localExtraLength = header.readUInt16LE(28)
+    if (
+      localCompressedSize === ZIP64_UINT32_MARKER ||
+      localUncompressedSize === ZIP64_UINT32_MARKER
+    ) {
+      throw new Error(`OOXML ZIP64 local-header marker is not supported: ${entry.name}`)
+    }
+    if (localFlags !== entry.flags || localCompressionMethod !== entry.compressionMethod) {
+      throw new Error(`OOXML ZIP local header does not match the central directory: ${entry.name}`)
+    }
+
+    const variableLength = localFileNameLength + localExtraLength
+    const dataOffset = entry.localHeaderOffset + LOCAL_FILE_HEADER_BYTES + variableLength
+    if (!Number.isSafeInteger(dataOffset) || dataOffset > centralDirectoryOffset) {
+      throw new Error(`OOXML ZIP local-header range is outside the archive payload: ${entry.name}`)
+    }
+    const variable = await readExactly(
+      file,
+      variableLength,
+      entry.localHeaderOffset + LOCAL_FILE_HEADER_BYTES,
+      `OOXML ZIP local filename and extra fields for ${entry.name}`
+    )
+    const localFileNameBytes = variable.subarray(0, localFileNameLength)
+    if (!localFileNameBytes.equals(entry.fileNameBytes)) {
+      throw new Error(`OOXML ZIP local filename does not match the central directory: ${entry.name}`)
+    }
+    assertNoZip64Extra(variable.subarray(localFileNameLength), entry.name)
+
+    if ((entry.flags & DATA_DESCRIPTOR_FLAG) === 0) {
+      if (
+        localCrc32 !== entry.crc32 ||
+        localCompressedSize !== entry.compressedSize ||
+        localUncompressedSize !== entry.uncompressedSize
+      ) {
+        throw new Error(`OOXML ZIP local sizes do not match the central directory: ${entry.name}`)
+      }
+    } else if (
+      !isZeroOrEqual(localCrc32, entry.crc32) ||
+      !isZeroOrEqual(localCompressedSize, entry.compressedSize) ||
+      !isZeroOrEqual(localUncompressedSize, entry.uncompressedSize)
+    ) {
+      throw new Error(`OOXML ZIP local descriptor fields do not match the central directory: ${entry.name}`)
+    }
+
+    const dataEnd = dataOffset + entry.compressedSize
+    if (!Number.isSafeInteger(dataEnd) || dataEnd > centralDirectoryOffset) {
+      throw new Error(`OOXML ZIP entry payload is truncated before the central directory: ${entry.name}`)
+    }
+    const physicalEnd = (entry.flags & DATA_DESCRIPTOR_FLAG) === 0
+      ? dataEnd
+      : await validateDataDescriptor(file, dataEnd, centralDirectoryOffset, entry)
+    validated.push({
+      name: entry.name,
+      flags: entry.flags,
+      compressionMethod: entry.compressionMethod,
+      crc32: entry.crc32,
+      compressedSize: entry.compressedSize,
+      uncompressedSize: entry.uncompressedSize,
+      localHeaderOffset: entry.localHeaderOffset,
+      dataOffset,
+      dataEnd,
+      physicalEnd
+    })
+  }
+
+  const ordered = [...validated].sort((left, right) => left.localHeaderOffset - right.localHeaderOffset)
+  let previousEnd = 0
+  for (const entry of ordered) {
+    if (entry.localHeaderOffset < previousEnd) {
+      throw new Error(`OOXML ZIP local entry ranges overlap: ${entry.name}`)
+    }
+    previousEnd = entry.physicalEnd
+  }
+
+  return validated.map(({ physicalEnd: _physicalEnd, ...entry }) => entry)
+}
+
+function isZeroOrEqual(value: number, expected: number): boolean {
+  return value === 0 || value === expected
+}
+
+async function validateDataDescriptor(
+  file: fs.FileHandle,
+  offset: number,
+  centralDirectoryOffset: number,
+  entry: CentralDirectoryEntry
+): Promise<number> {
+  const available = centralDirectoryOffset - offset
+  if (available < DATA_DESCRIPTOR_BYTES) {
+    throw new Error(`OOXML ZIP data descriptor is truncated: ${entry.name}`)
+  }
+  const length = Math.min(SIGNED_DATA_DESCRIPTOR_BYTES, available)
+  const descriptor = await readExactly(file, length, offset, `OOXML ZIP data descriptor for ${entry.name}`)
+  const signedMatches = descriptor.length >= SIGNED_DATA_DESCRIPTOR_BYTES &&
+    descriptor.readUInt32LE(0) === DATA_DESCRIPTOR_SIGNATURE &&
+    dataDescriptorMatches(descriptor, 4, entry)
+  const unsignedMatches = dataDescriptorMatches(descriptor, 0, entry)
+  if (signedMatches === unsignedMatches) {
+    throw new Error(`OOXML ZIP data descriptor is missing or ambiguous: ${entry.name}`)
+  }
+  if (signedMatches) return offset + SIGNED_DATA_DESCRIPTOR_BYTES
+  if (unsignedMatches) return offset + DATA_DESCRIPTOR_BYTES
+  throw new Error(`OOXML ZIP data descriptor does not match the central directory: ${entry.name}`)
+}
+
+function dataDescriptorMatches(
+  descriptor: Buffer,
+  offset: number,
+  entry: CentralDirectoryEntry
+): boolean {
+  return descriptor.length >= offset + DATA_DESCRIPTOR_BYTES &&
+    descriptor.readUInt32LE(offset) === entry.crc32 &&
+    descriptor.readUInt32LE(offset + 4) === entry.compressedSize &&
+    descriptor.readUInt32LE(offset + 8) === entry.uncompressedSize
 }
 
 function assertAvailable(buffer: Buffer, offset: number, length: number, description: string): void {

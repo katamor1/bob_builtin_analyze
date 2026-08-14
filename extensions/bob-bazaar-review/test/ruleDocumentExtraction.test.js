@@ -3,19 +3,162 @@ const { createHash } = require("node:crypto")
 const fs = require("node:fs/promises")
 const os = require("node:os")
 const path = require("node:path")
+const { spawnSync } = require("node:child_process")
 const { test } = require("node:test")
+const zlib = require("node:zlib")
 
 const { DEFAULT_RULE_AUTHORING_LIMITS } = require("../out/ruleAuthoring/ruleAuthoringLimits")
 const {
   extractRuleDocument,
   extractRuleDocuments
 } = require("../out/ruleAuthoring/extraction/documentExtractor")
+const { createXlsxFixture } = require("./helpers/ruleDocumentFixtures")
+const { createStoredZip } = require("./helpers/storedZipFixture")
 
 async function temporaryDirectory(t) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "bob-rule-documents-"))
   t.after(() => fs.rm(directory, { recursive: true, force: true }))
   return directory
 }
+
+test("extractRuleDocument passes preflight entry names to the XLSX compatibility path", async (t) => {
+  const directory = await temporaryDirectory(t)
+  const filePath = path.join(directory, "minimal.xlsx")
+  await fs.writeFile(filePath, createXlsxFixture({ omitStyles: true }))
+
+  const result = await extractRuleDocument({ filePath })
+
+  assert.equal(result.status, "success")
+  assert.deepEqual(result.chunks.map((chunk) => [chunk.locator.sheet, chunk.locator.row]), [
+    ["Second", 1],
+    ["Second", 3],
+    ["First", 2]
+  ])
+})
+
+test("extractRuleDocument rejects an invalid XLSX in preflight before an extension fflate load", async (t) => {
+  const directory = await temporaryDirectory(t)
+  const filePath = path.join(directory, "duplicate-entry.xlsx")
+  await fs.writeFile(filePath, createStoredZip([
+    { name: "[Content_Types].xml", data: "types" },
+    { name: "xl/workbook.xml", data: "first" },
+    { name: "xl/workbook.xml", data: "second" }
+  ]))
+  const extractorPath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "xlsxExtractor.js")
+  const documentExtractorPath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "documentExtractor.js")
+  const script = `
+    const Module = require("node:module")
+    const originalLoad = Module._load
+    let compatibilityLoads = 0
+    Module._load = function(request, parent, isMain) {
+      if (request === "fflate" && parent?.filename === ${JSON.stringify(extractorPath)}) compatibilityLoads += 1
+      return originalLoad.call(this, request, parent, isMain)
+    }
+    require(${JSON.stringify(documentExtractorPath)}).extractRuleDocument({ filePath: ${JSON.stringify(filePath)} })
+      .then(() => { throw new Error("invalid XLSX unexpectedly extracted") })
+      .catch((error) => {
+        if (!/duplicate entry/i.test(error.message)) throw error
+        if (compatibilityLoads !== 0) throw new Error("fflate compatibility loads: " + compatibilityLoads)
+      })
+  `
+  const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8", timeout: 10_000 })
+  assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"))
+})
+
+test("extractRuleDocument rejects a stored-size mismatch before an extension fflate load", async (t) => {
+  const directory = await temporaryDirectory(t)
+  const filePath = path.join(directory, "stored-size-mismatch.xlsx")
+  await fs.writeFile(filePath, createStoredZip([
+    { name: "[Content_Types].xml", data: "types" },
+    { name: "xl/workbook.xml", data: Buffer.alloc(1024), uncompressedSize: 0 }
+  ]))
+  const extractorPath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "xlsxExtractor.js")
+  const documentExtractorPath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "documentExtractor.js")
+  const script = `
+    const Module = require("node:module")
+    const originalLoad = Module._load
+    let compatibilityLoads = 0
+    Module._load = function(request, parent, isMain) {
+      if (request === "fflate" && parent?.filename === ${JSON.stringify(extractorPath)}) compatibilityLoads += 1
+      return originalLoad.call(this, request, parent, isMain)
+    }
+    require(${JSON.stringify(documentExtractorPath)}).extractRuleDocument({ filePath: ${JSON.stringify(filePath)} })
+      .then(() => { throw new Error("invalid XLSX unexpectedly extracted") })
+      .catch((error) => {
+        if (!/stored entry size mismatch/i.test(error.message)) throw error
+        if (compatibilityLoads !== 0) throw new Error("fflate compatibility loads: " + compatibilityLoads)
+      })
+  `
+  const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8", timeout: 10_000 })
+  assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"))
+})
+
+test("extractRuleDocument rejects a truncated stored payload in preflight before an extension fflate load", async (t) => {
+  const directory = await temporaryDirectory(t)
+  const filePath = path.join(directory, "truncated-stored-payload.xlsx")
+  await fs.writeFile(filePath, createStoredZip([
+    { name: "[Content_Types].xml", data: "types" },
+    { name: "xl/workbook.xml", data: Buffer.from("x"), compressedSize: 1024, uncompressedSize: 1024 }
+  ]))
+  const extractorPath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "xlsxExtractor.js")
+  const documentExtractorPath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "documentExtractor.js")
+  const script = `
+    const Module = require("node:module")
+    const originalLoad = Module._load
+    let compatibilityLoads = 0
+    Module._load = function(request, parent, isMain) {
+      if (request === "fflate" && parent?.filename === ${JSON.stringify(extractorPath)}) compatibilityLoads += 1
+      return originalLoad.call(this, request, parent, isMain)
+    }
+    require(${JSON.stringify(documentExtractorPath)}).extractRuleDocument({ filePath: ${JSON.stringify(filePath)} })
+      .then(() => { throw new Error("invalid XLSX unexpectedly extracted") })
+      .catch((error) => {
+        if (!/entry payload.*truncated/i.test(error.message)) throw error
+        if (compatibilityLoads !== 0) throw new Error("fflate compatibility loads: " + compatibilityLoads)
+      })
+  `
+  const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8", timeout: 10_000 })
+  assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"))
+})
+
+test("extractRuleDocument bounds deflate output before loading fflate or read-excel-file", async (t) => {
+  const directory = await temporaryDirectory(t)
+  const filePath = path.join(directory, "under-declared-deflate.xlsx")
+  const inflated = Buffer.alloc(2 * 1024 * 1024, 0x41)
+  const compressed = zlib.deflateRawSync(inflated)
+  await fs.writeFile(filePath, createXlsxFixture({
+    omitStyles: true,
+    additionalEntries: [{
+      name: "custom/under-declared.bin",
+      data: compressed,
+      compressionMethod: 8,
+      compressedSize: compressed.length,
+      uncompressedSize: 1
+    }]
+  }))
+  const extractorPath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "xlsxExtractor.js")
+  const documentExtractorPath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "documentExtractor.js")
+  const script = `
+    const Module = require("node:module")
+    const originalLoad = Module._load
+    let compatibilityLoads = 0
+    let parserLoads = 0
+    Module._load = function(request, parent, isMain) {
+      if (request === "fflate" && parent?.filename === ${JSON.stringify(extractorPath)}) compatibilityLoads += 1
+      if (request === "read-excel-file/node") parserLoads += 1
+      return originalLoad.call(this, request, parent, isMain)
+    }
+    require(${JSON.stringify(documentExtractorPath)}).extractRuleDocument({ filePath: ${JSON.stringify(filePath)} })
+      .then(() => { throw new Error("invalid XLSX unexpectedly extracted") })
+      .catch((error) => {
+        if (!/deflate output.*declared size/i.test(error.message)) throw error
+        if (compatibilityLoads !== 0) throw new Error("fflate compatibility loads: " + compatibilityLoads)
+        if (parserLoads !== 0) throw new Error("read-excel-file loads: " + parserLoads)
+      })
+  `
+  const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8", timeout: 10_000 })
+  assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"))
+})
 
 test("extractRuleDocument classifies legacy Office sources as local-only conversion requests", async (t) => {
   const directory = await temporaryDirectory(t)

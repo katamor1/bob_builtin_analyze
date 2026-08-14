@@ -1,4 +1,5 @@
 const { createStoredZip } = require("./storedZipFixture")
+const zlib = require("node:zlib")
 
 function createDocxFixture(options = {}) {
   const longParagraph = options.longParagraph ?? ""
@@ -77,6 +78,8 @@ function createDocxFixture(options = {}) {
 
 function createXlsxFixture(options = {}) {
   const longCell = options.longCell ?? ""
+  const omitStyles = options.omitStyles === true
+  const includeSharedStrings = options.includeSharedStrings === true
   const secondSheetRows = [
     '<row r="1"><c r="B1" t="inlineStr"><is><t>beta</t></is></c><c r="D1" t="inlineStr"><is><t>delta</t></is></c></row>',
     '<row r="2"></row>',
@@ -92,7 +95,8 @@ function createXlsxFixture(options = {}) {
       '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
       '<Default Extension="xml" ContentType="application/xml"/>',
       '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>',
-      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>',
+      omitStyles ? "" : '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>',
+      includeSharedStrings ? '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>' : "",
       '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>',
       '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>',
       "</Types>"
@@ -110,17 +114,30 @@ function createXlsxFixture(options = {}) {
     "xl/_rels/workbook.xml.rels": relationships([
       relationship("rId1", "worksheet", "worksheets/sheet1.xml"),
       relationship("rId2", "worksheet", "worksheets/sheet2.xml"),
-      relationship("rIdStyles", "styles", "styles.xml")
+      ...(omitStyles ? [] : [relationship("rIdStyles", "styles", "styles.xml")]),
+      ...(includeSharedStrings ? [relationship("rIdSharedStrings", "sharedStrings", "sharedStrings.xml")] : [])
     ]),
-    "xl/styles.xml": [
-      xmlDeclaration(),
-      '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',
-      '<cellStyleXfs count="1"><xf numFmtId="0"/></cellStyleXfs>',
-      '<cellXfs count="1"><xf numFmtId="0" xfId="0"/></cellXfs>',
-      "</styleSheet>"
-    ].join(""),
+    ...(omitStyles ? {} : {
+      "xl/styles.xml": [
+        xmlDeclaration(),
+        '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',
+        '<cellStyleXfs count="1"><xf numFmtId="0"/></cellStyleXfs>',
+        '<cellXfs count="1"><xf numFmtId="0" xfId="0"/></cellXfs>',
+        "</styleSheet>"
+      ].join("")
+    }),
+    ...(includeSharedStrings ? {
+      "xl/sharedStrings.xml": [
+        xmlDeclaration(),
+        '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="0" uniqueCount="0"></sst>'
+      ].join("")
+    } : {}),
     "xl/worksheets/sheet1.xml": worksheet(secondSheetRows),
     "xl/worksheets/sheet2.xml": worksheet(firstSheetRows)
+  }, options.additionalEntries, {
+    deflate: options.deflate === true,
+    dataDescriptor: options.dataDescriptor === true,
+    dataDescriptorSignature: options.dataDescriptorSignature !== false
   })
 }
 
@@ -152,11 +169,25 @@ function escapeXml(value) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
-function zipEntries(entries) {
-  return createStoredZip(Object.entries(entries).map(([name, data]) => {
+function zipEntries(entries, additionalEntries = [], options = {}) {
+  return createStoredZip([...Object.entries(entries).map(([name, data]) => {
     const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data, "utf8")
-    return { name, data: bytes, crc32: crc32(bytes) }
-  }))
+    const payload = options.deflate ? zlib.deflateRawSync(bytes) : bytes
+    return {
+      name,
+      data: payload,
+      crc32: crc32(bytes),
+      flags: options.dataDescriptor ? 0x0008 : 0,
+      compressionMethod: options.deflate ? 8 : 0,
+      compressedSize: payload.length,
+      uncompressedSize: bytes.length,
+      localCrc32: options.dataDescriptor ? 0 : undefined,
+      localCompressedSize: options.dataDescriptor ? 0 : undefined,
+      localUncompressedSize: options.dataDescriptor ? 0 : undefined,
+      dataDescriptor: options.dataDescriptor,
+      dataDescriptorSignature: options.dataDescriptorSignature
+    }
+  }), ...additionalEntries])
 }
 
 function crc32(buffer) {

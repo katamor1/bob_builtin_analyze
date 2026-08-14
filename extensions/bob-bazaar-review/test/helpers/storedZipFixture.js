@@ -30,18 +30,22 @@ function createStoredZip(entries, options = {}) {
     const compressionMethod = uint16(input.compressionMethod ?? 0, `entries[${index}].compressionMethod`)
     const compressedSize = uint32(input.compressedSize ?? data.length, `entries[${index}].compressedSize`)
     const uncompressedSize = uint32(input.uncompressedSize ?? data.length, `entries[${index}].uncompressedSize`)
+    const crc32 = uint32(input.crc32 ?? 0, `entries[${index}].crc32`)
 
     const localHeader = Buffer.alloc(30)
     localHeader.writeUInt32LE(LOCAL_FILE_HEADER_SIGNATURE, 0)
     localHeader.writeUInt16LE(input.versionNeeded ?? 20, 4)
     localHeader.writeUInt16LE(flags, 6)
     localHeader.writeUInt16LE(compressionMethod, 8)
-    localHeader.writeUInt32LE(input.crc32 ?? 0, 14)
-    localHeader.writeUInt32LE(compressedSize, 18)
-    localHeader.writeUInt32LE(uncompressedSize, 22)
+    localHeader.writeUInt32LE(uint32(input.localCrc32 ?? crc32, `entries[${index}].localCrc32`), 14)
+    localHeader.writeUInt32LE(uint32(input.localCompressedSize ?? compressedSize, `entries[${index}].localCompressedSize`), 18)
+    localHeader.writeUInt32LE(uint32(input.localUncompressedSize ?? uncompressedSize, `entries[${index}].localUncompressedSize`), 22)
     localHeader.writeUInt16LE(name.length, 26)
     localHeader.writeUInt16LE(localExtra.length, 28)
-    localParts.push(localHeader, name, localExtra, data)
+    const dataDescriptor = input.dataDescriptor
+      ? createDataDescriptor(crc32, compressedSize, uncompressedSize, input.dataDescriptorSignature !== false)
+      : Buffer.alloc(0)
+    localParts.push(localHeader, name, localExtra, data, dataDescriptor)
 
     const centralHeader = Buffer.alloc(46)
     centralHeader.writeUInt32LE(CENTRAL_DIRECTORY_ENTRY_SIGNATURE, 0)
@@ -49,7 +53,7 @@ function createStoredZip(entries, options = {}) {
     centralHeader.writeUInt16LE(input.versionNeeded ?? 20, 6)
     centralHeader.writeUInt16LE(flags, 8)
     centralHeader.writeUInt16LE(compressionMethod, 10)
-    centralHeader.writeUInt32LE(input.crc32 ?? 0, 16)
+    centralHeader.writeUInt32LE(crc32, 16)
     centralHeader.writeUInt32LE(compressedSize, 20)
     centralHeader.writeUInt32LE(uncompressedSize, 24)
     centralHeader.writeUInt16LE(name.length, 28)
@@ -60,7 +64,7 @@ function createStoredZip(entries, options = {}) {
     centralHeader.writeUInt32LE(input.localHeaderOffset ?? localOffset, 42)
     centralParts.push(centralHeader, name, centralExtra, comment)
 
-    localOffset += localHeader.length + name.length + localExtra.length + data.length
+    localOffset += localHeader.length + name.length + localExtra.length + data.length + dataDescriptor.length
   }
 
   const localDirectory = Buffer.concat(localParts)
@@ -77,6 +81,16 @@ function createStoredZip(entries, options = {}) {
   end.writeUInt32LE(options.centralDirectoryOffset ?? localDirectory.length, 16)
   end.writeUInt16LE(comment.length, 20)
   return Buffer.concat([localDirectory, centralDirectory, beforeEocd, end, comment])
+}
+
+function createDataDescriptor(crc32, compressedSize, uncompressedSize, withSignature) {
+  const descriptor = Buffer.alloc(withSignature ? 16 : 12)
+  const offset = withSignature ? 4 : 0
+  if (withSignature) descriptor.writeUInt32LE(0x08074b50, 0)
+  descriptor.writeUInt32LE(crc32, offset)
+  descriptor.writeUInt32LE(compressedSize, offset + 4)
+  descriptor.writeUInt32LE(uncompressedSize, offset + 8)
+  return descriptor
 }
 
 function createZip64Locator() {

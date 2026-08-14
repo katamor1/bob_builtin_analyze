@@ -33,6 +33,10 @@ Bob Bazaar Review: 資料からプロジェクト規約を作成
 
 `IBM.bob-code`と`local.workflow-register`はsoft dependencyである。未導入でもlocal UIとserviceを利用できる。
 
+互換性を確認するときは、`src/workflow/workflowRegisterBridge.ts`、`src/bazaar/bazaarReviewCommands.ts`、`src/projectRules/reviewResultValidationCommand.ts`、`src/records/*`を現在のmodule境界として扱う。record coreの回帰テストは`test/reviewRecordsCore.test.js`、artifact metadataの生成元version fieldは`producer_version`である。
+
+MCP write toolは`BOB_BAZAAR_ENABLE_WRITE_TOOLS=1`でのみ有効化し、`BOB_BAZAAR_ALLOWED_ROOTS`でrootを制限する。互換用途でcwd制限を解除する場合も、`BOB_BAZAAR_ALLOW_UNRESTRICTED_CWD=1`の明示opt-inを必要とする。
+
 ## 正本成果物
 
 ```text

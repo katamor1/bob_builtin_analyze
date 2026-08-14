@@ -125,6 +125,7 @@ export interface PersistRuleAuthoringExtractionResult {
 
 export interface RuleAuthoringGuiDependencies {
   createNonce: () => string
+  reportHostError: (error: unknown) => void
   renderRuleAuthoringGuiHtml: typeof renderRuleAuthoringGuiHtml
   findIncompleteRuleApplyTransactions: (
     workspaceRoot: string
@@ -251,6 +252,7 @@ export function createRuleAuthoringGuiHost(
 ): RuleAuthoringGuiHost {
   const dependencies: RuleAuthoringGuiDependencies = {
     createNonce: () => randomBytes(16).toString("base64"),
+    reportHostError: (error) => console.error("Bob Bazaar 規約資料取り込みで処理エラーが発生しました", error),
     renderRuleAuthoringGuiHtml,
     findIncompleteRuleApplyTransactions,
     listIncompleteRuleAuthoringRuns,
@@ -362,9 +364,14 @@ async function openWithDependencies(
         }
         messageQueue = messageQueue
           .then(() => controller!.handleMessage(rawMessage))
-          .catch(async () => {
+          .catch(async (error) => {
+            reportHostErrorSafely(dependencies, error)
             if (controller?.isDisposed()) return
-            controller?.showOperationFailure()
+            try {
+              controller?.showOperationFailure()
+            } catch {
+              // Recovery rendering is best-effort; the fixed host notification must still run.
+            }
             await showSafeHostError()
           })
         return messageQueue
@@ -373,15 +380,25 @@ async function openWithDependencies(
       context.subscriptions.push(panel!, messageDisposable, disposeDisposable)
       try {
         controller.render()
-      } catch {
+      } catch (error) {
+        reportHostErrorSafely(dependencies, error)
         void showSafeHostError()
         settle({ status: "cancelled" })
       }
     })
-  } catch {
+  } catch (error) {
+    reportHostErrorSafely(dependencies, error)
     panel?.dispose()
     await showSafeHostError()
     return { status: "cancelled" }
+  }
+}
+
+function reportHostErrorSafely(dependencies: RuleAuthoringGuiDependencies, error: unknown): void {
+  try {
+    dependencies.reportHostError(error)
+  } catch {
+    // Host diagnostics are best-effort and must not replace the original failure handling.
   }
 }
 
