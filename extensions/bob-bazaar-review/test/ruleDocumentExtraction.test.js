@@ -171,9 +171,14 @@ test("extractRuleDocuments rejects a same-size same-mtime OOXML replacement befo
   replacement[payloadOffset] ^= 0x01
   await fs.writeFile(triggerPath, "trigger")
   await fs.writeFile(docxPath, original)
+  const fixedTimestamp = new Date("2020-01-02T03:04:05.000Z")
+  await fs.utimes(docxPath, fixedTimestamp, fixedTimestamp)
   const originalStat = await fs.stat(docxPath, { bigint: true })
+  const originalSha256 = createHash("sha256").update(original).digest("hex")
   const documentExtractorPath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "documentExtractor.js")
   const script = `
+    const assert = require("node:assert/strict")
+    const { createHash } = require("node:crypto")
     const Module = require("node:module")
     const fs = require("node:fs/promises")
     const originalLoad = Module._load
@@ -191,8 +196,19 @@ test("extractRuleDocuments rejects a same-size same-mtime OOXML replacement befo
             await fs.writeFile(${JSON.stringify(docxPath)}, replacement)
             await fs.utimes(
               ${JSON.stringify(docxPath)},
-              new Date(${Number(originalStat.atimeNs / 1_000_000n)}),
-              new Date(${Number(originalStat.mtimeNs / 1_000_000n)})
+              new Date(${fixedTimestamp.getTime()}),
+              new Date(${fixedTimestamp.getTime()})
+            )
+            const replacementStat = await fs.stat(${JSON.stringify(docxPath)}, { bigint: true })
+            const replacementBytes = await fs.readFile(${JSON.stringify(docxPath)})
+            assert.equal(replacementStat.size, BigInt(${JSON.stringify(originalStat.size.toString())}), "replacement size")
+            assert.equal(replacementStat.mtimeNs, BigInt(${JSON.stringify(originalStat.mtimeNs.toString())}), "replacement mtimeNs")
+            assert.equal(replacementStat.dev, BigInt(${JSON.stringify(originalStat.dev.toString())}), "replacement device")
+            assert.equal(replacementStat.ino, BigInt(${JSON.stringify(originalStat.ino.toString())}), "replacement inode")
+            assert.notEqual(
+              createHash("sha256").update(replacementBytes).digest("hex"),
+              ${JSON.stringify(originalSha256)},
+              "replacement SHA-256"
             )
             return { stdout: Buffer.from("trigger"), stderr: Buffer.alloc(0), exitCode: 0 }
           }
