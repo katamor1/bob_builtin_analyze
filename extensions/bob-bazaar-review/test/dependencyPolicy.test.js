@@ -128,7 +128,7 @@ test("bob-bazaar-review dependency policy requires a committed lockfile and loca
   )
   assert.match(
     ooxmlArchiveRuntimeSource,
-    /import\("fflate"\)/,
+    /return\s+import\("fflate"\)/,
     "OOXML missing-both XLSX compatibility must keep the lazy extension-direct fflate load"
   )
   assert.deepEqual(

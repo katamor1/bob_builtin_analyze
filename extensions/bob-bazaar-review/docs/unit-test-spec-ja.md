@@ -261,7 +261,7 @@ source byte上限、1つのopen handle、読み取り前後のstat、SHA-256を�
 
 通常のDOCX/XLSXではparserが元の検証済みsnapshot Bufferだけを受け取ることを確認する。missing-both XLSXだけがメモリ内で再構築され、拡張所有の`fflate`直接loadがこのbranchでだけ発生することを、parser由来の推移依存loadと分けて検証する。成功時も失敗時も原本とworkspaceを変更しない。
 
-契約testは、公開Command ID、設定、persisted schema、安全なpathless日本語エラーメッセージ、extension version、dependency宣言とlockfileが変わらないことも確認する。
+契約testは、公開Command ID、設定、persisted schema、安全なpathless日本語エラーメッセージの既存contractと、extension versionのpackage source参照が整合することを確認する。Task 2でextension version、dependency宣言、lockfileが変わっていないことは、変更差分を別途検証する。
 
 主な実テスト:
 
