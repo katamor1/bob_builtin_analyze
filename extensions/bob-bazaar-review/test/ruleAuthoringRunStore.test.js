@@ -34,6 +34,53 @@ test("exposes the hardened generation protocol as a reusable directory lock", as
   assert.equal(entries.some((name) => name.startsWith(".authoring-run.lock-owner.")), false)
 })
 
+test("preserves full-width identities across owner handles and linked locks", async (t) => {
+  const root = await workspace(t)
+  const lockDirectory = path.join(root, ".bob", "review", "rule-authoring", ".wide-identity-lock")
+  const syntheticInode = 9_007_199_254_740_993n
+  const originalOpen = fs.open
+  const originalLstat = fs.lstat
+  const withSyntheticIdentity = (stats, bigint) => new Proxy(stats, {
+    get(targetStats, property) {
+      if (property === "dev") return bigint ? 1n : 1
+      if (property === "ino") return bigint ? syntheticInode : Number(syntheticInode)
+      const value = Reflect.get(targetStats, property, targetStats)
+      return typeof value === "function" ? value.bind(targetStats) : value
+    }
+  })
+
+  fs.open = async (target, ...args) => {
+    const handle = await originalOpen(target, ...args)
+    if (!path.basename(String(target)).startsWith(".authoring-run.lock-owner.")) return handle
+    return new Proxy(handle, {
+      get(targetHandle, property) {
+        if (property === "stat") {
+          return async (options) => withSyntheticIdentity(
+            await targetHandle.stat(options),
+            options?.bigint === true
+          )
+        }
+        const value = Reflect.get(targetHandle, property, targetHandle)
+        return typeof value === "function" ? value.bind(targetHandle) : value
+      }
+    })
+  }
+  fs.lstat = async (target, options) => {
+    const stats = await originalLstat(target, options)
+    if (!/^\.authoring-run\.lock\.\d{12}$/.test(path.basename(String(target)))) return stats
+    return withSyntheticIdentity(stats, options?.bigint === true)
+  }
+  try {
+    assert.equal(
+      await withRuleAuthoringDirectoryLock(root, lockDirectory, async () => "locked"),
+      "locked"
+    )
+  } finally {
+    fs.open = originalOpen
+    fs.lstat = originalLstat
+  }
+})
+
 test("rotates a reusable directory lock without exhausting or overlapping epochs", async (t) => {
   const root = await workspace(t)
   const lockDirectory = path.join(root, ".bob", "review", "rule-authoring", ".rotating-lock")
@@ -253,12 +300,37 @@ test("recovers a sealed epoch transition and rejects a replaced seal", async (t)
   )
   await tamperedLock()
   await tamperedLock()
-  await fs.writeFile(
-    path.join(tamperedDirectory, ".authoring-run.lock-epoch.sealed"),
-    "not the final closure\n",
-    "utf8"
+  const tamperedClosurePath = path.join(
+    tamperedDirectory,
+    ".authoring-run.lock.000000000002.closed"
   )
-  await assert.rejects(tamperedLock(), /epoch seal is invalid/)
+  const tamperedSealPath = path.join(tamperedDirectory, ".authoring-run.lock-epoch.sealed")
+  await fs.writeFile(tamperedSealPath, "not the final closure\n", "utf8")
+
+  const originalLstat = fs.lstat
+  const collidingNumericIdentities = new Map([
+    [path.resolve(tamperedClosurePath), 9_007_199_254_740_992n],
+    [path.resolve(tamperedSealPath), 9_007_199_254_740_993n]
+  ])
+  fs.lstat = async (target, options) => {
+    const stats = await originalLstat(target, options)
+    const syntheticInode = collidingNumericIdentities.get(path.resolve(String(target)))
+    if (syntheticInode === undefined) return stats
+    const bigint = options?.bigint === true
+    return new Proxy(stats, {
+      get(targetStats, property) {
+        if (property === "dev") return bigint ? 1n : 1
+        if (property === "ino") return bigint ? syntheticInode : Number(syntheticInode)
+        const value = Reflect.get(targetStats, property, targetStats)
+        return typeof value === "function" ? value.bind(targetStats) : value
+      }
+    })
+  }
+  try {
+    await assert.rejects(tamperedLock(), /epoch seal is invalid/)
+  } finally {
+    fs.lstat = originalLstat
+  }
 })
 
 test("creates a resumable run atomically and installs missing-only ignore rules", async (t) => {

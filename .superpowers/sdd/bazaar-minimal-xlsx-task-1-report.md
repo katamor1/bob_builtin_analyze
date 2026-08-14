@@ -143,7 +143,9 @@ git diff --check
 ```
 
 - Root real-machine fixture tests: 10/10 passed.
-- Extension tests: 743 passed, one platform-specific skip, zero failures.
+- Extension tests: 744 passed, one platform-specific skip, zero failures.
 - All dependency, architecture, source, unused-code, artifact, production-audit and package gates passed.
-- Fresh VSIX: `bob-bazaar-review-0.3.0.vsix`, 3,757,598 bytes, 1,821 entries, SHA-256 `8BC6137CF3245A837DD51D49A0934C73A99B337D29FF32F63573DE4C5E219F21`.
+- The Windows CI seal-replacement regression is fixed by retaining full-width `dev` / `ino` values with BigInt stat calls across path, file-handle, and lock-owner identity checks. Deterministic tests cover both a Number-colliding replacement and owner-to-hardlink identity continuity.
+- Fresh VSIX: `bob-bazaar-review-0.3.0.vsix`, 3,757,611 bytes, 1,821 entries, SHA-256 `CE335C40F2D2A003B932134C02A2875E3996C6C7409863B9CF14956DCA7C0D85`.
 - The packaged and current compiled `out/ruleAuthoring/extraction/xlsxExtractor.js` both have SHA-256 `ED9B8A24212273469E984E09BA4C4FE3B3489F30B44DE733F2A209E2293AE735`.
+- The packaged and current compiled `out/ruleAuthoring/ruleAuthoringRunStore.js` both have SHA-256 `ABEE781E354164F171A3DB50949B7DDC5221F288FE70AB8560F85C7C0CFE57E5`.
