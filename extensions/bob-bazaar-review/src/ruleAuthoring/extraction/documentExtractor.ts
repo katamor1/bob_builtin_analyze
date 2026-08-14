@@ -17,7 +17,7 @@ import type {
   RuleSourceMediaType
 } from "../ruleAuthoringTypes"
 import { extractDocx } from "./docxExtractor"
-import { preflightOoxmlArchive } from "./ooxmlPreflight"
+import { prepareOoxmlParserInput } from "./ooxmlArchive"
 import { extractPdf, type PdfExtractionOptions } from "./pdfExtractor"
 import { extractXlsx } from "./xlsxExtractor"
 
@@ -126,19 +126,12 @@ async function extractRuleDocumentWithContext(
       extractor: { ...LEGACY_EXTRACTOR }
     }
   } else if (mediaType === "docx" || mediaType === "xlsx") {
-    const preflight = await preflightOoxmlArchive(absolutePath, limits)
-    if (preflight.documentKind !== mediaType) {
-      throw new Error(`OOXML document kind does not match .${mediaType}`)
-    }
+    const prepared = await prepareOoxmlParserInput(absolutePath, before, mediaType, limits)
     extracted = mediaType === "docx"
-      ? await extractDocx(absolutePath, { sourceId, maxChunkBytes: limits.maxChunkBytes })
-      : await extractXlsx(absolutePath, {
+      ? await extractDocx(prepared.parserInput, { sourceId, maxChunkBytes: limits.maxChunkBytes })
+      : await extractXlsx(prepared.parserInput, {
         sourceId,
-        maxChunkBytes: limits.maxChunkBytes,
-        ooxmlEntryNames: preflight.entryNames,
-        ooxmlDeclaredUncompressedBytes: preflight.declaredUncompressedBytes,
-        ooxmlArchiveByteLength: preflight.archiveByteLength,
-        ooxmlEntries: preflight.entries
+        maxChunkBytes: limits.maxChunkBytes
       })
   } else {
     extracted = await extractPdf(absolutePath, {

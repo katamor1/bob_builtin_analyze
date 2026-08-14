@@ -3,14 +3,16 @@ const fs = require("node:fs/promises")
 const Module = require("node:module")
 const os = require("node:os")
 const path = require("node:path")
+const { spawnSync } = require("node:child_process")
 const zlib = require("node:zlib")
 const { test } = require("node:test")
 
 const { extractXlsx } = require("../out/ruleAuthoring/extraction/xlsxExtractor")
+const { prepareOoxmlParserInput } = require("../out/ruleAuthoring/extraction/ooxmlArchive")
 const { preflightOoxmlArchive } = require("../out/ruleAuthoring/extraction/ooxmlPreflight")
 const { DEFAULT_RULE_AUTHORING_LIMITS } = require("../out/ruleAuthoring/ruleAuthoringLimits")
+const { fingerprintSource } = require("../out/ruleAuthoring/ruleSourceHash")
 const { createXlsxFixture } = require("./helpers/ruleDocumentFixtures")
-const { createStoredZip } = require("./helpers/storedZipFixture")
 
 async function fixtureFile(t, bytes) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "bob-rule-xlsx-"))
@@ -21,32 +23,22 @@ async function fixtureFile(t, bytes) {
 }
 
 async function xlsxPreflightContext(filePath) {
-  const preflight = await preflightOoxmlArchive(filePath, DEFAULT_RULE_AUTHORING_LIMITS)
-  return {
-    ooxmlEntryNames: preflight.entryNames,
-    ooxmlDeclaredUncompressedBytes: preflight.declaredUncompressedBytes,
-    ooxmlArchiveByteLength: preflight.archiveByteLength,
-    ooxmlEntries: preflight.entries
-  }
+  return preflightOoxmlArchive(await fs.readFile(filePath), DEFAULT_RULE_AUTHORING_LIMITS)
 }
 
-const STYLE_BEARING_XLSX_ENTRIES = [
-  "[Content_Types].xml",
-  "_rels/.rels",
-  "xl/workbook.xml",
-  "xl/_rels/workbook.xml.rels",
-  "xl/styles.xml",
-  "xl/worksheets/sheet1.xml",
-  "xl/worksheets/sheet2.xml"
-]
+async function prepareXlsx(filePath) {
+  return prepareOoxmlParserInput(
+    filePath,
+    await fingerprintSource(filePath),
+    "xlsx",
+    DEFAULT_RULE_AUTHORING_LIMITS
+  )
+}
 
-const STYLE_AND_SHARED_STRING_FREE_XLSX_ENTRIES = STYLE_BEARING_XLSX_ENTRIES.filter(
-  (entryName) => entryName !== "xl/styles.xml"
-)
-const SHARED_STRING_BEARING_XLSX_ENTRIES = [
-  ...STYLE_AND_SHARED_STRING_FREE_XLSX_ENTRIES,
-  "xl/sharedStrings.xml"
-]
+async function extractPreparedXlsx(filePath, context) {
+  const prepared = await prepareXlsx(filePath)
+  return extractXlsx(prepared.parserInput, context)
+}
 
 function fixtureCrc32(buffer) {
   let crc = 0xffffffff
@@ -63,11 +55,9 @@ const FIXTURE_CRC32_TABLE = Array.from({ length: 256 }, (_, index) => {
 test("extractXlsx normalizes a valid workbook with neither styles nor shared strings in memory", async (t) => {
   const sourceBytes = createXlsxFixture({ omitStyles: true })
   const filePath = await fixtureFile(t, sourceBytes)
-  const preflight = await xlsxPreflightContext(filePath)
-  const result = await extractXlsx(filePath, {
+  const result = await extractPreparedXlsx(filePath, {
     sourceId: "src-abcdef012345",
-    maxChunkBytes: 32 * 1024,
-    ...preflight
+    maxChunkBytes: 32 * 1024
   })
 
   assert.deepEqual(result.chunks.map((chunk) => [chunk.locator.sheet, chunk.locator.row, chunk.text]), [
@@ -81,11 +71,9 @@ test("extractXlsx normalizes a valid workbook with neither styles nor shared str
 
 test("extractXlsx normalizes a valid deflated workbook with neither styles nor shared strings", async (t) => {
   const filePath = await fixtureFile(t, createXlsxFixture({ omitStyles: true, deflate: true }))
-  const preflight = await xlsxPreflightContext(filePath)
-  const result = await extractXlsx(filePath, {
+  const result = await extractPreparedXlsx(filePath, {
     sourceId: "src-abcdef012345",
-    maxChunkBytes: 32 * 1024,
-    ...preflight
+    maxChunkBytes: 32 * 1024
   })
 
   assert.deepEqual(result.chunks.map((chunk) => [chunk.locator.sheet, chunk.locator.row, chunk.text]), [
@@ -95,6 +83,96 @@ test("extractXlsx normalizes a valid deflated workbook with neither styles nor s
   ])
 })
 
+test("prepareOoxmlParserInput validates stored and deflated empty entries and preserves the normal snapshot", async (t) => {
+  const emptyDeflate = zlib.deflateRawSync(Buffer.alloc(0))
+  const sourceBytes = createXlsxFixture({
+    additionalEntries: [
+      { name: "custom/empty-stored.bin", data: Buffer.alloc(0) },
+      {
+        name: "custom/empty-deflated.bin",
+        data: emptyDeflate,
+        crc32: 0,
+        compressionMethod: 8,
+        compressedSize: emptyDeflate.length,
+        uncompressedSize: 0
+      }
+    ]
+  })
+  const filePath = await fixtureFile(t, sourceBytes)
+
+  const prepared = await prepareXlsx(filePath)
+
+  assert.equal(prepared.normalization, "none")
+  assert.deepEqual(prepared.parserInput, sourceBytes)
+})
+
+test("prepareOoxmlParserInput binds every snapshot fingerprint field before preflight", async (t) => {
+  const filePath = await fixtureFile(t, createXlsxFixture())
+  const fingerprint = await fingerprintSource(filePath)
+  const mutations = {
+    byteSize: String(Number(fingerprint.byteSize) + 1),
+    mtimeNs: String(BigInt(fingerprint.mtimeNs) + 1n),
+    device: String(BigInt(fingerprint.device) + 1n),
+    inode: String(BigInt(fingerprint.inode) + 1n),
+    sha256: "0".repeat(64)
+  }
+
+  for (const [field, value] of Object.entries(mutations)) {
+    await assert.rejects(
+      () => prepareOoxmlParserInput(
+        filePath,
+        { ...fingerprint, [field]: value },
+        "xlsx",
+        DEFAULT_RULE_AUTHORING_LIMITS
+      ),
+      new RegExp(`fingerprint field ${field} differs`, "i")
+    )
+  }
+})
+
+test("prepareOoxmlParserInput rejects stat identity mismatch before reading snapshot bytes", async (t) => {
+  const filePath = await fixtureFile(t, createXlsxFixture())
+  const fingerprint = await fingerprintSource(filePath)
+  await fs.appendFile(filePath, Buffer.alloc(64 * 1024))
+  const archivePath = require.resolve("../out/ruleAuthoring/extraction/ooxmlArchive")
+  const script = `
+    const Module = require("node:module")
+    const originalLoad = Module._load
+    let reads = 0
+    Module._load = function(request, parent, isMain) {
+      const loaded = originalLoad.call(this, request, parent, isMain)
+      if (request !== "node:fs/promises" || parent?.filename !== ${JSON.stringify(archivePath)}) return loaded
+      return {
+        ...loaded,
+        async open(...args) {
+          const handle = await loaded.open(...args)
+          const originalRead = handle.read.bind(handle)
+          handle.read = (...readArgs) => {
+            reads += 1
+            return originalRead(...readArgs)
+          }
+          return handle
+        }
+      }
+    }
+    require(${JSON.stringify(archivePath)}).prepareOoxmlParserInput(
+      ${JSON.stringify(filePath)},
+      ${JSON.stringify(fingerprint)},
+      "xlsx",
+      ${JSON.stringify(DEFAULT_RULE_AUTHORING_LIMITS)}
+    ).then(() => {
+      throw new Error("mismatched snapshot unexpectedly prepared")
+    }).catch((error) => {
+      if (!/fingerprint field byteSize differs/i.test(error.message)) throw error
+      if (reads !== 0) throw new Error("snapshot reads before stat identity rejection: " + reads)
+    })
+  `
+
+  const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8", timeout: 10_000 })
+
+  assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"))
+})
+
 for (const dataDescriptorSignature of [true, false]) {
   test(`extractXlsx normalizes a missing-both workbook with ${dataDescriptorSignature ? "signed" : "unsigned"} ZIP32 data descriptors`, async (t) => {
     const filePath = await fixtureFile(t, createXlsxFixture({
@@ -102,11 +180,9 @@ for (const dataDescriptorSignature of [true, false]) {
       dataDescriptor: true,
       dataDescriptorSignature
     }))
-    const preflight = await xlsxPreflightContext(filePath)
-    const result = await extractXlsx(filePath, {
+    const result = await extractPreparedXlsx(filePath, {
       sourceId: "src-abcdef012345",
-      maxChunkBytes: 32 * 1024,
-      ...preflight
+      maxChunkBytes: 32 * 1024
     })
 
     assert.deepEqual(result.chunks.map((chunk) => [chunk.locator.sheet, chunk.locator.row, chunk.text]), [
@@ -117,20 +193,20 @@ for (const dataDescriptorSignature of [true, false]) {
   })
 }
 
-test("extractXlsx gives every compatibility deflate decoder a finite preflight-derived output bound", async (t) => {
+test("prepareOoxmlParserInput gives every deflate decoder a finite preflight-derived output bound", async (t) => {
   const filePath = await fixtureFile(t, createXlsxFixture({ omitStyles: true, deflate: true }))
   const preflight = await xlsxPreflightContext(filePath)
-  const extractorPath = require.resolve("../out/ruleAuthoring/extraction/xlsxExtractor")
-  const originalCacheEntry = require.cache[extractorPath]
+  const archivePath = require.resolve("../out/ruleAuthoring/extraction/ooxmlArchive")
+  const originalCacheEntry = require.cache[archivePath]
   const originalLoad = Module._load
   const inflateOptions = []
-  let boundedExtractXlsx
+  let boundedPrepare
 
-  delete require.cache[extractorPath]
+  delete require.cache[archivePath]
   try {
     Module._load = function(request, parent, isMain) {
       const loaded = originalLoad.call(this, request, parent, isMain)
-      if (request !== "node:zlib" || parent?.filename !== extractorPath) return loaded
+      if (request !== "node:zlib" || parent?.filename !== archivePath) return loaded
       return {
         ...loaded,
         inflateRawSync(input, options) {
@@ -139,28 +215,29 @@ test("extractXlsx gives every compatibility deflate decoder a finite preflight-d
         }
       }
     }
-    boundedExtractXlsx = require(extractorPath).extractXlsx
+    boundedPrepare = require(archivePath).prepareOoxmlParserInput
   } finally {
     Module._load = originalLoad
-    if (originalCacheEntry) require.cache[extractorPath] = originalCacheEntry
-    else delete require.cache[extractorPath]
+    if (originalCacheEntry) require.cache[archivePath] = originalCacheEntry
+    else delete require.cache[archivePath]
   }
 
-  const result = await boundedExtractXlsx(filePath, {
-    sourceId: "src-abcdef012345",
-    maxChunkBytes: 32 * 1024,
-    ...preflight
-  })
-  const expectedBounds = preflight.ooxmlEntries
+  const result = await boundedPrepare(
+    filePath,
+    await fingerprintSource(filePath),
+    "xlsx",
+    DEFAULT_RULE_AUTHORING_LIMITS
+  )
+  const expectedBounds = preflight.entries
     .filter((entry) => entry.compressionMethod === 8)
     .map((entry) => Math.max(1, entry.uncompressedSize))
 
-  assert.equal(result.status, "success")
+  assert.equal(result.normalization, "xlsx_minimal_styles")
   assert.deepEqual(inflateOptions.map((options) => options.maxOutputLength), expectedBounds)
   assert.ok(inflateOptions.every((options) => options.info === true))
 })
 
-test("extractXlsx rejects deflate output that exceeds its preflight-declared size", async (t) => {
+test("prepareOoxmlParserInput rejects deflate output that exceeds its preflight-declared size", async (t) => {
   const inflated = Buffer.alloc(2 * 1024 * 1024, 0x41)
   const compressed = zlib.deflateRawSync(inflated)
   const filePath = await fixtureFile(t, createXlsxFixture({
@@ -173,19 +250,13 @@ test("extractXlsx rejects deflate output that exceeds its preflight-declared siz
       uncompressedSize: 1
     }]
   }))
-  const preflight = await xlsxPreflightContext(filePath)
-
   await assert.rejects(
-    () => extractXlsx(filePath, {
-      sourceId: "src-abcdef012345",
-      maxChunkBytes: 32 * 1024,
-      ...preflight
-    }),
+    () => prepareXlsx(filePath),
     /deflate output|decoded size|expansion exceeds/i
   )
 })
 
-test("extractXlsx rejects deflate output shorter than its preflight-declared size", async (t) => {
+test("prepareOoxmlParserInput rejects deflate output shorter than its preflight-declared size", async (t) => {
   const inflated = Buffer.from("x")
   const compressed = zlib.deflateRawSync(inflated)
   const filePath = await fixtureFile(t, createXlsxFixture({
@@ -199,19 +270,13 @@ test("extractXlsx rejects deflate output shorter than its preflight-declared siz
       uncompressedSize: inflated.length + 1
     }]
   }))
-  const preflight = await xlsxPreflightContext(filePath)
-
   await assert.rejects(
-    () => extractXlsx(filePath, {
-      sourceId: "src-abcdef012345",
-      maxChunkBytes: 32 * 1024,
-      ...preflight
-    }),
+    () => prepareXlsx(filePath),
     /decoded size does not match preflight/i
   )
 })
 
-test("extractXlsx rejects trailing bytes inside a declared deflate payload", async (t) => {
+test("prepareOoxmlParserInput rejects trailing bytes inside a declared deflate payload", async (t) => {
   const inflated = Buffer.from("x")
   const compressed = Buffer.concat([zlib.deflateRawSync(inflated), Buffer.from("junk")])
   const filePath = await fixtureFile(t, createXlsxFixture({
@@ -225,134 +290,40 @@ test("extractXlsx rejects trailing bytes inside a declared deflate payload", asy
       uncompressedSize: inflated.length
     }]
   }))
-  const preflight = await xlsxPreflightContext(filePath)
-
   await assert.rejects(
-    () => extractXlsx(filePath, {
-      sourceId: "src-abcdef012345",
-      maxChunkBytes: 32 * 1024,
-      ...preflight
-    }),
+    () => prepareXlsx(filePath),
     /compressed payload was not consumed exactly/i
   )
 })
 
-test("extractXlsx rejects entry bytes whose CRC does not match preflight", async (t) => {
+test("prepareOoxmlParserInput rejects entry bytes whose CRC does not match preflight", async (t) => {
   const filePath = await fixtureFile(t, createXlsxFixture({
     omitStyles: true,
     additionalEntries: [{ name: "custom/bad-crc.bin", data: Buffer.from("tampered"), crc32: 0 }]
   }))
-  const preflight = await xlsxPreflightContext(filePath)
-
   await assert.rejects(
-    () => extractXlsx(filePath, {
-      sourceId: "src-abcdef012345",
-      maxChunkBytes: 32 * 1024,
-      ...preflight
-    }),
+    () => prepareXlsx(filePath),
     /entry CRC does not match preflight/i
   )
 })
 
-test("extractXlsx rejects a preflight-listed __proto__ entry before compatibility unzip", async (t) => {
+test("prepareOoxmlParserInput rejects a preflight-listed __proto__ entry before compatibility rebuild", async (t) => {
   const filePath = await fixtureFile(t, createXlsxFixture({
     omitStyles: true,
     additionalEntries: [{ name: "__proto__", data: Buffer.from("untrusted") }]
   }))
 
   await assert.rejects(
-    () => extractXlsx(filePath, {
-      sourceId: "src-abcdef012345",
-      maxChunkBytes: 32 * 1024,
-      ooxmlEntryNames: [...STYLE_AND_SHARED_STRING_FREE_XLSX_ENTRIES, "__proto__"],
-      ooxmlDeclaredUncompressedBytes: 0
-    }),
+    () => prepareXlsx(filePath),
     /unsafe XLSX compatibility entry/i
   )
 })
 
-test("extractXlsx fails closed when unzip entries do not match the preflight entry list", async (t) => {
-  const filePath = await fixtureFile(t, createXlsxFixture({ omitStyles: true }))
-  const preflight = await xlsxPreflightContext(filePath)
-
-  await assert.rejects(
-    () => extractXlsx(filePath, {
-      sourceId: "src-abcdef012345",
-      maxChunkBytes: 32 * 1024,
-      ...preflight,
-      ooxmlEntryNames: preflight.ooxmlEntryNames.filter(
-        (entryName) => entryName !== "xl/worksheets/sheet2.xml"
-      )
-    }),
-    /compatibility archive entries do not match preflight/i
-  )
-})
-
-test("extractXlsx rejects compatibility expansion beyond the preflight declared total", async (t) => {
-  const filePath = await fixtureFile(t, createXlsxFixture({ omitStyles: true }))
-  const preflight = await xlsxPreflightContext(filePath)
-
-  await assert.rejects(
-    () => extractXlsx(filePath, {
-      sourceId: "src-abcdef012345",
-      maxChunkBytes: 32 * 1024,
-      ...preflight,
-      ooxmlDeclaredUncompressedBytes: 1
-    }),
-    /compatibility expansion exceeds preflight/i
-  )
-})
-
-test("extractXlsx rejects a stored entry whose compressed and uncompressed sizes differ", async (t) => {
-  const entries = [
-    { name: "[Content_Types].xml", data: "types" },
-    { name: "xl/workbook.xml", data: Buffer.alloc(1024), uncompressedSize: 0 }
-  ]
-  const filePath = await fixtureFile(t, createStoredZip(entries))
-  const archiveByteLength = (await fs.stat(filePath)).size
-
-  await assert.rejects(
-    () => extractXlsx(filePath, {
-      sourceId: "src-abcdef012345",
-      maxChunkBytes: 32 * 1024,
-      ooxmlEntryNames: entries.map((entry) => entry.name),
-      ooxmlDeclaredUncompressedBytes: 5,
-      ooxmlArchiveByteLength: archiveByteLength,
-      ooxmlEntries: [
-        {
-          name: "[Content_Types].xml",
-          flags: 0,
-          compressionMethod: 0,
-          crc32: 0,
-          compressedSize: 5,
-          uncompressedSize: 5,
-          localHeaderOffset: 0,
-          dataOffset: 49,
-          dataEnd: 54
-        },
-        {
-          name: "xl/workbook.xml",
-          flags: 0,
-          compressionMethod: 0,
-          crc32: 0,
-          compressedSize: 1024,
-          uncompressedSize: 0,
-          localHeaderOffset: 54,
-          dataOffset: 99,
-          dataEnd: 1123
-        }
-      ]
-    }),
-    /stored entry size mismatch/i
-  )
-})
-
-test("extractXlsx leaves a workbook with shared strings on the original file path", async (t) => {
+test("extractXlsx reads a workbook with shared strings from its validated snapshot Buffer", async (t) => {
   const filePath = await fixtureFile(t, createXlsxFixture({ omitStyles: true, includeSharedStrings: true }))
-  const result = await extractXlsx(filePath, {
+  const result = await extractPreparedXlsx(filePath, {
     sourceId: "src-abcdef012345",
-    maxChunkBytes: 32 * 1024,
-    ooxmlEntryNames: SHARED_STRING_BEARING_XLSX_ENTRIES
+    maxChunkBytes: 32 * 1024
   })
 
   assert.deepEqual(result.chunks.map((chunk) => [chunk.locator.sheet, chunk.locator.row, chunk.text]), [
@@ -364,10 +335,9 @@ test("extractXlsx leaves a workbook with shared strings on the original file pat
 
 test("extractXlsx preserves workbook sheet order and original Excel row numbers across blank rows", async (t) => {
   const filePath = await fixtureFile(t, createXlsxFixture())
-  const result = await extractXlsx(filePath, {
+  const result = await extractPreparedXlsx(filePath, {
     sourceId: "src-abcdef012345",
-    maxChunkBytes: 32 * 1024,
-    ooxmlEntryNames: STYLE_BEARING_XLSX_ENTRIES
+    maxChunkBytes: 32 * 1024
   })
 
   assert.deepEqual(result.chunks.map((chunk) => [chunk.locator.sheet, chunk.locator.row]), [
@@ -381,10 +351,9 @@ test("extractXlsx preserves workbook sheet order and original Excel row numbers 
 
 test("extractXlsx locates the minimum/maximum non-empty cells and uses saved formula values", async (t) => {
   const filePath = await fixtureFile(t, createXlsxFixture())
-  const result = await extractXlsx(filePath, {
+  const result = await extractPreparedXlsx(filePath, {
     sourceId: "src-abcdef012345",
-    maxChunkBytes: 32 * 1024,
-    ooxmlEntryNames: STYLE_BEARING_XLSX_ENTRIES
+    maxChunkBytes: 32 * 1024
   })
 
   assert.deepEqual(result.extractor, { id: "xlsx-read-excel-rows", version: "1" })
@@ -399,10 +368,9 @@ test("extractXlsx locates the minimum/maximum non-empty cells and uses saved for
 test("extractXlsx splits an oversized row without losing its row/range locator", async (t) => {
   const longCell = `${"y".repeat(32 * 1024)}終端`
   const filePath = await fixtureFile(t, createXlsxFixture({ longCell }))
-  const result = await extractXlsx(filePath, {
+  const result = await extractPreparedXlsx(filePath, {
     sourceId: "src-abcdef012345",
-    maxChunkBytes: 32 * 1024,
-    ooxmlEntryNames: STYLE_BEARING_XLSX_ENTRIES
+    maxChunkBytes: 32 * 1024
   })
   const parts = result.chunks.filter((chunk) => chunk.locator.sheet === "Second" && chunk.locator.row === 5)
 
@@ -415,10 +383,9 @@ test("extractXlsx splits an oversized row without losing its row/range locator",
 test("extractXlsx clamps a caller-raised chunk limit to the approved 32 KiB ceiling", async (t) => {
   const longCell = "z".repeat(DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes + 1)
   const filePath = await fixtureFile(t, createXlsxFixture({ longCell }))
-  const result = await extractXlsx(filePath, {
+  const result = await extractPreparedXlsx(filePath, {
     sourceId: "src-abcdef012345",
-    maxChunkBytes: DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes * 4,
-    ooxmlEntryNames: STYLE_BEARING_XLSX_ENTRIES
+    maxChunkBytes: DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes * 4
   })
   const parts = result.chunks.filter((chunk) => chunk.locator.sheet === "Second" && chunk.locator.row === 5)
 
