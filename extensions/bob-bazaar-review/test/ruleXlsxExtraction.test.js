@@ -173,6 +173,74 @@ test("prepareOoxmlParserInput rejects stat identity mismatch before reading snap
   assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"))
 })
 
+test("prepareOoxmlParserInput reads and re-stats one open file handle around the snapshot", async (t) => {
+  const sourceBytes = createXlsxFixture()
+  const filePath = await fixtureFile(t, sourceBytes)
+  const fingerprint = await fingerprintSource(filePath)
+  const archivePath = require.resolve("../out/ruleAuthoring/extraction/ooxmlArchive")
+  const script = `
+    const Module = require("node:module")
+    const originalLoad = Module._load
+    const events = []
+    let openCalls = 0
+    Module._load = function(request, parent, isMain) {
+      const loaded = originalLoad.call(this, request, parent, isMain)
+      if (request !== "node:fs/promises" || parent?.filename !== ${JSON.stringify(archivePath)}) return loaded
+      return {
+        ...loaded,
+        async open(...args) {
+          openCalls += 1
+          if (args[0] !== ${JSON.stringify(filePath)} || args[1] !== "r") {
+            throw new Error("unexpected OOXML open arguments: " + JSON.stringify(args))
+          }
+          const handle = await loaded.open(...args)
+          const originalStat = handle.stat.bind(handle)
+          const originalRead = handle.read.bind(handle)
+          const originalClose = handle.close.bind(handle)
+          handle.stat = async (...statArgs) => {
+            events.push("stat")
+            return originalStat(...statArgs)
+          }
+          handle.read = async (...readArgs) => {
+            events.push("read")
+            return originalRead(...readArgs)
+          }
+          handle.close = async (...closeArgs) => {
+            events.push("close")
+            return originalClose(...closeArgs)
+          }
+          return handle
+        }
+      }
+    }
+    require(${JSON.stringify(archivePath)}).prepareOoxmlParserInput(
+      ${JSON.stringify(filePath)},
+      ${JSON.stringify(fingerprint)},
+      "xlsx",
+      ${JSON.stringify(DEFAULT_RULE_AUTHORING_LIMITS)}
+    ).then((prepared) => {
+      if (openCalls !== 1) throw new Error("OOXML open calls: " + openCalls)
+      const statIndexes = events.flatMap((event, index) => event === "stat" ? [index] : [])
+      const readIndexes = events.flatMap((event, index) => event === "read" ? [index] : [])
+      if (statIndexes.length !== 2 || readIndexes.length < 1) {
+        throw new Error("unexpected handle events: " + JSON.stringify(events))
+      }
+      if (!(statIndexes[0] < readIndexes[0] && readIndexes.at(-1) < statIndexes[1])) {
+        throw new Error("snapshot was not bracketed by same-handle stats: " + JSON.stringify(events))
+      }
+      if (events.at(-1) !== "close") throw new Error("OOXML handle was not closed: " + JSON.stringify(events))
+      if (!Buffer.isBuffer(prepared.parserInput)) throw new Error("prepared parser input is not a Buffer")
+      if (!prepared.parserInput.equals(Buffer.from(${JSON.stringify(sourceBytes.toString("base64"))}, "base64"))) {
+        throw new Error("prepared parser input differs from the handle snapshot")
+      }
+    })
+  `
+
+  const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8", timeout: 10_000 })
+
+  assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"))
+})
+
 for (const dataDescriptorSignature of [true, false]) {
   test(`extractXlsx normalizes a missing-both workbook with ${dataDescriptorSignature ? "signed" : "unsigned"} ZIP32 data descriptors`, async (t) => {
     const filePath = await fixtureFile(t, createXlsxFixture({

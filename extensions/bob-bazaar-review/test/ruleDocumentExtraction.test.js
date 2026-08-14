@@ -33,9 +33,10 @@ function freshExtractionProbe(filePath, expectedError, expectedLoads) {
   const script = `
     const Module = require("node:module")
     const originalLoad = Module._load
-    const loads = { mammoth: 0, excel: 0, fflate: 0 }
+    const loads = { mammoth: 0, cheerio: 0, excel: 0, fflate: 0 }
     Module._load = function(request, parent, isMain) {
       if (request === "mammoth") loads.mammoth += 1
+      if (request === "cheerio") loads.cheerio += 1
       if (request === "read-excel-file/node") loads.excel += 1
       if (request === "fflate") loads.fflate += 1
       return originalLoad.call(this, request, parent, isMain)
@@ -53,14 +54,19 @@ function freshExtractionProbe(filePath, expectedError, expectedLoads) {
   return spawnSync(process.execPath, ["-e", script], { encoding: "utf8", timeout: 10_000 })
 }
 
-test("extractRuleDocument validates a normal DOCX stored-entry CRC before loading Mammoth", async (t) => {
+test("extractRuleDocument validates a normal DOCX stored-entry CRC before loading DOCX parser dependencies", async (t) => {
   const directory = await temporaryDirectory(t)
   const filePath = path.join(directory, "bad-crc.docx")
   await fs.writeFile(filePath, createDocxFixture({
     additionalEntries: [{ name: "custom/bad-crc.bin", data: Buffer.from("tampered"), crc32: 0 }]
   }))
 
-  const result = freshExtractionProbe(filePath, /CRC/i, { mammoth: 0 })
+  const result = freshExtractionProbe(filePath, /CRC/i, {
+    mammoth: 0,
+    cheerio: 0,
+    excel: 0,
+    fflate: 0
+  })
 
   assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"))
 })
@@ -81,7 +87,12 @@ test("extractRuleDocument consumes a normal XLSX deflate payload exactly before 
     }]
   }))
 
-  const result = freshExtractionProbe(filePath, /consumed exactly/i, { excel: 0, fflate: 0 })
+  const result = freshExtractionProbe(filePath, /consumed exactly/i, {
+    mammoth: 0,
+    cheerio: 0,
+    excel: 0,
+    fflate: 0
+  })
 
   assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"))
 })
@@ -101,7 +112,12 @@ test("extractRuleDocument bounds every normal OOXML deflate payload before loadi
     }]
   }))
 
-  const result = freshExtractionProbe(filePath, /deflate output.*declared size/i, { mammoth: 0 })
+  const result = freshExtractionProbe(filePath, /deflate output.*declared size/i, {
+    mammoth: 0,
+    cheerio: 0,
+    excel: 0,
+    fflate: 0
+  })
 
   assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"))
 })
@@ -158,6 +174,106 @@ test("extractRuleDocument gives DOCX and normal XLSX parsers only validated snap
   const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8", timeout: 10_000 })
 
   assert.equal(result.status, 0, [result.stdout, result.stderr].filter(Boolean).join("\n"))
+})
+
+test("extractRuleDocument hands each verified OOXML snapshot to its parser after the source path changes", async (t) => {
+  const directory = await temporaryDirectory(t)
+  const documentExtractorPath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "documentExtractor.js")
+  const archivePath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "ooxmlArchive.js")
+
+  for (const fixture of [
+    { extension: "docx", bytes: createDocxFixture(), extractorRequest: "./docxExtractor", extractorExport: "extractDocx" },
+    { extension: "xlsx", bytes: createXlsxFixture(), extractorRequest: "./xlsxExtractor", extractorExport: "extractXlsx" }
+  ]) {
+    const filePath = path.join(directory, `rules.${fixture.extension}`)
+    const replacement = Buffer.from(fixture.bytes)
+    replacement[Math.floor(replacement.length / 2)] ^= 0x01
+    await fs.writeFile(filePath, fixture.bytes)
+    const expectedSha256 = createHash("sha256").update(fixture.bytes).digest("hex")
+    const replacementSha256 = createHash("sha256").update(replacement).digest("hex")
+    assert.notEqual(replacementSha256, expectedSha256)
+
+    const script = `
+      const { createHash } = require("node:crypto")
+      const fs = require("node:fs/promises")
+      const Module = require("node:module")
+      const originalLoad = Module._load
+      const documentExtractorPath = ${JSON.stringify(documentExtractorPath)}
+      const archivePath = ${JSON.stringify(archivePath)}
+      let handleSnapshotBuffer
+      let parserSha256
+      Module._load = function(request, parent, isMain) {
+        const loaded = originalLoad.call(this, request, parent, isMain)
+        if (request === "node:fs/promises" && parent?.filename === archivePath) {
+          return {
+            ...loaded,
+            async open(...args) {
+              const handle = await loaded.open(...args)
+              const originalRead = handle.read.bind(handle)
+              handle.read = async (buffer, ...readArgs) => {
+                handleSnapshotBuffer ??= buffer
+                if (handleSnapshotBuffer !== buffer) {
+                  throw new Error("OOXML snapshot read switched Buffers")
+                }
+                return originalRead(buffer, ...readArgs)
+              }
+              return handle
+            }
+          }
+        }
+        if (parent?.filename !== documentExtractorPath) return loaded
+        if (request === "./ooxmlArchive") {
+          return {
+            ...loaded,
+            async prepareOoxmlParserInput(...args) {
+              const prepared = await loaded.prepareOoxmlParserInput(...args)
+              await fs.writeFile(
+                ${JSON.stringify(filePath)},
+                Buffer.from(${JSON.stringify(replacement.toString("base64"))}, "base64")
+              )
+              return prepared
+            }
+          }
+        }
+        if (request === ${JSON.stringify(fixture.extractorRequest)}) {
+          return {
+            ...loaded,
+            [${JSON.stringify(fixture.extractorExport)}]: async (input) => {
+              if (input !== handleSnapshotBuffer) {
+                throw new Error("parser did not receive the FileHandle snapshot Buffer")
+              }
+              parserSha256 = createHash("sha256").update(input).digest("hex")
+              return {
+                chunks: [],
+                status: "success",
+                warnings: [],
+                extractor: { id: "snapshot-probe", version: "1" }
+              }
+            }
+          }
+        }
+        return loaded
+      }
+      require(documentExtractorPath).extractRuleDocument({ filePath: ${JSON.stringify(filePath)} })
+        .then(() => { throw new Error("source replacement unexpectedly remained stable") })
+        .catch((error) => {
+          if (!/source changed.*fingerprint/i.test(error.message)) throw error
+          if (parserSha256 !== ${JSON.stringify(expectedSha256)}) {
+            throw new Error("parser input was not the verified snapshot: " + parserSha256)
+          }
+          if (parserSha256 === ${JSON.stringify(replacementSha256)}) {
+            throw new Error("parser input was re-read from the replaced path")
+          }
+        })
+    `
+
+    const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8", timeout: 10_000 })
+    assert.equal(
+      result.status,
+      0,
+      `${fixture.extension}: ${[result.stdout, result.stderr].filter(Boolean).join("\n")}`
+    )
+  }
 })
 
 test("extractRuleDocuments rejects a same-size same-mtime OOXML replacement before parser load", async (t) => {
@@ -240,10 +356,14 @@ const CRC32_TABLE = Array.from({ length: 256 }, (_, index) => {
   return value >>> 0
 })
 
-test("extractRuleDocument rebuilds a validated missing-both XLSX only in memory", async (t) => {
+test("extractRuleDocument rebuilds a validated missing-both XLSX without changing source metadata or workspace files", async (t) => {
   const directory = await temporaryDirectory(t)
   const filePath = path.join(directory, "minimal.xlsx")
-  await fs.writeFile(filePath, createXlsxFixture({ omitStyles: true }))
+  const sourceBytes = createXlsxFixture({ omitStyles: true })
+  const siblingPath = path.join(directory, "workspace-sentinel.txt")
+  await fs.writeFile(filePath, sourceBytes)
+  await fs.writeFile(siblingPath, "workspace must stay unchanged")
+  const before = await snapshotDirectory(directory)
 
   const result = await extractRuleDocument({ filePath })
 
@@ -253,7 +373,56 @@ test("extractRuleDocument rebuilds a validated missing-both XLSX only in memory"
     ["Second", 3],
     ["First", 2]
   ])
+  assert.deepEqual(await snapshotDirectory(directory), before)
 })
+
+test("extractRuleDocument keeps every normal and compatibility OOXML workspace snapshot unchanged", async (t) => {
+  const directory = await temporaryDirectory(t)
+  const fixtures = [
+    ["normal.docx", createDocxFixture()],
+    ["styles.xlsx", createXlsxFixture()],
+    ["shared-strings.xlsx", createXlsxFixture({ omitStyles: true, includeSharedStrings: true })],
+    ["minimal.xlsx", createXlsxFixture({ omitStyles: true })]
+  ]
+  for (const [name, bytes] of fixtures) await fs.writeFile(path.join(directory, name), bytes)
+  await fs.writeFile(path.join(directory, "workspace-sentinel.txt"), "workspace must stay unchanged")
+  const before = await snapshotDirectory(directory)
+
+  for (const [name] of fixtures) {
+    const result = await extractRuleDocument({ filePath: path.join(directory, name) })
+    assert.ok(["success", "partial"].includes(result.status), `${name}: ${result.status}`)
+  }
+
+  assert.deepEqual(await snapshotDirectory(directory), before)
+})
+
+async function snapshotDirectory(directory) {
+  const directoryStats = await fs.stat(directory, { bigint: true })
+  const entries = [{
+    name: ".",
+    type: "directory",
+    device: directoryStats.dev.toString(10),
+    inode: directoryStats.ino.toString(10),
+    mtimeNs: directoryStats.mtimeNs.toString(10),
+    ctimeNs: directoryStats.ctimeNs.toString(10)
+  }]
+  for (const name of (await fs.readdir(directory)).sort()) {
+    const entryPath = path.join(directory, name)
+    const stats = await fs.stat(entryPath, { bigint: true })
+    const bytes = await fs.readFile(entryPath)
+    entries.push({
+      name,
+      type: "file",
+      device: stats.dev.toString(10),
+      inode: stats.ino.toString(10),
+      byteSize: stats.size.toString(10),
+      mtimeNs: stats.mtimeNs.toString(10),
+      ctimeNs: stats.ctimeNs.toString(10),
+      sha256: createHash("sha256").update(bytes).digest("hex")
+    })
+  }
+  return entries
+}
 
 test("extractRuleDocument rejects an invalid XLSX in preflight before an extension fflate load", async (t) => {
   const directory = await temporaryDirectory(t)
