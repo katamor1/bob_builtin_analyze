@@ -211,14 +211,18 @@ rateの分母が0の場合は`0%`ではなく`n/a`です。JSON / Markdown / CSV
 - `.docx`、`.xlsx`、text抽出可能な`.pdf`を個別選択します。
 - `.doc` / `.xls`はconversionが必要です。
 - image-only PDFはOCR済みfileを用意します。
-- OOXML preflightはcentral directoryとlocal header、payload範囲、data descriptorを展開前に照合します。
-- `styles.xml`と`sharedStrings.xml`の両方を欠く有効なXLSXだけ、検証済みpayloadを宣言サイズ上限付きで展開し、実サイズ・消費入力・CRCを照合します。全entryの照合後に`fflate`を遅延ロードし、メモリ内で最小stylesheetを追加して再圧縮します。
-- 拡張側の`fflate`直接importはこの互換経路だけです。固定中の`read-excel-file@9.3.1`自身も`fflate`を推移依存として読み込むため、通常XLSXではparser由来のloadと拡張由来の直接loadを区別して検証します。
-- XLSX互換化では原本とworkspaceへ書き込みません。
 - directoryの暗黙再帰走査、macro実行、formula再計算、external link refreshを行いません。
 - AIへ渡すのはoperatorが承認したbounded evidenceだけです。
 - AI proposalは正式assetを直接変更しません。
 - applyはbase hash、decision revision、preview digest、journal、バックアップ、transaction、rollback、final hashを検証します。
+
+### 検証済みOOXML snapshot境界
+
+DOCX/XLSXはparserへ渡す前に、選択時のfingerprintに結び付いたsnapshot Bufferへ固定し、そのBuffer上でarchive構造と全entryのpayloadを検証します。検証が完了するまでMammothとExcel parserをloadしません。
+
+通常のDOCX/XLSXには検証に使った元のsnapshot Bufferそのものを渡します。`xl/styles.xml`と`xl/sharedStrings.xml`の両方が欠けるXLSXだけ、検証済み内容へ最小stylesheetを加えたBufferをメモリ内で作ります。この準備処理は原本とworkspaceへ書き込まず、公開Command、設定、保存形式、利用者向けエラーを変えません。
+
+このmissing-both互換処理に限って拡張側の`fflate`を遅延ロードします。通常XLSXで`read-excel-file`が内部利用する`fflate`とは区別します。
 
 詳細は`docs/project-rule-authoring.md`、Windows release UATは`docs/project-rule-authoring-windows-uat.md`を参照します。
 

@@ -255,9 +255,22 @@ accept / reject / edit、preview、journal、backup、rename、rollback、restar
 
 raw document text、raw AI response、absolute pathをremote artifact、notification、MCP provenanceへ出さない。
 
+### BZR-UT-AUTHOR-006 検証済みOOXML snapshot
+
+source byte上限、1つのopen handle、読み取り前後のstat、SHA-256を含むfingerprintに結び付いたsnapshot Bufferを検証する。same-size / same-mtime replacementを含むfingerprint不一致ではparserをloadしない。ZIP32 preflightと全entry payloadのstored長、bounded deflate、圧縮入力の完全消費、展開長、CRC検証がすべてparser loadより先に完了することを確認する。
+
+通常のDOCX/XLSXではparserが元の検証済みsnapshot Bufferだけを受け取ることを確認する。missing-both XLSXだけがメモリ内で再構築され、拡張所有の`fflate`直接loadがこのbranchでだけ発生することを、parser由来の推移依存loadと分けて検証する。成功時も失敗時も原本とworkspaceを変更しない。
+
+契約testは、公開Command ID、設定、persisted schema、安全なpathless日本語エラーメッセージ、extension version、dependency宣言とlockfileが変わらないことも確認する。
+
 主な実テスト:
 
 - rule authoring extraction / consent / proposal / apply tests
+- `test/ruleOoxmlPreflight.test.js`
+- `test/ruleDocxExtraction.test.js`
+- `test/ruleXlsxExtraction.test.js`
+- `test/ruleDocumentExtraction.test.js`
+- `test/ruleAuthoringHeavyDependencyLoading.test.js`
 - `test/ruleAuthoringDocumentation.test.js`
 - Windows-root identity tests
 

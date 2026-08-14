@@ -108,6 +108,10 @@ test("bob-bazaar-review dependency policy requires a committed lockfile and loca
     path.join(extensionRoot, "src", "ruleAuthoring", "extraction", "xlsxExtractor.ts"),
     "utf8"
   )
+  const ooxmlArchiveRuntimeSource = fs.readFileSync(
+    path.join(extensionRoot, "src", "ruleAuthoring", "extraction", "ooxmlArchive.ts"),
+    "utf8"
+  )
   assert.match(yamlRuntimeSource, /from "js-yaml"/, "review record runtime must keep the js-yaml import")
   assert.match(proposalRuntimeSource, /require\("ajv"\)/, "proposal validation must keep the lazy Ajv load")
   assert.match(docxRuntimeSource, /import\("cheerio"\)/, "DOCX extraction must keep the lazy Cheerio load")
@@ -117,7 +121,16 @@ test("bob-bazaar-review dependency policy requires a committed lockfile and loca
     /import\("read-excel-file\/node"\)/,
     "XLSX extraction must keep the lazy read-excel-file load"
   )
-  assert.match(xlsxRuntimeSource, /import\("fflate"\)/, "XLSX compatibility must keep the lazy fflate load")
+  assert.doesNotMatch(
+    xlsxRuntimeSource,
+    /import\("fflate"\)/,
+    "the XLSX parser adapter must not own the extension-direct fflate load"
+  )
+  assert.match(
+    ooxmlArchiveRuntimeSource,
+    /import\("fflate"\)/,
+    "OOXML missing-both XLSX compatibility must keep the lazy extension-direct fflate load"
+  )
   assert.deepEqual(
     packageJson.knip?.ignoreDependencies,
     ["ajv", "cheerio", "fflate", "js-yaml", "mammoth", "read-excel-file"],
@@ -127,6 +140,13 @@ test("bob-bazaar-review dependency policy requires a committed lockfile and loca
   const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"))
   const rootPackage = lock.packages?.[""]
   assert.deepEqual(Object.keys(rootPackage?.dependencies ?? {}).sort(), Object.keys(packageJson.dependencies ?? {}).sort())
+  assert.equal(lock.packages?.["node_modules/fflate"]?.version, "0.8.3")
+  assert.equal(lock.packages?.["node_modules/read-excel-file"]?.version, "9.3.1")
+  assert.equal(
+    lock.packages?.["node_modules/read-excel-file"]?.dependencies?.fflate,
+    "^0.8.3",
+    "parser-transitive fflate loading must stay distinct from the extension-direct lazy import"
+  )
   assert.equal(packageJson.scripts.package, "vsce package", "runtime dependencies must be collected by vsce")
 })
 

@@ -187,6 +187,14 @@ source選択
 
 cancel、conflict、validation failureではcurrent fileとbackup setを変更しない。
 
+### 10.1 検証済みOOXML snapshot境界
+
+DOCX/XLSXの抽出境界は、選択時fingerprintの確認、1つのsnapshot Bufferへの固定、ZIP32構造preflight、全entry payload検証、parser loadの順で進む。前段が失敗した場合は後段へ進めず、選択後の差し替えやpayload不整合をparserから隔離する。
+
+通常のDOCX/XLSXでは検証済みの元Bufferをparser inputとする。missing-both XLSX、すなわち`xl/styles.xml`と`xl/sharedStrings.xml`の両方が欠ける場合だけ、検証済みentryから最小stylesheet付きBufferをメモリ内で再構築する。原本とworkspaceへのwriteは行わない。
+
+公開Command ID、設定、persisted schema、安全なpathless日本語エラーメッセージ、extension versionは変更しない。dependency宣言とlockfileのversionも既存contractを維持する。
+
 ## 11. workflow-register連携
 
 `registerWorkflowProvidersWithRetry`は`local.workflow-register`が利用可能な場合だけproviderを登録し、起動順序差をbounded retryで吸収する。provider registration failureを本拡張のactivation failureへ変えない。
