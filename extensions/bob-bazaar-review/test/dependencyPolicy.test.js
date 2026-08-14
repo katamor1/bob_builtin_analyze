@@ -55,6 +55,7 @@ test("bob-bazaar-review declares the exact rule authoring production dependencie
   assert.deepEqual(packageJson.dependencies, {
     ajv: "^8.17.1",
     cheerio: "^1.0.0",
+    fflate: "^0.8.3",
     "js-yaml": "^4.3.0",
     mammoth: "^1.8.0",
     "read-excel-file": "^9.2.0"
@@ -116,9 +117,10 @@ test("bob-bazaar-review dependency policy requires a committed lockfile and loca
     /import\("read-excel-file\/node"\)/,
     "XLSX extraction must keep the lazy read-excel-file load"
   )
+  assert.match(xlsxRuntimeSource, /import\("fflate"\)/, "XLSX compatibility must keep the lazy fflate load")
   assert.deepEqual(
     packageJson.knip?.ignoreDependencies,
-    ["ajv", "cheerio", "js-yaml", "mammoth", "read-excel-file"],
+    ["ajv", "cheerio", "fflate", "js-yaml", "mammoth", "read-excel-file"],
     "Knip exceptions must be an exact reviewed set whose runtime loads are verified above and by depcheck"
   )
 

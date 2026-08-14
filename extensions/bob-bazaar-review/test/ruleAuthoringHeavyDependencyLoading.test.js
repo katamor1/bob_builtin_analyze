@@ -7,6 +7,8 @@ const { test } = require("node:test")
 
 const { extensionRoot } = require("./helpers/sourceReader")
 const { createDocxFixture, createXlsxFixture } = require("./helpers/ruleDocumentFixtures")
+const { preflightOoxmlArchive } = require("../out/ruleAuthoring/extraction/ooxmlPreflight")
+const { DEFAULT_RULE_AUTHORING_LIMITS } = require("../out/ruleAuthoring/ruleAuthoringLimits")
 
 test("normal extension activation does not load rule authoring heavy dependencies", () => {
   const extensionEntry = path.join(extensionRoot, "out", "extension.js")
@@ -44,7 +46,7 @@ test("normal extension activation does not load rule authoring heavy dependencie
       throw new Error("stubbed normal activation did not register the expected command")
     }
     const heavyModules = Object.keys(require.cache).filter((cachePath) =>
-      /[\\\\/]node_modules[\\\\/](?:mammoth|cheerio|read-excel-file)(?:[\\\\/]|$)/.test(cachePath)
+      /[\\\\/]node_modules[\\\\/](?:mammoth|cheerio|read-excel-file|fflate)(?:[\\\\/]|$)/.test(cachePath)
     )
     for (const registration of [...context.subscriptions].reverse()) registration.dispose?.()
     if (heavyModules.length > 0) {
@@ -69,25 +71,88 @@ for (const fixture of [
     modulePath: "ruleAuthoring/extraction/docxExtractor.js",
     functionName: "extractDocx",
     expected: ["mammoth", "cheerio"],
-    absent: ["read-excel-file"]
+    absent: ["read-excel-file", "fflate"],
+    expectsParserFflate: false
   },
   {
-    label: "XLSX",
+    label: "style-bearing XLSX",
     fileName: "rules.xlsx",
     bytes: createXlsxFixture(),
     modulePath: "ruleAuthoring/extraction/xlsxExtractor.js",
     functionName: "extractXlsx",
+    ooxmlEntryNames: [
+      "[Content_Types].xml",
+      "_rels/.rels",
+      "xl/workbook.xml",
+      "xl/_rels/workbook.xml.rels",
+      "xl/styles.xml",
+      "xl/worksheets/sheet1.xml",
+      "xl/worksheets/sheet2.xml"
+    ],
     expected: ["read-excel-file"],
-    absent: ["mammoth", "cheerio"]
+    absent: ["mammoth", "cheerio"],
+    expectsParserFflate: true,
+    expectsCompatibilityLoad: false
+  },
+  {
+    label: "shared-string-bearing XLSX",
+    fileName: "rules.xlsx",
+    bytes: createXlsxFixture({ omitStyles: true, includeSharedStrings: true }),
+    modulePath: "ruleAuthoring/extraction/xlsxExtractor.js",
+    functionName: "extractXlsx",
+    ooxmlEntryNames: [
+      "[Content_Types].xml",
+      "_rels/.rels",
+      "xl/workbook.xml",
+      "xl/_rels/workbook.xml.rels",
+      "xl/sharedStrings.xml",
+      "xl/worksheets/sheet1.xml",
+      "xl/worksheets/sheet2.xml"
+    ],
+    expected: ["read-excel-file"],
+    absent: ["mammoth", "cheerio"],
+    expectsParserFflate: true,
+    expectsCompatibilityLoad: false
+  },
+  {
+    label: "style/shared-string-free XLSX",
+    fileName: "rules.xlsx",
+    bytes: createXlsxFixture({ omitStyles: true }),
+    modulePath: "ruleAuthoring/extraction/xlsxExtractor.js",
+    functionName: "extractXlsx",
+    ooxmlEntryNames: [
+      "[Content_Types].xml",
+      "_rels/.rels",
+      "xl/workbook.xml",
+      "xl/_rels/workbook.xml.rels",
+      "xl/worksheets/sheet1.xml",
+      "xl/worksheets/sheet2.xml"
+    ],
+    expected: ["read-excel-file", "fflate"],
+    absent: ["mammoth", "cheerio"],
+    expectsParserFflate: true,
+    expectsCompatibilityLoad: true
   }
 ]) {
-  test(`${fixture.label} dependencies load only after its matching extractor call`, () => {
+  test(`${fixture.label} dependencies load only after its matching extractor call`, async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "bob-rule-heavy-"))
     const filePath = path.join(directory, fixture.fileName)
     fs.writeFileSync(filePath, fixture.bytes)
     try {
+      const preflight = fixture.ooxmlEntryNames
+        ? await preflightOoxmlArchive(filePath, DEFAULT_RULE_AUTHORING_LIMITS)
+        : undefined
       const modulePath = path.join(extensionRoot, "out", fixture.modulePath)
       const script = `
+        const Module = require("node:module")
+        const originalLoad = Module._load
+        let compatibilityLoadCount = 0
+        Module._load = function(request, parent, isMain) {
+          if (request === "fflate" && parent?.filename === ${JSON.stringify(path.join(extensionRoot, "out", "ruleAuthoring", "extraction", "xlsxExtractor.js"))}) {
+            compatibilityLoadCount += 1
+          }
+          return originalLoad.call(this, request, parent, isMain)
+        }
         function loaded(name) {
           return Object.keys(require.cache).some((cachePath) =>
             cachePath.includes("node_modules" + require("node:path").sep + name + require("node:path").sep)
@@ -98,14 +163,24 @@ for (const fixture of [
           if (loaded(name)) throw new Error(name + " loaded before extractor call")
         }
         extractor(${JSON.stringify(filePath)}, {
-          sourceId: "src-0123456789ab",
-          maxChunkBytes: 32768
-        }).then(() => {
+           sourceId: "src-0123456789ab",
+           maxChunkBytes: 32768,
+           ooxmlEntryNames: ${JSON.stringify(fixture.ooxmlEntryNames)},
+           ooxmlDeclaredUncompressedBytes: ${JSON.stringify(preflight?.declaredUncompressedBytes)},
+           ooxmlArchiveByteLength: ${JSON.stringify(preflight?.archiveByteLength)},
+           ooxmlEntries: ${JSON.stringify(preflight?.entries)}
+         }).then(() => {
           for (const name of ${JSON.stringify(fixture.expected)}) {
             if (!loaded(name)) throw new Error(name + " missing after matching extractor call")
           }
           for (const name of ${JSON.stringify(fixture.absent)}) {
             if (loaded(name)) throw new Error(name + " loaded by the wrong extractor")
+          }
+          if (loaded("fflate") !== ${fixture.expectsParserFflate === true}) {
+            throw new Error("parser transitive fflate load state was not explicit")
+          }
+          if (compatibilityLoadCount !== ${fixture.expectsCompatibilityLoad ? 1 : 0}) {
+            throw new Error("fflate compatibility load count: " + compatibilityLoadCount)
           }
         })
       `

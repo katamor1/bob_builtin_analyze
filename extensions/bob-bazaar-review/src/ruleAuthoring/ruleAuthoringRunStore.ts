@@ -279,7 +279,7 @@ export async function readRuleAuthoringRun(paths: RuleAuthoringPaths): Promise<R
       fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0)
     )
     try {
-      const openedIdentity = fileIdentityFromStats(await handle.stat())
+      const openedIdentity = fileIdentityFromStats(await handle.stat({ bigint: true }))
       const currentIdentity = await regularFileIdentity(expected.authoringRunPath)
       await assertExistingDirectoryChain(workspaceRoot, expected.runDirectory)
       if (
@@ -387,7 +387,7 @@ export async function commitRuleAuthoringArtifactGeneration(
           handle = await fs.open(artifactPath, "wx", 0o600)
           await handle.writeFile(content, "utf8")
           await handle.sync()
-          const writtenIdentity = fileIdentityFromStats(await handle.stat())
+          const writtenIdentity = fileIdentityFromStats(await handle.stat({ bigint: true }))
           await handle.close()
           handle = undefined
           const installedIdentity = await regularFileIdentity(artifactPath)
@@ -655,7 +655,7 @@ async function writeRunFile(
     handle = await fs.open(temporaryPath, "wx", 0o600)
     await handle.writeFile(serialized, "utf8")
     await handle.sync()
-    temporaryIdentity = fileIdentityFromStats(await handle.stat())
+    temporaryIdentity = fileIdentityFromStats(await handle.stat({ bigint: true }))
     await handle.close()
     handle = undefined
     await assertExistingDirectoryChain(run.workspaceRoot, paths.runDirectory)
@@ -747,11 +747,11 @@ async function ensureSafeDirectoryChain(workspaceRoot: string, directory: string
 
 async function assertSafeRegularFile(workspaceRoot: string, filePath: string): Promise<FileIdentity> {
   await assertExistingDirectoryChain(workspaceRoot, path.dirname(filePath))
-  const stats = await fs.lstat(filePath)
+  const stats = await fs.lstat(filePath, { bigint: true })
   if (stats.isSymbolicLink()) throw new Error("Rule authoring run file must not be a symbolic link")
   if (!stats.isFile()) throw new Error("Rule authoring run path must be a regular file")
   await assertPhysicalContainment(workspaceRoot, filePath)
-  const after = await fs.lstat(filePath)
+  const after = await fs.lstat(filePath, { bigint: true })
   const beforeIdentity = fileIdentityFromStats(stats)
   const afterIdentity = fileIdentityFromStats(after)
   if (!after.isFile() || !sameIdentity(beforeIdentity, afterIdentity)) {
@@ -866,12 +866,15 @@ async function pathExists(target: string): Promise<boolean> {
 
 interface FileIdentity { device: string; inode: string }
 
-function fileIdentityFromStats(stats: import("node:fs").Stats): FileIdentity {
+function fileIdentityFromStats(
+  stats: Pick<import("node:fs").Stats, "dev" | "ino"> |
+    Pick<import("node:fs").BigIntStats, "dev" | "ino">
+): FileIdentity {
   return { device: String(stats.dev), inode: String(stats.ino) }
 }
 
 async function directoryIdentity(target: string): Promise<FileIdentity> {
-  const stats = await fs.lstat(target)
+  const stats = await fs.lstat(target, { bigint: true })
   if (stats.isSymbolicLink() || !stats.isDirectory()) {
     throw new Error("Rule authoring run directory must be a physical directory")
   }
@@ -894,8 +897,13 @@ async function directoryIdentityMatches(target: string, expected: FileIdentity):
 }
 
 async function regularFileIdentity(target: string): Promise<FileIdentity | undefined> {
-  const stats = await lstatOptional(target)
-  if (!stats) return undefined
+  let stats: import("node:fs").BigIntStats
+  try {
+    stats = await fs.lstat(target, { bigint: true })
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return undefined
+    throw error
+  }
   if (stats.isSymbolicLink()) throw new Error("Rule authoring run file must not be a symbolic link")
   if (!stats.isFile()) throw new Error("Rule authoring run path must be a regular file")
   return fileIdentityFromStats(stats)
@@ -1315,12 +1323,12 @@ async function createRunLockOwner(runDirectory: string): Promise<RunLockOwner> {
     handle = await fs.open(ownerPath, "wx", 0o600)
     await handle.writeFile(`${JSON.stringify(record)}\n`, "utf8")
     await handle.sync()
-    const stats = await handle.stat()
+    const stats = await handle.stat({ bigint: true })
     await handle.close()
     handle = undefined
     return {
       ownerPath,
-      identity: { device: String(stats.dev), inode: String(stats.ino) },
+      identity: fileIdentityFromStats(stats),
       record
     }
   } catch (error) {

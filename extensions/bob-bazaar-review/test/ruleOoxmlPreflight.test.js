@@ -49,12 +49,27 @@ async function preflight(buffer, limits = DEFAULT_LIMITS) {
 test("preflights a DOCX signature from ZIP metadata without extracting entries", async () => {
   const result = await preflight(createStoredZip(docxEntries({ document: { compressionMethod: 8 } })))
 
-  assert.deepEqual(result, {
+  assert.deepEqual({
+    entryCount: result.entryCount,
+    declaredUncompressedBytes: result.declaredUncompressedBytes,
+    entryNames: result.entryNames,
+    documentKind: result.documentKind
+  }, {
     entryCount: 2,
     declaredUncompressedBytes: 13,
     entryNames: ["[Content_Types].xml", "word/document.xml"],
     documentKind: "docx"
   })
+  assert.equal(result.archiveByteLength, 259)
+  assert.deepEqual(result.entries.map((entry) => ({
+    name: entry.name,
+    compressionMethod: entry.compressionMethod,
+    compressedSize: entry.compressedSize,
+    uncompressedSize: entry.uncompressedSize
+  })), [
+    { name: "[Content_Types].xml", compressionMethod: 0, compressedSize: 5, uncompressedSize: 5 },
+    { name: "word/document.xml", compressionMethod: 8, compressedSize: 8, uncompressedSize: 8 }
+  ])
 })
 
 test("preflights an XLSX signature from ZIP metadata", async () => {
@@ -149,8 +164,8 @@ test("enforces the 5,000-entry hard ceiling even when caller limits are relaxed"
 
 test("enforces the 250 MiB declared-byte hard ceiling even when caller limits are relaxed", async () => {
   const archive = createStoredZip(docxEntries({
-    contentTypes: { uncompressedSize: MAX_DECLARED_BYTES },
-    document: { uncompressedSize: 1 }
+    contentTypes: { compressionMethod: 8, uncompressedSize: MAX_DECLARED_BYTES },
+    document: { compressionMethod: 8, uncompressedSize: 1 }
   }))
 
   await assert.rejects(
@@ -190,6 +205,65 @@ test("rejects encrypted entries", async () => {
 test("rejects unsupported compression methods", async () => {
   const archive = createStoredZip(docxEntries({ document: { compressionMethod: 12 } }))
   await assert.rejects(preflight(archive), /compression method.*12|unsupported compression/i)
+})
+
+test("rejects stored entries whose compressed and uncompressed sizes differ", async () => {
+  const archive = createStoredZip(xlsxEntries({
+    workbook: { compressedSize: 1024, uncompressedSize: 0 }
+  }))
+  await assert.rejects(preflight(archive), /stored entry size mismatch.*xl.workbook\.xml/i)
+})
+
+test("rejects a stored entry whose declared payload extends into the central directory", async () => {
+  const archive = createStoredZip(xlsxEntries({
+    workbook: {
+      data: Buffer.from("x"),
+      compressedSize: 1024,
+      uncompressedSize: 1024
+    }
+  }))
+
+  await assert.rejects(preflight(archive), /entry payload.*(?:truncated|central directory)/i)
+})
+
+for (const dataDescriptorSignature of [true, false]) {
+  test(`accepts an exact ZIP32 data descriptor ${dataDescriptorSignature ? "with" : "without"} its signature`, async () => {
+    const result = await preflight(createStoredZip(xlsxEntries({
+      workbook: {
+        flags: 0x0008,
+        localCrc32: 0,
+        localCompressedSize: 0,
+        localUncompressedSize: 0,
+        dataDescriptor: true,
+        dataDescriptorSignature
+      }
+    })))
+
+    const workbook = result.entries.find((entry) => entry.name === "xl/workbook.xml")
+    assert.ok(workbook)
+    assert.equal(workbook.dataEnd - workbook.dataOffset, workbook.compressedSize)
+  })
+}
+
+test("rejects a missing ZIP32 data descriptor before the central directory", async () => {
+  const archive = createStoredZip(xlsxEntries({
+    workbook: {
+      flags: 0x0008,
+      localCrc32: 0,
+      localCompressedSize: 0,
+      localUncompressedSize: 0
+    }
+  }))
+
+  await assert.rejects(preflight(archive), /data descriptor.*(?:missing|match|ambiguous|truncated)/i)
+})
+
+test("rejects local-header metadata that differs from the central directory", async () => {
+  const archive = createStoredZip(xlsxEntries({
+    workbook: { localCompressedSize: 7 }
+  }))
+
+  await assert.rejects(preflight(archive), /local sizes.*central directory/i)
 })
 
 test("rejects multi-disk archives", async () => {

@@ -10,6 +10,7 @@ const WORKSPACE_ROOT = "/workspace/acme-project"
 const PRIVATE_DOCX = "/private/acme/rule sources/engineering-policy.docx"
 const PRIVATE_PDF = "/private/acme/rule sources/scanned-policy.pdf"
 const PRIVATE_RAW_TEXT = "RAW PRIVATE POLICY: never render or post this text"
+const SAFE_HOST_ERROR_MESSAGE = "規約資料の取り込みを安全に続行できなかったため停止しました。入力資料とワークスペースを確認して再実行してください。"
 const SELECTED_ID = `selected-${"1".repeat(32)}`
 const CHUNK_ID = `chunk-${"c".repeat(64)}`
 const MESSAGE_TYPES = [
@@ -309,6 +310,7 @@ function loadRuleAuthoringGui(vscode) {
 }
 
 function hostDependencies(overrides = {}) {
+  const reportHostErrors = []
   const renderedModels = []
   const completionCalls = []
   const extractionCalls = []
@@ -322,6 +324,9 @@ function hostDependencies(overrides = {}) {
   const calls = []
   const dependencies = {
     createNonce: () => "nonce-host-123",
+    reportHostError: (error) => {
+      reportHostErrors.push(error)
+    },
     renderRuleAuthoringGuiHtml: (model, nonce) => {
       renderedModels.push({ model: structuredClone(model), nonce })
       return `<!doctype html><html><body data-render="${renderedModels.length}"></body></html>`
@@ -397,6 +402,7 @@ function hostDependencies(overrides = {}) {
   }
   return {
     dependencies,
+    reportHostErrors,
     renderedModels,
     completionCalls,
     extractionCalls,
@@ -442,8 +448,27 @@ function assertNoPrivateSource(value) {
   assert.doesNotMatch(serialized, /RAW PRIVATE POLICY/)
 }
 
+function assertReportedExactlyOnce(reportedHostErrors, originalError) {
+  assert.equal(reportedHostErrors.length, 1)
+  assert.equal(reportedHostErrors[0], originalError)
+}
+
 async function turn() {
   await new Promise((resolve) => setImmediate(resolve))
+}
+
+async function assertCompletesPromptly(operation, message, timeoutMs = 1_000) {
+  let timeout
+  try {
+    await Promise.race([
+      operation,
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs)
+      })
+    ])
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 async function temporaryWorkspace(t) {
@@ -1110,6 +1135,247 @@ test("rejects an explicit authoring root that is not an open local workspace", a
   assert.equal(panel, undefined)
   assert.equal(fixture.calls.length, 0)
   assert.equal(fixture.createCalls.length, 0)
+})
+
+test("reports queued Webview operation failures once without exposing their details to the UI", async () => {
+  const originalError = new Error(`queued Webview failure for ${PRIVATE_DOCX}`)
+  let renderCount = 0
+  const fake = createFakeVscode()
+  const fixture = hostDependencies({
+    renderRuleAuthoringGuiHtml: (model, nonce) => {
+      fixture.renderedModels.push({ model: structuredClone(model), nonce })
+      renderCount += 1
+      if (renderCount === 2) throw originalError
+      return `<!doctype html><html><body data-render="${renderCount}"></body></html>`
+    }
+  })
+  const { resultPromise, panel } = await startHost(fake, fixture)
+
+  await panel.emitMessage({ type: "unknownOperation" })
+
+  assertReportedExactlyOnce(fixture.reportHostErrors, originalError)
+  assert.deepEqual(fake.errorCalls, [SAFE_HOST_ERROR_MESSAGE])
+  assert.equal(fake.errorCalls[0].includes(PRIVATE_DOCX), false)
+  assert.doesNotMatch(fake.errorCalls[0], /queued Webview failure/)
+  assertNoPrivateSource(lastModel(fixture))
+
+  const rendersAfterRecovery = renderCount
+  await assertCompletesPromptly(
+    panel.emitMessage({ type: "unknownOperation" }),
+    "the Webview operation queue must remain usable after failure recovery"
+  )
+  assert.equal(renderCount, rendersAfterRecovery + 1)
+
+  await panel.emitMessage({ type: "cancelRun" })
+  assert.equal((await resultPromise).status, "cancelled")
+})
+
+test("shows the safe host error when queued failure recovery rendering also fails", async () => {
+  const renderErrors = []
+  let renderCount = 0
+  const fake = createFakeVscode()
+  const fixture = hostDependencies({
+    renderRuleAuthoringGuiHtml: (model, nonce) => {
+      fixture.renderedModels.push({ model: structuredClone(model), nonce })
+      renderCount += 1
+      if (renderCount > 1) {
+        const error = new Error(`persistent render failure ${renderCount} for ${PRIVATE_DOCX}`)
+        renderErrors.push(error)
+        throw error
+      }
+      return '<!doctype html><html><body data-render="1"></body></html>'
+    }
+  })
+  const { resultPromise, panel } = await startHost(fake, fixture)
+
+  await assert.doesNotReject(() => panel.emitMessage({ type: "unknownOperation" }))
+
+  assert.equal(renderErrors.length, 2)
+  assertReportedExactlyOnce(fixture.reportHostErrors, renderErrors[0])
+  assert.equal(fixture.reportHostErrors.includes(renderErrors[1]), false)
+  assert.deepEqual(fake.errorCalls, [SAFE_HOST_ERROR_MESSAGE])
+  assert.equal(fake.errorCalls[0].includes(PRIVATE_DOCX), false)
+
+  await assertCompletesPromptly(
+    panel.emitMessage({ type: "unknownOperation" }),
+    "persistent recovery rendering failures must not leave the Webview operation queue pending"
+  )
+  assert.equal(renderErrors.length, 4)
+  assert.deepEqual(fixture.reportHostErrors, [renderErrors[0], renderErrors[2]])
+  assert.equal(fixture.reportHostErrors.includes(renderErrors[3]), false)
+  assert.deepEqual(fake.errorCalls, [SAFE_HOST_ERROR_MESSAGE, SAFE_HOST_ERROR_MESSAGE])
+
+  await panel.emitMessage({ type: "cancelRun" })
+  assert.equal((await resultPromise).status, "cancelled")
+})
+
+test("reports initial controller render failures once without exposing their details to the UI", async () => {
+  const originalError = new Error(`initial render failure for ${PRIVATE_DOCX}`)
+  const fake = createFakeVscode()
+  const fixture = hostDependencies({
+    renderRuleAuthoringGuiHtml: () => {
+      throw originalError
+    }
+  })
+  const { resultPromise, panel } = await startHost(fake, fixture)
+
+  assertReportedExactlyOnce(fixture.reportHostErrors, originalError)
+  assert.deepEqual(fake.errorCalls, [SAFE_HOST_ERROR_MESSAGE])
+  assert.doesNotMatch(fake.errorCalls[0], /initial render failure|\/private\/acme/)
+  assert.equal((await resultPromise).status, "cancelled")
+  assert.equal(panel.disposed, true)
+})
+
+test("reports outer GUI-open failures once without exposing their details to the UI", async () => {
+  const originalError = new Error(`outer GUI-open failure for ${PRIVATE_DOCX}`)
+  const fake = createFakeVscode()
+  const fixture = hostDependencies({
+    findIncompleteRuleApplyTransactions: async () => {
+      throw originalError
+    }
+  })
+  const { resultPromise, panel } = await startHost(fake, fixture)
+
+  assert.equal(panel, undefined)
+  assertReportedExactlyOnce(fixture.reportHostErrors, originalError)
+  assert.deepEqual(fake.errorCalls, [SAFE_HOST_ERROR_MESSAGE])
+  assert.doesNotMatch(fake.errorCalls[0], /outer GUI-open failure|\/private\/acme/)
+  assert.equal((await resultPromise).status, "cancelled")
+})
+
+test("continues queued Webview failure recovery when host diagnostics throw", async () => {
+  const originalError = new Error(`queued operation failure for ${PRIVATE_DOCX}`)
+  const reporterError = new Error("diagnostics unavailable")
+  const reportedHostErrors = []
+  let renderCount = 0
+  const fake = createFakeVscode()
+  const fixture = hostDependencies({
+    reportHostError: (error) => {
+      reportedHostErrors.push(error)
+      throw reporterError
+    },
+    renderRuleAuthoringGuiHtml: (model, nonce) => {
+      fixture.renderedModels.push({ model: structuredClone(model), nonce })
+      renderCount += 1
+      if (renderCount === 2) throw originalError
+      return `<!doctype html><html><body data-render="${renderCount}"></body></html>`
+    }
+  })
+  const { resultPromise, panel } = await startHost(fake, fixture)
+
+  await panel.emitMessage({ type: "unknownOperation" })
+
+  assertReportedExactlyOnce(reportedHostErrors, originalError)
+  assert.deepEqual(fake.errorCalls, [SAFE_HOST_ERROR_MESSAGE])
+  assertNoPrivateSource(lastModel(fixture))
+
+  const rendersAfterRecovery = renderCount
+  await assertCompletesPromptly(
+    panel.emitMessage({ type: "unknownOperation" }),
+    "diagnostic reporter failure must not leave the Webview operation queue pending"
+  )
+  assert.equal(renderCount, rendersAfterRecovery + 1)
+  await panel.emitMessage({ type: "cancelRun" })
+  assert.equal((await resultPromise).status, "cancelled")
+})
+
+test("continues initial render failure recovery when host diagnostics throw", async () => {
+  const originalError = new Error(`initial render failure for ${PRIVATE_DOCX}`)
+  const reporterError = new Error("diagnostics unavailable")
+  const reportedHostErrors = []
+  const fake = createFakeVscode()
+  const fixture = hostDependencies({
+    reportHostError: (error) => {
+      reportedHostErrors.push(error)
+      throw reporterError
+    },
+    renderRuleAuthoringGuiHtml: () => {
+      throw originalError
+    }
+  })
+  const { resultPromise, panel } = await startHost(fake, fixture)
+
+  assertReportedExactlyOnce(reportedHostErrors, originalError)
+  assert.deepEqual(fake.errorCalls, [SAFE_HOST_ERROR_MESSAGE])
+  assert.equal((await resultPromise).status, "cancelled")
+  assert.equal(panel.disposed, true)
+})
+
+test("continues outer GUI-open failure recovery when host diagnostics throw", async () => {
+  const originalError = new Error(`outer GUI-open failure for ${PRIVATE_DOCX}`)
+  const reporterError = new Error("diagnostics unavailable")
+  const reportedHostErrors = []
+  const fake = createFakeVscode()
+  const fixture = hostDependencies({
+    reportHostError: (error) => {
+      reportedHostErrors.push(error)
+      throw reporterError
+    },
+    findIncompleteRuleApplyTransactions: async () => {
+      throw originalError
+    }
+  })
+  const { resultPromise, panel } = await startHost(fake, fixture)
+
+  assert.equal(panel, undefined)
+  assertReportedExactlyOnce(reportedHostErrors, originalError)
+  assert.deepEqual(fake.errorCalls, [SAFE_HOST_ERROR_MESSAGE])
+  assert.equal((await resultPromise).status, "cancelled")
+})
+
+test("reports a queued rejection after disposal without showing a safe host error", async () => {
+  const extraction = deferred()
+  const originalError = new Error(`disposed extraction failure for ${PRIVATE_DOCX}`)
+  let extractionStarted = false
+  const fake = createFakeVscode({ pickerResults: [[fileUri(PRIVATE_DOCX)]] })
+  const fixture = hostDependencies({
+    loadApprovedRuleSourceManifest: async () => undefined,
+    extractRuleDocuments: async () => {
+      extractionStarted = true
+      return extraction.promise
+    }
+  })
+  const { resultPromise, panel } = await startHost(fake, fixture)
+  await panel.emitMessage({ type: "chooseSources" })
+
+  panel.emitMessageWithoutWaiting({ type: "extractSources" })
+  await turn()
+  await turn()
+  await turn()
+  assert.equal(extractionStarted, true)
+  panel.dispose()
+  extraction.reject(originalError)
+  await turn()
+  await turn()
+
+  assertReportedExactlyOnce(fixture.reportHostErrors, originalError)
+  assert.deepEqual(fake.errorCalls, [])
+  assert.equal((await resultPromise).status, "cancelled")
+})
+
+test("uses the production console reporter prefix and original error object", { concurrency: false }, async () => {
+  const originalError = new Error(`default diagnostic failure for ${PRIVATE_DOCX}`)
+  const fake = createFakeVscode()
+  const fixture = hostDependencies({
+    findIncompleteRuleApplyTransactions: async () => {
+      throw originalError
+    }
+  })
+  delete fixture.dependencies.reportHostError
+  const originalConsoleError = console.error
+  const consoleCalls = []
+  console.error = (...args) => {
+    consoleCalls.push(args)
+  }
+  try {
+    const { resultPromise } = await startHost(fake, fixture)
+    assert.equal(consoleCalls.length, 1)
+    assert.equal(consoleCalls[0][0], "Bob Bazaar 規約資料取り込みで処理エラーが発生しました")
+    assert.equal(consoleCalls[0][1], originalError)
+    assert.equal((await resultPromise).status, "cancelled")
+  } finally {
+    console.error = originalConsoleError
+  }
 })
 
 test("standalone confirmation persists consent without unscoped workflow completion", async () => {

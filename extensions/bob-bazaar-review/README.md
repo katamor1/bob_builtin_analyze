@@ -23,6 +23,22 @@ Command Paletteに常時表示する入口は次の2件だけです。
 
 後段stage用の独立公開panelはありません。workflow、record、validation用の内部Command IDは登録・activationを維持しますが、通常のCommand Paletteでは`when: "false"`です。
 
+## 内部互換契約と実装配置
+
+公開入口の背後では、次のmodule pathと内部Command IDをworkflow／host actionとの互換契約として維持します。
+
+| 領域 | 実装 |
+|---|---|
+| workflow-register bridge | `src/workflow/workflowRegisterBridge.ts`、`src/workflow/` |
+| Bazaar command | `src/bazaar/bazaarReviewCommands.ts` |
+| review-result validation | `src/projectRules/reviewResultValidationCommand.ts` |
+| GUI | `src/ui/` |
+| workspace | `src/workspace/` |
+
+record操作の内部Command IDは`bobBazaar.records.initCampaign`、`bobBazaar.records.createRecord`、`bobBazaar.records.createTriage`、`bobBazaar.records.generateSummary`です。これらは`review-packet.md`、`summary.json`などの成果物を扱います。review-resultのsidecar metadataは`.bob/review/results/<review_id>.artifact-metadata.json`へ保存します。
+
+規約作成の運用手順は`docs/project-rule-authoring.md`、Windows実機受入は`docs/project-rule-authoring-windows-uat.md`を参照してください。
+
 ## mainとsoft dependency
 
 `package.json`の`main`は`./out/extension.js`です。必須`extensionDependencies`はありません。
@@ -195,6 +211,10 @@ rateの分母が0の場合は`0%`ではなく`n/a`です。JSON / Markdown / CSV
 - `.docx`、`.xlsx`、text抽出可能な`.pdf`を個別選択します。
 - `.doc` / `.xls`はconversionが必要です。
 - image-only PDFはOCR済みfileを用意します。
+- OOXML preflightはcentral directoryとlocal header、payload範囲、data descriptorを展開前に照合します。
+- `styles.xml`と`sharedStrings.xml`の両方を欠く有効なXLSXだけ、検証済みpayloadを宣言サイズ上限付きで展開し、実サイズ・消費入力・CRCを照合します。全entryの照合後に`fflate`を遅延ロードし、メモリ内で最小stylesheetを追加して再圧縮します。
+- 拡張側の`fflate`直接importはこの互換経路だけです。固定中の`read-excel-file@9.3.1`自身も`fflate`を推移依存として読み込むため、通常XLSXではparser由来のloadと拡張由来の直接loadを区別して検証します。
+- XLSX互換化では原本とworkspaceへ書き込みません。
 - directoryの暗黙再帰走査、macro実行、formula再計算、external link refreshを行いません。
 - AIへ渡すのはoperatorが承認したbounded evidenceだけです。
 - AI proposalは正式assetを直接変更しません。
@@ -243,11 +263,14 @@ npm run dependency:policy
 npm run architecture:policy
 npm run source:policy
 npm run unused:policy
+npm run unused:report
 npm run artifact:policy
+npm run audit:prod
 npm test
 npm run package
 npm run package:policy
 npm run package:smoke
+npm run package:metrics
 ```
 
 Ubuntu / Windowsの同一source headでExtension Host smokeまで実行します。実IBM Bob / Bazaar UATではkeyboard-only、200% zoom、High Contrast、Developer Tools Console、MCP、result handoffを確認します。
@@ -260,7 +283,7 @@ workspace初期化とレビュー実行の主な生成物は`.bob/mcp.json`、`.
 
 ### VSIX サイズと依存関係
 
-`npm run package:policy`はVSIX サイズの上限を`12000000` bytesとして検査し、production dependencyがVSIXへ収録されていることも確認します。runtime dependencyはproposal検証用の`ajv`、DOCX抽出用の`cheerio`と`mammoth`、review record YAML用の`js-yaml`、XLSX抽出用の`read-excel-file`です。
+`npm run package:policy`はVSIX サイズの上限を`12000000` bytesとして検査し、production dependencyがVSIXへ収録されていることも確認します。runtime dependencyはproposal検証用の`ajv`、DOCX抽出用の`cheerio`と`mammoth`、review record YAML用の`js-yaml`、XLSX抽出用の`read-excel-file`と互換処理用の`fflate`です。
 
 ### 暗黙依存
 
@@ -289,7 +312,7 @@ npm run package:metrics
 
 ### Trusted Workspace
 
-規約資料、Bazaar差分、workspace内の`.bob` assetを確認し、Trusted Workspaceとして信頼できる場合に処理します。未信頼workspaceではworkspace設定の`bobBazaar.bzrPath`を採用せず、global設定または既定の`bzr`を使用します。
+規約資料、Bazaar差分、workspace内の`.bob` assetを確認し、Trusted Workspaceとして信頼できる場合に処理します。未信頼workspaceではworkspace設定の`bobBazaar.bzrPath`を採用せず、global設定または既定の`bzr`を使用します。MCP toolとartifact writeは選択されたworkspace / allowed root内に限定します。
 
 ## セキュリティ
 
