@@ -1,4 +1,3 @@
-import * as fs from "node:fs/promises"
 import type { RuleAuthoringLimits } from "../ruleAuthoringLimits"
 
 const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50
@@ -86,68 +85,62 @@ interface ParsedCentralDirectory {
 }
 
 export async function preflightOoxmlArchive(
-  filePath: string,
+  archiveBytes: Buffer,
   limits: OoxmlPreflightLimits
 ): Promise<OoxmlPreflightResult> {
   const effectiveLimits = effectiveOoxmlLimits(limits)
-  const file = await fs.open(filePath, "r")
-  try {
-    const stats = await file.stat()
-    if (!stats.isFile()) throw new Error(`OOXML source must be a regular file: ${filePath}`)
-    if (!Number.isSafeInteger(stats.size) || stats.size < END_OF_CENTRAL_DIRECTORY_BYTES) {
-      throw new Error("OOXML ZIP end-of-central-directory record is missing")
-    }
+  if (!Buffer.isBuffer(archiveBytes)) throw new Error("OOXML preflight requires a snapshot Buffer")
+  if (archiveBytes.length < END_OF_CENTRAL_DIRECTORY_BYTES) {
+    throw new Error("OOXML ZIP end-of-central-directory record is missing")
+  }
 
-    const tailLength = Math.min(
-      stats.size,
-      END_OF_CENTRAL_DIRECTORY_BYTES + MAX_ZIP_COMMENT_BYTES + ZIP64_LOCATOR_BYTES
+  const tailLength = Math.min(
+    archiveBytes.length,
+    END_OF_CENTRAL_DIRECTORY_BYTES + MAX_ZIP_COMMENT_BYTES + ZIP64_LOCATOR_BYTES
+  )
+  const tailOffset = archiveBytes.length - tailLength
+  const tail = readExactly(archiveBytes, tailLength, tailOffset, "OOXML ZIP tail")
+  const end = readEndOfCentralDirectory(tail, tailOffset, archiveBytes.length)
+  assertZip32EndRecord(end, tail, tailOffset)
+
+  if (end.entryCount > effectiveLimits.maxEntries) {
+    throw new Error(
+      `OOXML ZIP entry count ${end.entryCount} exceeds limit ${effectiveLimits.maxEntries}`
     )
-    const tailOffset = stats.size - tailLength
-    const tail = await readExactly(file, tailLength, tailOffset, "OOXML ZIP tail")
-    const end = readEndOfCentralDirectory(tail, tailOffset, stats.size)
-    assertZip32EndRecord(end, tail, tailOffset)
-
-    if (end.entryCount > effectiveLimits.maxEntries) {
-      throw new Error(
-        `OOXML ZIP entry count ${end.entryCount} exceeds limit ${effectiveLimits.maxEntries}`
-      )
-    }
-    if (end.centralDirectorySize > MAX_CENTRAL_DIRECTORY_BYTES) {
-      throw new Error(
-        `OOXML ZIP central directory exceeds bounded ${MAX_CENTRAL_DIRECTORY_BYTES}-byte reader limit`
-      )
-    }
-    if (end.centralDirectorySize < end.entryCount * CENTRAL_DIRECTORY_ENTRY_BYTES) {
-      throw new Error("OOXML ZIP central directory is truncated for its declared entry count")
-    }
-
-    const centralDirectoryEnd = end.centralDirectoryOffset + end.centralDirectorySize
-    if (
-      !Number.isSafeInteger(centralDirectoryEnd) ||
-      end.centralDirectoryOffset < 0 ||
-      centralDirectoryEnd !== end.offset
-    ) {
-      throw new Error("OOXML ZIP central-directory range must end immediately before EOCD")
-    }
-
-    const centralDirectory = await readExactly(
-      file,
-      end.centralDirectorySize,
-      end.centralDirectoryOffset,
-      "OOXML ZIP central directory"
+  }
+  if (end.centralDirectorySize > MAX_CENTRAL_DIRECTORY_BYTES) {
+    throw new Error(
+      `OOXML ZIP central directory exceeds bounded ${MAX_CENTRAL_DIRECTORY_BYTES}-byte reader limit`
     )
-    const parsed = parseCentralDirectory(centralDirectory, end, effectiveLimits)
-    const entries = await validateLocalEntries(file, parsed.entries, end.centralDirectoryOffset)
-    return {
-      entryCount: parsed.entryNames.length,
-      declaredUncompressedBytes: parsed.declaredUncompressedBytes,
-      entryNames: parsed.entryNames,
-      documentKind: parsed.documentKind,
-      archiveByteLength: stats.size,
-      entries
-    }
-  } finally {
-    await file.close()
+  }
+  if (end.centralDirectorySize < end.entryCount * CENTRAL_DIRECTORY_ENTRY_BYTES) {
+    throw new Error("OOXML ZIP central directory is truncated for its declared entry count")
+  }
+
+  const centralDirectoryEnd = end.centralDirectoryOffset + end.centralDirectorySize
+  if (
+    !Number.isSafeInteger(centralDirectoryEnd) ||
+    end.centralDirectoryOffset < 0 ||
+    centralDirectoryEnd !== end.offset
+  ) {
+    throw new Error("OOXML ZIP central-directory range must end immediately before EOCD")
+  }
+
+  const centralDirectory = readExactly(
+    archiveBytes,
+    end.centralDirectorySize,
+    end.centralDirectoryOffset,
+    "OOXML ZIP central directory"
+  )
+  const parsed = parseCentralDirectory(centralDirectory, end, effectiveLimits)
+  const entries = validateLocalEntries(archiveBytes, parsed.entries, end.centralDirectoryOffset)
+  return {
+    entryCount: parsed.entryNames.length,
+    declaredUncompressedBytes: parsed.declaredUncompressedBytes,
+    entryNames: parsed.entryNames,
+    documentKind: parsed.documentKind,
+    archiveByteLength: archiveBytes.length,
+    entries
   }
 }
 
@@ -170,20 +163,22 @@ function effectiveOoxmlLimits(limits: OoxmlPreflightLimits): EffectiveOoxmlLimit
   }
 }
 
-async function readExactly(
-  file: fs.FileHandle,
+function readExactly(
+  archiveBytes: Buffer,
   length: number,
   position: number,
   description: string
-): Promise<Buffer> {
-  const buffer = Buffer.alloc(length)
-  let bytesRead = 0
-  while (bytesRead < length) {
-    const result = await file.read(buffer, bytesRead, length - bytesRead, position + bytesRead)
-    if (result.bytesRead === 0) throw new Error(`${description} is truncated`)
-    bytesRead += result.bytesRead
+): Buffer {
+  if (
+    !Number.isSafeInteger(length) ||
+    !Number.isSafeInteger(position) ||
+    length < 0 ||
+    position < 0 ||
+    position + length > archiveBytes.length
+  ) {
+    throw new Error(`${description} is truncated`)
   }
-  return buffer
+  return archiveBytes.subarray(position, position + length)
 }
 
 function readEndOfCentralDirectory(
@@ -353,16 +348,16 @@ function parseCentralDirectory(
   }
 }
 
-async function validateLocalEntries(
-  file: fs.FileHandle,
+function validateLocalEntries(
+  archiveBytes: Buffer,
   centralEntries: readonly CentralDirectoryEntry[],
   centralDirectoryOffset: number
-): Promise<OoxmlPreflightEntry[]> {
+): OoxmlPreflightEntry[] {
   const validated: Array<OoxmlPreflightEntry & { physicalEnd: number }> = []
 
   for (const entry of centralEntries) {
-    const header = await readExactly(
-      file,
+    const header = readExactly(
+      archiveBytes,
       LOCAL_FILE_HEADER_BYTES,
       entry.localHeaderOffset,
       `OOXML ZIP local header for ${entry.name}`
@@ -393,8 +388,8 @@ async function validateLocalEntries(
     if (!Number.isSafeInteger(dataOffset) || dataOffset > centralDirectoryOffset) {
       throw new Error(`OOXML ZIP local-header range is outside the archive payload: ${entry.name}`)
     }
-    const variable = await readExactly(
-      file,
+    const variable = readExactly(
+      archiveBytes,
       variableLength,
       entry.localHeaderOffset + LOCAL_FILE_HEADER_BYTES,
       `OOXML ZIP local filename and extra fields for ${entry.name}`
@@ -427,7 +422,7 @@ async function validateLocalEntries(
     }
     const physicalEnd = (entry.flags & DATA_DESCRIPTOR_FLAG) === 0
       ? dataEnd
-      : await validateDataDescriptor(file, dataEnd, centralDirectoryOffset, entry)
+      : validateDataDescriptor(archiveBytes, dataEnd, centralDirectoryOffset, entry)
     validated.push({
       name: entry.name,
       flags: entry.flags,
@@ -458,18 +453,18 @@ function isZeroOrEqual(value: number, expected: number): boolean {
   return value === 0 || value === expected
 }
 
-async function validateDataDescriptor(
-  file: fs.FileHandle,
+function validateDataDescriptor(
+  archiveBytes: Buffer,
   offset: number,
   centralDirectoryOffset: number,
   entry: CentralDirectoryEntry
-): Promise<number> {
+): number {
   const available = centralDirectoryOffset - offset
   if (available < DATA_DESCRIPTOR_BYTES) {
     throw new Error(`OOXML ZIP data descriptor is truncated: ${entry.name}`)
   }
   const length = Math.min(SIGNED_DATA_DESCRIPTOR_BYTES, available)
-  const descriptor = await readExactly(file, length, offset, `OOXML ZIP data descriptor for ${entry.name}`)
+  const descriptor = readExactly(archiveBytes, length, offset, `OOXML ZIP data descriptor for ${entry.name}`)
   const signedMatches = descriptor.length >= SIGNED_DATA_DESCRIPTOR_BYTES &&
     descriptor.readUInt32LE(0) === DATA_DESCRIPTOR_SIGNATURE &&
     dataDescriptorMatches(descriptor, 4, entry)

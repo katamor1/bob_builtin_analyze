@@ -24,7 +24,7 @@ let cheerioModulePromise: Promise<CheerioModule> | undefined
 let mammothModulePromise: Promise<MammothModule> | undefined
 
 export async function extractDocx(
-  filePath: string,
+  documentBuffer: Buffer,
   context: DocxExtractionContext
 ): Promise<DocxExtractionResult> {
   const maxChunkBytes = boundedPositiveLimit(
@@ -34,7 +34,7 @@ export async function extractDocx(
   )
   const [mammoth, cheerio] = await Promise.all([loadMammoth(), loadCheerio()])
   const conversion = await mammoth.convertToHtml(
-    { path: filePath },
+    { buffer: documentBuffer },
     {
       externalFileAccess: false,
       convertImage: mammoth.images.imgElement(async () => ({ src: "" }))

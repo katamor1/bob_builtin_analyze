@@ -3,6 +3,7 @@ const childProcess = require("node:child_process")
 const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
+const { createHash } = require("node:crypto")
 const { test } = require("node:test")
 
 const { extractRuleDocuments } = require("../out/ruleAuthoring/extraction/documentExtractor")
@@ -49,6 +50,8 @@ test("real-machine bazaar-core DOCX and minimal XLSX retain distinct extracted r
     assert.deepEqual(xlsxRecord.expectedSelectors, expectedRuleSelectors)
     assert.deepEqual(xlsxRecord.expectedLocators, ["Rules", "Verification"])
 
+    const beforeWorkspace = snapshotWorkspace(output)
+
     const batch = await extractRuleDocuments([
       { filePath: path.join(output, docxRecord.logicalName) },
       { filePath: path.join(output, xlsxRecord.logicalName) }
@@ -83,7 +86,52 @@ test("real-machine bazaar-core DOCX and minimal XLSX retain distinct extracted r
       .map((chunk) => chunk.locator.sheet)
     assert.deepEqual([...new Set(xlsxLocators)].sort(), ["Rules", "Verification"])
     for (const locator of xlsxRecord.expectedLocators) assert.ok(xlsxLocators.includes(locator))
+    assert.deepEqual(snapshotWorkspace(output), beforeWorkspace)
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }
 })
+
+function snapshotWorkspace(root) {
+  const rootStats = fs.statSync(root, { bigint: true })
+  const snapshot = [{
+    path: ".",
+    type: "directory",
+    device: rootStats.dev.toString(10),
+    inode: rootStats.ino.toString(10),
+    mtimeNs: rootStats.mtimeNs.toString(10),
+    ctimeNs: rootStats.ctimeNs.toString(10)
+  }]
+  const visit = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const absolutePath = path.join(directory, entry.name)
+      const relativePath = path.relative(root, absolutePath).split(path.sep).join("/")
+      const stats = fs.statSync(absolutePath, { bigint: true })
+      if (entry.isDirectory()) {
+        snapshot.push({
+          path: relativePath,
+          type: "directory",
+          device: stats.dev.toString(10),
+          inode: stats.ino.toString(10),
+          mtimeNs: stats.mtimeNs.toString(10),
+          ctimeNs: stats.ctimeNs.toString(10)
+        })
+        visit(absolutePath)
+      } else {
+        const bytes = fs.readFileSync(absolutePath)
+        snapshot.push({
+          path: relativePath,
+          type: "file",
+          device: stats.dev.toString(10),
+          inode: stats.ino.toString(10),
+          byteSize: stats.size.toString(10),
+          mtimeNs: stats.mtimeNs.toString(10),
+          ctimeNs: stats.ctimeNs.toString(10),
+          sha256: createHash("sha256").update(bytes).digest("hex")
+        })
+      }
+    }
+  }
+  visit(root)
+  return snapshot.sort((left, right) => left.path.localeCompare(right.path))
+}

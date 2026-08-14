@@ -68,7 +68,13 @@ extensions/bob-bazaar-review/
       schemaValidator.ts
       validator.ts
     ruleAuthoring/
-      extraction/documentExtractor.ts
+      extraction/
+        documentExtractor.ts
+        ooxmlArchive.ts
+        ooxmlPreflight.ts
+        docxExtractor.ts
+        xlsxExtractor.ts
+        pdfExtractor.ts
       evidenceSelection.ts
       sourceIndex.ts
       ruleProposalValidation.ts
@@ -333,6 +339,16 @@ base hash確認
 ```
 
 `cancel時no-change`を保証する。cancel、base hash mismatch、revision conflict、validation failureではcurrent fileとbackup setを変更しない。
+
+### 9.1 検証済みOOXML snapshotとparser input
+
+`src/ruleAuthoring/extraction/ooxmlArchive.ts`の`prepareOoxmlParserInput`は、選択したDOCX/XLSXごとに1つの`FileHandle`を`r` modeで開き、同じhandleをsnapshot準備完了まで保持する。最初の`stat({ bigint: true })`を事前fingerprintのdevice、inode、byte size、mtimeと照合してからallocationし、source byte上限内の内容を1回の読み取り処理で1つのsnapshot Bufferへ固定する。snapshot SHA-256を含むfingerprintと、読み取り後の`BigInt` statを再照合し、不一致時はparserをloadしない。
+
+`src/ruleAuthoring/extraction/ooxmlPreflight.ts`は同じsnapshot Bufferを受け取り、ZIP32のEOCD、central directory、local header、entry名、重複、overlap、data descriptor、entry count、declared byte、stored sizeと範囲を検証する。preflight後は全entry payloadを順番に検証し、stored entryの長さ、deflate output上限、圧縮入力の完全消費、実展開長、CRCのいずれかが一致しない場合もparser load前にfail-closedとする。
+
+通常のDOCX/XLSXの`parserInput`は元のsnapshot Bufferと同一objectであり、`docxExtractor.ts`と`xlsxExtractor.ts`はpathではなくBufferだけを受け取る。`xl/styles.xml`と`xl/sharedStrings.xml`の両方が欠けるXLSXだけ、検証済みentryをnull-prototype mapへ保持し、最小stylesheetを追加したBufferをメモリ内で再構築する。拡張所有の`fflate`直接dynamic importは`ooxmlArchive.ts`のこのmissing-both branchだけであり、`read-excel-file@9.3.1`によるparser由来の推移依存`fflate` loadとは区別する。この準備処理は原本とworkspaceへ書き込みません。
+
+この変更は公開Command ID、設定、persisted schema、安全なpathless日本語エラーメッセージ、extension version、dependency宣言とlockfileを変更しない。
 
 ## 10. template refresh
 

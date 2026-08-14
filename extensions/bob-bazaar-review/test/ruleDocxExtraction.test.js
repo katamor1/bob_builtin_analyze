@@ -18,7 +18,7 @@ async function fixtureFile(t, bytes) {
 
 test("extractDocx preserves heading, paragraph, list, and table document order with structural locators", async (t) => {
   const filePath = await fixtureFile(t, createDocxFixture())
-  const result = await extractDocx(filePath, {
+  const result = await extractDocx(await fs.readFile(filePath), {
     sourceId: "src-0123456789ab",
     maxChunkBytes: 32 * 1024
   })
@@ -44,7 +44,7 @@ test("extractDocx preserves heading, paragraph, list, and table document order w
 
 test("extractDocx emits bounded Mammoth/image warning codes and omits image bytes", async (t) => {
   const filePath = await fixtureFile(t, createDocxFixture())
-  const result = await extractDocx(filePath, {
+  const result = await extractDocx(await fs.readFile(filePath), {
     sourceId: "src-0123456789ab",
     maxChunkBytes: 32 * 1024
   })
@@ -60,7 +60,7 @@ test("extractDocx emits bounded Mammoth/image warning codes and omits image byte
 test("extractDocx applies the UTF-8 chunk limit and assigns ordered part_index locators", async (t) => {
   const longParagraph = `${"x".repeat(32 * 1024)}終端`
   const filePath = await fixtureFile(t, createDocxFixture({ longParagraph }))
-  const result = await extractDocx(filePath, {
+  const result = await extractDocx(await fs.readFile(filePath), {
     sourceId: "src-0123456789ab",
     maxChunkBytes: 32 * 1024
   })
@@ -75,7 +75,7 @@ test("extractDocx applies the UTF-8 chunk limit and assigns ordered part_index l
 test("extractDocx clamps a caller-raised chunk limit to the approved 32 KiB ceiling", async (t) => {
   const longParagraph = "z".repeat(DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes + 1)
   const filePath = await fixtureFile(t, createDocxFixture({ longParagraph }))
-  const result = await extractDocx(filePath, {
+  const result = await extractDocx(await fs.readFile(filePath), {
     sourceId: "src-0123456789ab",
     maxChunkBytes: DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes * 4
   })

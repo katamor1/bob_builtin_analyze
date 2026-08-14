@@ -73,6 +73,10 @@ function createDocxFixture(options = {}) {
       relationship("rIdImage", "image", "media/pixel.png")
     ]),
     "word/media/pixel.png": Buffer.from("89504e470d0a1a0a", "hex")
+  }, options.additionalEntries, {
+    deflate: options.deflate === true,
+    dataDescriptor: options.dataDescriptor === true,
+    dataDescriptorSignature: options.dataDescriptorSignature !== false
   })
 }
 

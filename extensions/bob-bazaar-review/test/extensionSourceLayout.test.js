@@ -63,6 +63,7 @@ test("rule authoring domain, UI, and workflow modules stay in their ownership bo
     "ruleAuthoring/ruleApplyTransaction.ts",
     "ruleAuthoring/ruleAuthoringRunStore.ts",
     "ruleAuthoring/extraction/docxExtractor.ts",
+    "ruleAuthoring/extraction/ooxmlArchive.ts",
     "ruleAuthoring/extraction/xlsxExtractor.ts",
     "ruleAuthoring/extraction/pdfExtractor.ts"
   ]

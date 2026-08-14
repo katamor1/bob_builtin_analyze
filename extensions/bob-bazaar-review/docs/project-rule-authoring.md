@@ -32,6 +32,14 @@ timeout、cancel、combined output 上限を適用し、終了時は子 process 
 
 directory の暗黙走査、macro 実行、Excel formula 再計算、external link refresh、embedded object 実行、画像 OCR は行いません。原本は `.bob` へコピーしないため、元資料の保管・権限・廃棄はプロジェクト側で管理します。
 
+## 検証済みOOXML snapshot境界
+
+選択したDOCX/XLSXは、parserへ渡す前に選択時のfingerprintに結び付いたsnapshot Bufferへ固定し、そのBufferのarchive構造と全entryのpayloadを検証します。不一致や不正なentryを検出した場合は、文書本文をparserへ渡さず安全に停止します。
+
+通常のDOCX/XLSXには検証に使った元のsnapshot Bufferをそのまま渡します。`xl/styles.xml`と`xl/sharedStrings.xml`の両方が欠けるXLSXだけ、検証済み内容へ最小stylesheetを加えたBufferをメモリ内で再構築します。この準備処理は原本とworkspaceへ書き込まず、元資料を置換・補正しません。
+
+この境界は既存のfile picker、抽出preview、AI consent、固定された利用者向けエラーを変更しません。
+
 ## 起動から AI consent まで
 
 1. Command Palette で `Bob Bazaar Review: Word・Excel・PDF からプロジェクト規約を作成`（`bobBazaar.authorProjectRulesFromDocuments`）を実行します。

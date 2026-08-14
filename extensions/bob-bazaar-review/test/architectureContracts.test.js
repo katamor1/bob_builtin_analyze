@@ -117,3 +117,57 @@ test("project rule authoring docs describe the implemented module and provider b
     assert.ok(guide.includes(providerId), `authoring guide must document ${providerId}`)
   }
 })
+
+test("current rule authoring docs define the validated OOXML snapshot boundary", () => {
+  const contracts = {
+    "README.md": [
+      /fingerprintに結び付いたsnapshot Buffer/,
+      /通常のDOCX\/XLSX.*元のsnapshot Buffer/s,
+      /styles\.xml.*sharedStrings\.xml.*両方.*欠けるXLSX.*メモリ内/s,
+      /原本とworkspaceへ書き込ま/
+    ],
+    "docs/project-rule-authoring.md": [
+      /parserへ渡す前.*snapshot Buffer/s,
+      /通常のDOCX\/XLSX.*元のsnapshot Buffer/s,
+      /styles\.xml.*sharedStrings\.xml.*両方.*欠けるXLSX.*再構築/s,
+      /原本とworkspaceへ書き込ま/
+    ],
+    "docs/basic-design-ja.md": [
+      /snapshot Buffer.*ZIP32.*全entry payload.*parser/s,
+      /通常のDOCX\/XLSX.*missing-both/s,
+      /公開Command ID.*persisted schema.*extension version/s
+    ],
+    "docs/detailed-design-ja.md": [
+      /src\/ruleAuthoring\/extraction\/ooxmlArchive\.ts/,
+      /1つの`FileHandle`/,
+      /`BigInt` stat/,
+      /元のsnapshot Bufferと同一object/,
+      /直接dynamic import.*parser由来の推移依存/s,
+      /dependency宣言とlockfile/
+    ],
+    "docs/unit-test-spec-ja.md": [
+      /source byte上限/,
+      /same-size \/ same-mtime replacement/,
+      /全entry payload.*parser loadより先/s,
+      /通常のDOCX\/XLSX.*snapshot Buffer/s,
+      /missing-both.*fflate/s
+    ]
+  }
+
+  for (const [relativePath, patterns] of Object.entries(contracts)) {
+    const document = fs.readFileSync(path.join(extensionRoot, relativePath), "utf8")
+    for (const pattern of patterns) {
+      assert.match(document, pattern, `${relativePath} must document OOXML contract: ${pattern}`)
+    }
+  }
+
+  const guide = fs.readFileSync(path.join(extensionRoot, "docs", "project-rule-authoring.md"), "utf8")
+  assert.match(guide, /project-rule-authoring-windows-uat\.md/)
+
+  const windowsUat = fs.readFileSync(
+    path.join(extensionRoot, "docs", "project-rule-authoring-windows-uat.md"),
+    "utf8"
+  )
+  assert.match(windowsUat, /^Status: \*\*PENDING/m)
+  assert.match(windowsUat, /^### PRA-WIN-001 /m)
+})

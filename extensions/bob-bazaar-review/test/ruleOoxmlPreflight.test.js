@@ -1,7 +1,4 @@
 const assert = require("node:assert/strict")
-const fs = require("node:fs/promises")
-const os = require("node:os")
-const path = require("node:path")
 const { test } = require("node:test")
 
 const { preflightOoxmlArchive } = require("../out/ruleAuthoring/extraction/ooxmlPreflight")
@@ -31,19 +28,8 @@ function xlsxEntries(overrides = {}) {
   ]
 }
 
-async function withArchive(buffer, action) {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "bob-ooxml-preflight-"))
-  const filePath = path.join(directory, "source.office")
-  try {
-    await fs.writeFile(filePath, buffer)
-    return await action(filePath)
-  } finally {
-    await fs.rm(directory, { recursive: true, force: true })
-  }
-}
-
 async function preflight(buffer, limits = DEFAULT_LIMITS) {
-  return withArchive(buffer, (filePath) => preflightOoxmlArchive(filePath, limits))
+  return preflightOoxmlArchive(buffer, limits)
 }
 
 test("preflights a DOCX signature from ZIP metadata without extracting entries", async () => {
