@@ -76,7 +76,14 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
         run,
         mismatchMessage: 'primary repository refs changed during bundle creation'
       })
-      if (JSON.stringify(after) !== JSON.stringify(primaryBoundary)) throw new Error('primary repository refs changed during bundle creation')
+      if (JSON.stringify(after.ownedRefs) !== JSON.stringify(primaryBoundary.ownedRefs) ||
+          JSON.stringify(after.symbolicRemoteHead) !== JSON.stringify(primaryBoundary.symbolicRemoteHead) ||
+          JSON.stringify(after.head) !== JSON.stringify(primaryBoundary.head)) {
+        throw new Error('primary repository refs changed during bundle creation')
+      }
+      if (JSON.stringify(after.otherRefs) !== JSON.stringify(primaryBoundary.otherRefs)) {
+        throw new Error('primary repository other refs changed during bundle creation')
+      }
       validatePrimaryBundleHeads(heads, primaryBoundary)
     }
     bundleHeads.push({ path: relativePath, heads })
@@ -244,15 +251,21 @@ function observeAndValidatePrimaryRefs({ repository, inventory, run, mismatchMes
   const observed = parsePrimaryRefs(runChecked(
     run,
     'git',
-    ['-C', repository.sourcePath, 'for-each-ref', '--sort=refname', '--format=%(refname)%09%(objectname)%09%(symref)', 'refs/heads', 'refs/remotes/origin'],
+    ['-C', repository.sourcePath, 'for-each-ref', '--sort=refname', '--format=%(refname)%09%(objectname)%09%(symref)', 'refs'],
     'primary repository refs'
   ))
   const headTarget = runChecked(run, 'git', ['-C', repository.sourcePath, 'symbolic-ref', '--quiet', 'HEAD'], 'primary symbolic HEAD').trim()
   if (!expected.has(headTarget)) throw new Error(mismatchMessage)
 
   const regular = new Map()
+  const otherRefs = []
   let symbolicRemoteHead = null
   for (const entry of observed) {
+    const inventoryOwned = entry.ref.startsWith('refs/heads/') || entry.ref.startsWith('refs/remotes/origin/')
+    if (!inventoryOwned) {
+      otherRefs.push(entry)
+      continue
+    }
     if (entry.symref) {
       if (entry.ref !== 'refs/remotes/origin/HEAD' || entry.symref !== 'refs/remotes/origin/main' || expected.get(entry.symref) !== entry.sha) throw new Error(mismatchMessage)
       symbolicRemoteHead = { ref: entry.ref, sha: entry.sha, target: entry.symref }
@@ -263,7 +276,8 @@ function observeAndValidatePrimaryRefs({ repository, inventory, run, mismatchMes
   }
   if (regular.size !== expected.size || [...expected].some(([ref, sha]) => regular.get(ref) !== sha)) throw new Error(mismatchMessage)
   return {
-    refs: [...regular].map(([ref, sha]) => ({ ref, sha })),
+    ownedRefs: [...regular].map(([ref, sha]) => ({ ref, sha })),
+    otherRefs,
     symbolicRemoteHead,
     head: { ref: 'HEAD', sha: expected.get(headTarget), target: headTarget }
   }
@@ -287,7 +301,8 @@ function parsePrimaryRefs(text) {
   const seen = new Set()
   for (const line of nonEmptyLines(text)) {
     const fields = line.split('\t')
-    if (fields.length < 2 || fields.length > 3 || !/^refs\/(?:heads|remotes\/origin)\/.+/u.test(fields[0]) || !/^[0-9a-f]{40}$/u.test(fields[1]) || seen.has(fields[0])) {
+    if (fields.length < 2 || fields.length > 3 || !/^refs\/[^\s]+$/u.test(fields[0]) || !/^[0-9a-f]{40}$/u.test(fields[1]) ||
+        (fields[2] && !/^refs\/[^\s]+$/u.test(fields[2])) || seen.has(fields[0])) {
       throw new Error('invalid primary repository ref observation')
     }
     seen.add(fields[0])
@@ -297,18 +312,18 @@ function parsePrimaryRefs(text) {
 }
 
 function validatePrimaryBundleHeads(lines, boundary) {
-  const expected = new Map(boundary.refs.map(({ ref, sha }) => [ref, sha]))
+  const expected = new Map([...boundary.ownedRefs, ...boundary.otherRefs].map(({ ref, sha }) => [ref, sha]))
   if (boundary.symbolicRemoteHead) expected.set(boundary.symbolicRemoteHead.ref, boundary.symbolicRemoteHead.sha)
   expected.set('HEAD', boundary.head.sha)
   const observed = new Map()
   for (const line of lines) {
     const match = line.match(/^([0-9a-f]{40}) (.+)$/u)
     if (!match || observed.has(match[2]) || !expected.has(match[2]) || expected.get(match[2]) !== match[1]) {
-      throw new Error('primary bundle refs do not match inventory')
+      throw new Error('primary bundle refs do not match captured boundary')
     }
     observed.set(match[2], match[1])
   }
-  if (observed.size !== expected.size || [...expected].some(([ref, sha]) => observed.get(ref) !== sha)) throw new Error('primary bundle refs do not match inventory')
+  if (observed.size !== expected.size || [...expected].some(([ref, sha]) => observed.get(ref) !== sha)) throw new Error('primary bundle refs do not match captured boundary')
 }
 
 async function createBundle(repository, bundlePath, dependencies) {

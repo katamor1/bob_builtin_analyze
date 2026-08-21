@@ -126,6 +126,71 @@ test('primary bundle rejects a non-HEAD ref mutation during bundle creation', as
   }
 })
 
+test('primary all-refs bundle preserves stable stash, tag, and notes namespaces', async () => {
+  const fixture = await createFixture()
+  try {
+    writeFileSync(path.join(fixture.repositoryRoot, 'tracked.txt'), 'stashed change\n')
+    git(['-C', fixture.repositoryRoot, 'stash', 'push', '-m', 'stable archive stash'])
+    git(['-C', fixture.repositoryRoot, 'tag', 'stable-archive-tag', fixture.mainSha])
+    git(['-C', fixture.repositoryRoot, 'notes', 'add', '-m', 'stable archive note', fixture.mainSha])
+    const expected = [
+      `${git(['-C', fixture.repositoryRoot, 'rev-parse', 'refs/notes/commits']).trim()} refs/notes/commits`,
+      `${git(['-C', fixture.repositoryRoot, 'rev-parse', 'refs/stash']).trim()} refs/stash`,
+      `${git(['-C', fixture.repositoryRoot, 'rev-parse', 'refs/tags/stable-archive-tag']).trim()} refs/tags/stable-archive-tag`
+    ]
+
+    const result = await createMainConsolidationArchive(fixture.args, { randomUUID: () => 'stable-other-refs' })
+    const repositoryBundle = result.summary.bundleHeads.find((entry) => entry.path === 'bundles/repository-all-refs.bundle')
+    for (const line of expected) assert.ok(repositoryBundle.heads.includes(line), `missing archived ref: ${line}`)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('primary bundle rejects movement, disappearance, and appearance in other ref namespaces during creation', async (t) => {
+  const cases = [
+    {
+      name: 'tag moved',
+      prepare: (fixture) => git(['-C', fixture.repositoryRoot, 'tag', 'boundary-tag', fixture.mainSha]),
+      mutate: (fixture) => git(['-C', fixture.repositoryRoot, 'update-ref', 'refs/tags/boundary-tag', fixture.featureSha])
+    },
+    {
+      name: 'tag disappeared',
+      prepare: (fixture) => git(['-C', fixture.repositoryRoot, 'tag', 'boundary-tag', fixture.mainSha]),
+      mutate: (fixture) => git(['-C', fixture.repositoryRoot, 'update-ref', '-d', 'refs/tags/boundary-tag'])
+    },
+    {
+      name: 'notes ref appeared',
+      prepare: () => {},
+      mutate: (fixture) => git(['-C', fixture.repositoryRoot, 'notes', 'add', '-m', 'late note', fixture.mainSha])
+    }
+  ]
+  for (const scenario of cases) {
+    await t.test(scenario.name, async () => {
+      const fixture = await createFixture()
+      try {
+        scenario.prepare(fixture)
+        let mutated = false
+        const run = (command, args) => {
+          const result = spawnSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+          if (!mutated && command === 'git' && args.includes('bundle') && args.includes('create') && args.includes(fixture.repositoryRoot)) {
+            mutated = true
+            scenario.mutate(fixture)
+          }
+          return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
+        }
+        await assert.rejects(
+          createMainConsolidationArchive(fixture.args, { run }),
+          /primary repository other refs changed during bundle creation/
+        )
+        assert.equal(existsSync(fixture.archiveRoot), false)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    })
+  }
+})
+
 test('dirty external repositories fail closed and retain only the diagnostic staging directory', async () => {
   const fixture = await createFixture()
   try {
