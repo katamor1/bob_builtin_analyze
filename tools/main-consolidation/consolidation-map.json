@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "bob-builtin-analyze/main-consolidation-map/v1",
+  "repository": "katamor1/bob_builtin_analyze",
+  "baselineMain": "44027562fe201d47f8f4cf08241ffe29384e9902",
+  "processBranches": [
+    "codex/main-consolidation-control-plane"
+  ],
+  "carriers": [
+    {
+      "id": "workflow-a",
+      "fromSha": "56ba084d07f1641fa0454fe1da024f14fe99fd37",
+      "toSha": "683e794eb4a39eea7bc3630bedbd2a557f4af8af",
+      "pullRequests": [143, 148, 149, 151],
+      "branches": [
+        { "branch": "codex/workflow-contract-v2-f7", "expectedSha": "2af41862b61d3e0f53218cc0f760b19292870a3b", "pullRequest": 143, "baseBranch": "main" },
+        { "branch": "codex/workflow-contract-v2-p1", "expectedSha": "a0da0c8f17cbb648873577a573230c8241f755f2", "pullRequest": 148, "baseBranch": "codex/workflow-contract-v2-f7" },
+        { "branch": "codex/workflow-contract-v2-p2", "expectedSha": "629f53ade7fcb42481fad6906d36ef6425fd1071", "pullRequest": 149, "baseBranch": "codex/workflow-contract-v2-p1" },
+        { "branch": "codex/workflow-contract-v2-p3", "expectedSha": "683e794eb4a39eea7bc3630bedbd2a557f4af8af", "pullRequest": 151, "baseBranch": "codex/workflow-contract-v2-p2" }
+      ]
+    },
+    {
+      "id": "workflow-b",
+      "fromSha": "683e794eb4a39eea7bc3630bedbd2a557f4af8af",
+      "toSha": "e860d1ebbafe7068fc6871b16c9586a11b4fe19d",
+      "pullRequests": [153, 154, 155, 157],
+      "branches": [
+        { "branch": "codex/workflow-contract-v2-p4", "expectedSha": "e0766f9448033688964fabbcfa6ae73b3d849ed0", "pullRequest": 153, "baseBranch": "codex/workflow-contract-v2-p3" },
+        { "branch": "codex/workflow-contract-v2-p5", "expectedSha": "45260e0b5a96e50bf01b820b71103b33f2067d8c", "pullRequest": 154, "baseBranch": "codex/workflow-contract-v2-p4" },
+        { "branch": "codex/workflow-contract-v2-p6", "expectedSha": "95d245ce2eba9ac1412038afe96dc509bd6735de", "pullRequest": 155, "baseBranch": "codex/workflow-contract-v2-p5" },
+        { "branch": "codex/workflow-contract-v2-p7", "expectedSha": "e860d1ebbafe7068fc6871b16c9586a11b4fe19d", "pullRequest": 157, "baseBranch": "codex/workflow-contract-v2-p6" }
+      ]
+    },
+    {
+      "id": "workflow-c",
+      "fromSha": "e860d1ebbafe7068fc6871b16c9586a11b4fe19d",
+      "toSha": "a18c09b10fa51702d312e34940a694ad971a48cc",
+      "pullRequests": [158, 160, 161, 162, 163, 164],
+      "branches": [
+        { "branch": "codex/workflow-contract-v2-r1", "expectedSha": "66e005faf0046ca931c83abc41ce533488d2f581", "pullRequest": 158, "baseBranch": "codex/workflow-contract-v2-p7" },
+        { "branch": "codex/workflow-contract-v2-r2", "expectedSha": "7bad4e42f2146b8ae229e05427a5d2ae013cdb2e", "pullRequest": 160, "baseBranch": "codex/workflow-contract-v2-r1" },
+        { "branch": "codex/workflow-contract-v2-r3", "expectedSha": "e0a4b1b25166c4d47cf8f5564c01cf30c63d9180", "pullRequest": 161, "baseBranch": "codex/workflow-contract-v2-r2" },
+        { "branch": "codex/workflow-contract-v2-r4", "expectedSha": "266f13f8544338ce0445c749f4625a1f80791c36", "pullRequest": 162, "baseBranch": "codex/workflow-contract-v2-r3" },
+        { "branch": "codex/workflow-contract-v2-r5", "expectedSha": "de65647c18a122b6f88af3967ba509282b64d6db", "pullRequest": 163, "baseBranch": "codex/workflow-contract-v2-r4" },
+        { "branch": "codex/workflow-contract-v2-r6", "expectedSha": "a18c09b10fa51702d312e34940a694ad971a48cc", "pullRequest": 164, "baseBranch": "codex/workflow-contract-v2-r5" }
+      ]
+    },
+    {
+      "id": "processing-a",
+      "fromSha": "8793804f2f99fd1d545cb496064bcbdc7df4bf40",
+      "toSha": "4d0fb728763db9d13c87d000790a88c45900733e",
+      "pullRequests": [145, 146],
+      "branches": [
+        { "branch": "codex/three-extension-p1-release-gates", "expectedSha": "3e2dd68d4a0a880e7fa7ed065f5a1be2bd25a0ca", "baseBranch": "main" },
+        { "branch": "codex/task13-processing-budget-runtime-20260723", "expectedSha": "bd29233dac84922e2f868dcb9d654644f6ee0d6a", "pullRequest": 145, "baseBranch": "codex/three-extension-p1-release-gates" },
+        { "branch": "codex/task14-bounded-document-extraction-20260723", "expectedSha": "4d0fb728763db9d13c87d000790a88c45900733e", "pullRequest": 146, "baseBranch": "codex/task13-processing-budget-runtime-20260723" }
+      ]
+    },
+    {
+      "id": "processing-b",
+      "fromSha": "4d0fb728763db9d13c87d000790a88c45900733e",
+      "toSha": "49f39e1a6ec35e5db98e9ef698d4ce43369c9760",
+      "pullRequests": [147, 150],
+      "branches": [
+        { "branch": "codex/task15-workbook-document-aggregate-caps-20260724", "expectedSha": "7fc7a371e6506290d8626d06e9b12c2a67888b47", "pullRequest": 147, "baseBranch": "codex/task14-bounded-document-extraction-20260723" },
+        { "branch": "codex/task16-review-input-process-budgets-20260724", "expectedSha": "49f39e1a6ec35e5db98e9ef698d4ce43369c9760", "pullRequest": 150, "baseBranch": "codex/task15-workbook-document-aggregate-caps-20260724" }
+      ]
+    },
+    {
+      "id": "processing-c",
+      "fromSha": "49f39e1a6ec35e5db98e9ef698d4ce43369c9760",
+      "toSha": "2d8a570fa1c0646fd662346744449b1abc1142b2",
+      "pullRequests": [152, 159],
+      "branches": [
+        { "branch": "codex/task17-deadlines-process-control-paths-20260724", "expectedSha": "7ea786afd5715d841526000a402c831d6c2a203c", "pullRequest": 152, "baseBranch": "codex/task16-review-input-process-budgets-20260724" },
+        { "branch": "codex/task18-processing-budget-report-handoff-20260726", "expectedSha": "2d8a570fa1c0646fd662346744449b1abc1142b2", "pullRequest": 159, "baseBranch": "codex/task17-deadlines-process-control-paths-20260724" }
+      ]
+    }
+  ],
+  "checkpoints": [
+    { "branch": "codex/contract-v2-f5-rebased", "expectedSha": "3e82579a45291604ccd3313b561d8bc62557b1ce", "owner": "workflow-checkpoint" },
+    { "branch": "codex/contract-v2-f6-rebased", "expectedSha": "9a0bd62d817992bca8fa31f3b7c986c8c0fe97f8", "owner": "workflow-checkpoint" },
+    { "branch": "codex/workflow-contract-v2-r5-rebased", "expectedSha": "2920dc4f15b35532fbbb4e22f4d286afc2e8b19f", "owner": "workflow-checkpoint" }
+  ],
+  "independentTriage": [
+    { "branch": "codex/contract-v2-design", "expectedSha": "7d8225a2547095ae587c4a4ff1ca9a43b2ec08d9", "owner": "independent-triage" },
+    { "branch": "codex/operator-ux-closure", "expectedSha": "b9773edf61882c3092e63d73997d2b35c2352b0f", "owner": "independent-triage" },
+    { "branch": "codex/reproducible-runtime-v2-design-20260717", "expectedSha": "f7f65b0d42df953cfe46b64b0d7a9dcec652ee2c", "owner": "independent-triage" },
+    { "branch": "codex/workflow-contract-v2-r5-pre-r4-merge", "expectedSha": "6c9684f2a11b14adc2a8d3a600c09d47c865f133", "owner": "independent-triage" }
+  ],
+  "mergedXlsx": [
+    { "branch": "codex/fix-bazaar-minimal-xlsx", "expectedSha": "5adc59d50fa54d54b883ba8be2e9fe3571aa406f", "owner": "merged-xlsx" },
+    { "branch": "codex/harden-ooxml-snapshot-input", "expectedSha": "64b5f3c293e379f8877a0cf11a41c19ea6f58fb7", "owner": "merged-xlsx" }
+  ]
+}
