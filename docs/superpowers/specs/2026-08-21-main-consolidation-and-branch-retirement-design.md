@@ -1,6 +1,7 @@
 # Main一本化とbranch retirementの設計
 
-- Status: review requested
+- Status: approved for implementation
+- Approved: 2026-08-21
 - Date: 2026-08-21
 - Repository: `katamor1/bob_builtin_analyze`
 - Control-plane branch: `codex/main-consolidation-control-plane`
