@@ -2,18 +2,34 @@ import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { lstat, mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, mkdir, readFile, readdir, rename as fsRename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { createMainConsolidationArchive } from '../create-main-consolidation-archive.mjs'
+import { createMainConsolidationArchive as createProductionArchive } from '../create-main-consolidation-archive.mjs'
 
 const EXPECTED_LEAF = '2026-08-21-main-consolidation'
 const sourceMap = JSON.parse(await readFile(new URL('../consolidation-map.json', import.meta.url), 'utf8'))
 
+function createMainConsolidationArchive(argv, dependencies = {}) {
+  return createProductionArchive(argv, {
+    validateConsolidationMap: (candidate) => {
+      const normalized = structuredClone(candidate)
+      normalized.carriers.forEach((carrier, index) => {
+        carrier.fromSha = sourceMap.carriers[index].fromSha
+        carrier.toSha = sourceMap.carriers[index].toSha
+      })
+      assert.deepEqual(normalized, sourceMap, 'test fixture map SHA-256 mismatch')
+    },
+    validateArchiveInventory: () => {},
+    ...dependencies
+  })
+}
+
 test('creates a staged archive whose real bundle restores every branch head', async () => {
   const fixture = await createFixture()
   try {
+    await addLinkedWorktreeBoundary(fixture)
     const beforeArtifact = await fileSnapshot(fixture.artifactPath)
     const result = await createMainConsolidationArchive(fixture.args, {
       now: () => new Date('2026-08-21T00:00:00.000Z'),
@@ -32,6 +48,7 @@ test('creates a staged archive whose real bundle restores every branch head', as
     const manifestText = await readFile(path.join(fixture.archiveRoot, 'archive-manifest.json'), 'utf8')
     const manifest = JSON.parse(manifestText)
     const manifestPaths = manifest.entries.map((entry) => entry.path)
+    assert.equal(manifestPaths.length, 24)
     assert.deepEqual(manifestPaths, [...manifestPaths].sort())
     assert.deepEqual(manifest.entries.filter((entry) => entry.path.endsWith('.bundle')).map((entry) => entry.path), [
       'bundles/accepted-main-all-refs.bundle',
@@ -62,10 +79,23 @@ test('creates a staged archive whose real bundle restores every branch head', as
     ])
     assert.equal(manifestPaths.filter((entry) => entry.startsWith('carrier-patches/')).length, 7)
 
-    const restored = path.join(fixture.root, 'restored')
-    git(['clone', path.join(fixture.archiveRoot, 'bundles', 'repository-all-refs.bundle'), restored])
-    assert.equal(git(['-C', restored, 'rev-parse', 'refs/heads/main']).trim(), fixture.mainSha)
-    assert.equal(git(['-C', restored, 'rev-parse', 'refs/remotes/origin/feature']).trim(), fixture.featureSha)
+    assert.equal(result.summary.bundleHeads.length, 3)
+    const primaryHeads = result.summary.bundleHeads.find((entry) => entry.path === 'bundles/repository-all-refs.bundle').heads
+    const integrationHeads = result.summary.bundleHeads.find((entry) => entry.path === 'bundles/integration-xlsx-on-prereq-all-refs.bundle').heads
+    const acceptedHeads = result.summary.bundleHeads.find((entry) => entry.path === 'bundles/accepted-main-all-refs.bundle').heads
+    assert.ok(primaryHeads.some((line) => line.endsWith(' refs/codex/turn-diffs/archive-test/base')))
+    assert.ok(primaryHeads.some((line) => / worktrees\/[^/]+\/HEAD$/u.test(line)))
+    assert.ok(integrationHeads.some((line) => line.endsWith(' refs/heads/local-only-integration')))
+    assert.ok(acceptedHeads.some((line) => line.endsWith(' refs/heads/local-only-accepted')))
+    for (const [index, bundle] of result.summary.bundleHeads.entries()) {
+      const restored = path.join(fixture.root, `restored-${index}`)
+      restoreEveryAdvertisedHead(path.join(fixture.archiveRoot, ...bundle.path.split('/')), bundle.heads, restored)
+    }
+    assert.throws(() => restoreEveryAdvertisedHead(
+      path.join(fixture.archiveRoot, ...result.summary.bundleHeads[0].path.split('/')),
+      result.summary.bundleHeads[0].heads.map((line, index) => index === 0 ? `${'f'.repeat(40)} ${line.slice(41)}` : line),
+      path.join(fixture.root, 'restored-mismatch')
+    ), /advertised bundle heads mismatch/u)
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
   }
@@ -128,6 +158,109 @@ test('verify-existing rejects a canonical manifest that omits the fixed carrier 
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
   }
+})
+
+test('verify-existing requires the exact bundles, artifacts, snapshots, and no extra entries', async (t) => {
+  const omissions = [
+    ['bundle', 'bundles/repository-all-refs.bundle'],
+    ['artifact', 'artifacts/operator-result/operator-result.json'],
+    ['snapshot', 'inventory/remote-heads-before.txt']
+  ]
+  for (const [name, omittedPath] of omissions) {
+    await t.test(`omitted ${name}`, async () => {
+      const fixture = await createFixture()
+      try {
+        await createMainConsolidationArchive(fixture.args, { randomUUID: () => `omitted-${name}` })
+        await rewriteManifest(fixture, (manifest) => {
+          manifest.entries = manifest.entries.filter((entry) => entry.path !== omittedPath)
+        })
+        await assert.rejects(createMainConsolidationArchive(verifyArguments(fixture)), /required archive entry set/u)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    })
+  }
+
+  await t.test('extra re-signed entry', async () => {
+    const fixture = await createFixture()
+    try {
+      await createMainConsolidationArchive(fixture.args, { randomUUID: () => 'extra-entry' })
+      const extraPath = path.join(fixture.archiveRoot, 'extra.txt')
+      await writeFile(extraPath, 'extra')
+      const extraBytes = await readFile(extraPath)
+      await rewriteManifest(fixture, (manifest) => {
+        manifest.entries.push({
+          path: 'extra.txt',
+          byteSize: extraBytes.byteLength,
+          sha256: createHash('sha256').update(extraBytes).digest('hex')
+        })
+        manifest.entries.sort((left, right) => left.path.localeCompare(right.path))
+      })
+      await assert.rejects(createMainConsolidationArchive(verifyArguments(fixture)), /required archive entry set/u)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
+})
+
+test('verify-existing binds artifacts, snapshots, bundle heads, and prior summary identity', async (t) => {
+  await t.test('artifact metadata differs from inventory', async () => {
+    const fixture = await createFixture()
+    try {
+      await createMainConsolidationArchive(fixture.args, { randomUUID: () => 'artifact-binding' })
+      const inventory = JSON.parse(await readFile(fixture.inventoryPath, 'utf8'))
+      inventory.artifacts.find((entry) => entry.label === 'operator-result').sha256 = 'a'.repeat(64)
+      await writeFile(fixture.inventoryPath, `${JSON.stringify(inventory, null, 2)}\n`)
+      await assert.rejects(createMainConsolidationArchive(verifyArguments(fixture)), /artifact.*inventory|inventory.*artifact/u)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
+
+  await t.test('inventory snapshot binding differs', async () => {
+    const fixture = await createFixture()
+    try {
+      await createMainConsolidationArchive(fixture.args, { randomUUID: () => 'snapshot-binding' })
+      const inventory = JSON.parse(await readFile(fixture.inventoryPath, 'utf8'))
+      inventory.remoteHeads[0].owner = 'changed-owner'
+      await writeFile(fixture.inventoryPath, `${JSON.stringify(inventory, null, 2)}\n`)
+      await assert.rejects(createMainConsolidationArchive(verifyArguments(fixture)), /snapshot.*inventory|inventory.*snapshot/u)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
+
+  await t.test('valid swapped and re-signed bundle has wrong owned heads', async () => {
+    const fixture = await createFixture()
+    try {
+      await createMainConsolidationArchive(fixture.args, { randomUUID: () => 'swapped-bundle' })
+      const repositoryBundle = path.join(fixture.archiveRoot, 'bundles', 'repository-all-refs.bundle')
+      const externalBundle = path.join(fixture.archiveRoot, 'bundles', 'accepted-main-all-refs.bundle')
+      await writeFile(repositoryBundle, await readFile(externalBundle))
+      const replacement = await readFile(repositoryBundle)
+      await rewriteManifest(fixture, (manifest) => {
+        const entry = manifest.entries.find((candidate) => candidate.path === 'bundles/repository-all-refs.bundle')
+        entry.byteSize = replacement.byteLength
+        entry.sha256 = createHash('sha256').update(replacement).digest('hex')
+      })
+      await assert.rejects(createMainConsolidationArchive(verifyArguments(fixture)), /bundle.*heads/u)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
+
+  await t.test('prior summary inventory identity differs', async () => {
+    const fixture = await createFixture()
+    try {
+      await createMainConsolidationArchive(fixture.args, { randomUUID: () => 'summary-binding' })
+      const summary = JSON.parse(await readFile(fixture.summaryJson, 'utf8'))
+      summary.inventorySha256 = 'b'.repeat(64)
+      await writeFile(fixture.summaryJson, `${JSON.stringify(summary, null, 2)}\n`)
+      await assert.rejects(createMainConsolidationArchive([...fixture.args, '--verify-existing']), /summary.*inventory|inventory.*summary/u)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
 })
 
 test('verify-existing binds verification to the inventory map hash before reading the archive', async () => {
@@ -490,18 +623,96 @@ test('bundle verification failure prevents final publication and preserves stagi
   }
 })
 
-test('publish rename failure restores the incomplete marker in retained staging', async () => {
+test('publish transfer failure preserves incomplete markers in staging and the claimed final root', async () => {
   const fixture = await createFixture()
   try {
     await assert.rejects(createMainConsolidationArchive(fixture.args, {
       randomUUID: () => 'rename-failure-test',
       rename: async () => { throw new Error('synthetic rename failure') }
     }), /synthetic rename failure/)
-    assert.equal(existsSync(fixture.archiveRoot), false)
+    assert.equal(existsSync(path.join(fixture.archiveRoot, '.archive-incomplete')), true)
     assert.equal(existsSync(path.join(fixture.stagingRootFor('rename-failure-test'), '.archive-incomplete')), true)
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
   }
+})
+
+test('exclusive publication refuses raced final roots and top-level children without overwriting sentinels', async (t) => {
+  await t.test('raced final root before claim', async () => {
+    const fixture = await createFixture()
+    try {
+      await assert.rejects(createMainConsolidationArchive(fixture.args, {
+        randomUUID: () => 'raced-root',
+        beforePublish: async () => {
+          await mkdir(fixture.archiveRoot)
+          await writeFile(path.join(fixture.archiveRoot, 'sentinel.txt'), 'keep')
+        }
+      }), /already exists|exclusive archive claim/u)
+      assert.equal(await readFile(path.join(fixture.archiveRoot, 'sentinel.txt'), 'utf8'), 'keep')
+      assert.equal(existsSync(path.join(fixture.stagingRootFor('raced-root'), '.archive-incomplete')), true)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
+
+  await t.test('raced top-level child after claim', async () => {
+    const fixture = await createFixture()
+    try {
+      await assert.rejects(createMainConsolidationArchive(fixture.args, {
+        randomUUID: () => 'raced-child',
+        afterArchiveRootClaim: async () => {
+          const raced = path.join(fixture.archiveRoot, 'bundles')
+          await mkdir(raced)
+          await writeFile(path.join(raced, 'sentinel.txt'), 'keep')
+        }
+      }), /archive publication child already exists/u)
+      assert.equal(await readFile(path.join(fixture.archiveRoot, 'bundles', 'sentinel.txt'), 'utf8'), 'keep')
+      assert.equal(existsSync(path.join(fixture.archiveRoot, '.archive-incomplete')), true)
+      assert.equal(existsSync(path.join(fixture.stagingRootFor('raced-child'), '.archive-incomplete')), true)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
+})
+
+test('exclusive publication preserves incomplete markers when claim marking or entry transfer fails', async (t) => {
+  await t.test('final marker creation fails', async () => {
+    const fixture = await createFixture()
+    try {
+      await assert.rejects(createMainConsolidationArchive(fixture.args, {
+        randomUUID: () => 'marker-failure',
+        writeFile: async (destination, contents, options) => {
+          if (destination === path.join(fixture.archiveRoot, '.archive-incomplete')) throw new Error('synthetic final marker failure')
+          return writeFile(destination, contents, options)
+        }
+      }), /synthetic final marker failure/u)
+      assert.equal(existsSync(fixture.archiveRoot), false)
+      assert.equal(existsSync(path.join(fixture.stagingRootFor('marker-failure'), '.archive-incomplete')), true)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
+
+  await t.test('entry transfer fails after claim', async () => {
+    const fixture = await createFixture()
+    try {
+      let transfers = 0
+      await assert.rejects(createMainConsolidationArchive(fixture.args, {
+        randomUUID: () => 'transfer-failure',
+        rename: async (source, destination) => {
+          if (path.dirname(source) === fixture.stagingRootFor('transfer-failure')) {
+            transfers += 1
+            if (transfers === 2) throw new Error('synthetic entry transfer failure')
+          }
+          return fsRename(source, destination)
+        }
+      }), /synthetic entry transfer failure/u)
+      assert.equal(existsSync(path.join(fixture.archiveRoot, '.archive-incomplete')), true)
+      assert.equal(existsSync(path.join(fixture.stagingRootFor('transfer-failure'), '.archive-incomplete')), true)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
 })
 
 test('canonical path validation rejects a symlink ancestor before creating directories in the repository', async (t) => {
@@ -580,17 +791,38 @@ async function createFixture() {
   const repositoryRoot = path.join(root, 'repository')
   const externalOne = path.join(root, 'integration-xlsx-on-prereq')
   const externalTwo = path.join(root, 'accepted-main')
-  const artifactPath = path.join(root, 'operator-result.json')
+  const artifactDirectory = path.join(root, 'artifact-sources')
+  await mkdir(artifactDirectory)
+  const artifactDefinitions = [
+    ['accepted-vsix', 'accepted.vsix'],
+    ['bazaar-core-log', 'bazaar-core.log'],
+    ['fixture-docx', 'project-review-rules.docx'],
+    ['fixture-manifest', 'document-fixture-manifest.json'],
+    ['fixture-pdf', 'system-review-guidelines.pdf'],
+    ['fixture-xlsx', 'review-traceability-ledger.xlsx'],
+    ['old-vsix', 'old.vsix'],
+    ['operator-result', 'operator-result.json'],
+    ['pra-win-001-evidence', 'PRA-WIN-001-evidence.json'],
+    ['scenario-manifest', 'scenario-manifest.json']
+  ]
+  const artifacts = []
+  for (const [label, name] of artifactDefinitions) {
+    const sourcePath = path.join(artifactDirectory, name)
+    const contents = Buffer.from(`accepted evidence for ${label}\n`)
+    await writeFile(sourcePath, contents)
+    artifacts.push({ label, sourcePath, byteSize: contents.byteLength, sha256: createHash('sha256').update(contents).digest('hex') })
+  }
+  const artifactPath = artifacts.find((entry) => entry.label === 'operator-result').sourcePath
   initRepository(repositoryRoot, true)
   initRepository(externalOne)
   initRepository(externalTwo)
+  addLocalOnlyCommit(externalOne, 'local-only-integration')
+  addLocalOnlyCommit(externalTwo, 'local-only-accepted')
   const mainSha = git(['-C', repositoryRoot, 'rev-parse', 'main']).trim()
   const featureSha = git(['-C', repositoryRoot, 'rev-parse', 'feature']).trim()
   git(['-C', repositoryRoot, 'update-ref', 'refs/remotes/origin/main', mainSha])
   git(['-C', repositoryRoot, 'update-ref', 'refs/remotes/origin/feature', featureSha])
   git(['-C', repositoryRoot, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main'])
-  await writeFile(artifactPath, 'accepted evidence')
-  const artifactBytes = await readFile(artifactPath)
   const carrierMap = {
     ...structuredClone(sourceMap),
     carriers: sourceMap.carriers.map((carrier) => ({ ...structuredClone(carrier), fromSha: mainSha, toSha: featureSha }))
@@ -611,12 +843,7 @@ async function createFixture() {
       { label: 'accepted-main', path: externalTwo, head: git(['-C', externalTwo, 'rev-parse', 'HEAD']).trim(), branch: 'main', status: [] },
       { label: 'integration-xlsx-on-prereq', path: externalOne, head: git(['-C', externalOne, 'rev-parse', 'HEAD']).trim(), branch: 'main', status: [] }
     ],
-    artifacts: [{
-      label: 'operator-result',
-      sourcePath: artifactPath,
-      byteSize: artifactBytes.byteLength,
-      sha256: createHash('sha256').update(artifactBytes).digest('hex')
-    }],
+    artifacts,
     blockers: []
   }
   const inventoryPath = path.join(root, 'inventory.json')
@@ -654,6 +881,16 @@ async function createFixture() {
     stagingRoot: path.join(path.dirname(archiveRoot), `.${EXPECTED_LEAF}.staging-${process.pid}-archive-test`),
     stagingRootFor: (suffix) => path.join(path.dirname(archiveRoot), `.${EXPECTED_LEAF}.staging-${process.pid}-${suffix}`)
   }
+}
+
+async function rewriteManifest(fixture, mutate) {
+  const manifestPath = path.join(fixture.archiveRoot, 'archive-manifest.json')
+  const detachedPath = path.join(fixture.archiveRoot, 'archive-manifest.sha256')
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+  mutate(manifest)
+  const manifestText = `${JSON.stringify(manifest, null, 2)}\n`
+  await writeFile(manifestPath, manifestText)
+  await writeFile(detachedPath, `${createHash('sha256').update(manifestText).digest('hex')}\n`)
 }
 
 async function addLinkedWorktreeBoundary(fixture) {
@@ -728,8 +965,30 @@ function initRepository(repository, withFeature = false) {
   git(['-C', repository, 'switch', 'main'])
 }
 
+function addLocalOnlyCommit(repository, branch) {
+  git(['-C', repository, 'switch', '-c', branch])
+  writeFileSync(path.join(repository, `${branch}.txt`), `${branch}\n`)
+  git(['-C', repository, 'add', `${branch}.txt`])
+  git(['-C', repository, 'commit', '-m', branch])
+  git(['-C', repository, 'switch', 'main'])
+}
+
 function git(args) {
   return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+}
+
+function restoreEveryAdvertisedHead(bundlePath, expectedHeads, destination) {
+  git(['init', '--bare', destination])
+  const restoredHeads = git(['-C', destination, 'bundle', 'unbundle', bundlePath]).trim().split(/\r?\n/u).filter(Boolean)
+  assert.deepEqual(restoredHeads, expectedHeads, 'advertised bundle heads mismatch')
+  for (const [index, line] of restoredHeads.entries()) {
+    const match = line.match(/^([0-9a-f]{40}) (.+)$/u)
+    assert.ok(match, `invalid restored head: ${line}`)
+    const restoredRef = `refs/restored/${String(index).padStart(3, '0')}`
+    git(['-C', destination, 'update-ref', restoredRef, match[1]])
+    assert.equal(git(['-C', destination, 'rev-parse', restoredRef]).trim(), match[1])
+    git(['-C', destination, 'cat-file', '-e', `${match[1]}^{commit}`])
+  }
 }
 
 async function fileSnapshot(filePath) {

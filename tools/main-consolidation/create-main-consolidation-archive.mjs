@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID as nodeRandomUUID } from 'node:crypto'
-import { lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,7 +15,7 @@ import {
 } from './archivePolicy.mjs'
 import { freezeCarrierPatches, verifyPatchedTree } from './freeze-carrier-patches.mjs'
 import { carrierPatchName } from './carrierPatchPolicy.mjs'
-import { validateConsolidationMap } from './consolidationPolicy.mjs'
+import { flattenLegacyHeads, validateConsolidationMap } from './consolidationPolicy.mjs'
 import { parseWorktreePorcelain } from './capture-main-consolidation-inventory.mjs'
 
 const EXPECTED_ARCHIVE_LEAF = '2026-08-21-main-consolidation'
@@ -24,6 +24,23 @@ const INVENTORY_SCHEMA = 'bob-builtin-analyze/main-consolidation-inventory/v1'
 const LABEL = /^[a-z0-9][a-z0-9-]*$/u
 const SHA1 = /^[0-9a-f]{40}$/u
 const SHA256 = /^[0-9a-f]{64}$/u
+const APPROVED_ARTIFACT_LABELS = [
+  'accepted-vsix',
+  'bazaar-core-log',
+  'fixture-docx',
+  'fixture-manifest',
+  'fixture-pdf',
+  'fixture-xlsx',
+  'old-vsix',
+  'operator-result',
+  'pra-win-001-evidence',
+  'scenario-manifest'
+]
+const REQUIRED_BUNDLE_PATHS = [
+  'bundles/accepted-main-all-refs.bundle',
+  'bundles/integration-xlsx-on-prereq-all-refs.bundle',
+  'bundles/repository-all-refs.bundle'
+]
 
 export async function createMainConsolidationArchive(argv = process.argv.slice(2), dependencies = {}) {
   const args = parseArguments(argv)
@@ -33,8 +50,11 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
   const rawMap = await read(args.map)
   const mapBytes = Buffer.isBuffer(rawMap) ? rawMap : Buffer.from(String(rawMap), 'utf8')
   const map = parseJson(mapBytes.toString('utf8'), 'map')
-  validateConsolidationMap(map)
+  const validateMap = dependencies.validateConsolidationMap ?? validateConsolidationMap
+  validateMap(map)
   validateInventoryMapBinding(inventory, mapBytes)
+  const validateInventory = dependencies.validateArchiveInventory ?? validateArchiveInventory
+  validateInventory(inventory, map)
   validateArchiveRequest({
     repoRoot: args.repositoryRoot,
     archiveRoot: args.archiveRoot,
@@ -179,14 +199,16 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
   const manifestHash = createHash('sha256').update(manifestText).digest('hex')
   await writeExclusive(path.join(stagingRoot, 'archive-manifest.json'), manifestText, dependencies)
   await writeExclusive(path.join(stagingRoot, 'archive-manifest.sha256'), `${manifestHash}\n`, dependencies)
-  await (dependencies.rm ?? rm)(markerPath)
+  await dependencies.beforePublish?.()
   assertArchiveDestinationAvailable({ archiveRoot: args.archiveRoot, lstat: dependencies.lstatSync })
-  try {
-    await (dependencies.rename ?? rename)(stagingRoot, args.archiveRoot)
-  } catch (error) {
-    await writeExclusive(markerPath, `${generatedAt}\n`, dependencies)
-    throw error
-  }
+  await publishArchiveExclusively({
+    stagingRoot,
+    archiveRoot: args.archiveRoot,
+    markerPath,
+    markerContents: `${generatedAt}\n`,
+    manifest,
+    dependencies
+  })
 
   const summary = archiveSummary({
     archiveRoot: args.archiveRoot,
@@ -230,13 +252,26 @@ async function verifyPublishedArchive({ args, inventory, inventoryText, map, dep
   await assertArchivePathComponents({ archiveRoot: args.archiveRoot, relativePath: 'archive-manifest.sha256' }, { lstat: dependencies.lstat })
   const manifestText = String(await (dependencies.readFile ?? readFile)(manifestPath, 'utf8'))
   const manifest = parseJson(manifestText, 'archive manifest')
-  assertFixedCarrierPatchSet(manifest, map)
+  assertRequiredArchiveContract(manifest, inventory, map)
   const expectedManifestHash = String(await (dependencies.readFile ?? readFile)(path.join(args.archiveRoot, 'archive-manifest.sha256'), 'utf8')).trim()
   const manifestHash = createHash('sha256').update(manifestText).digest('hex')
   if (manifestHash !== expectedManifestHash) throw new Error('archive manifest detached hash mismatch')
+  const inventoryHash = createHash('sha256').update(inventoryText).digest('hex')
+  const priorSummary = await readExistingSummary(args.summaryJson, dependencies)
   const verified = await verifyExistingArchive({ archiveRoot: args.archiveRoot, manifest }, {
     run: dependencies.run,
-    now: dependencies.now
+    now: dependencies.now,
+    lstat: dependencies.lstat
+  })
+  validateVerifiedBundleHeads(verified.bundleHeads, inventory)
+  if (priorSummary) validatePriorSummary(priorSummary, {
+    archiveRoot: args.archiveRoot,
+    generatedAt: manifest.generatedAt,
+    inventoryGeneratedAt: inventory.generatedAt,
+    inventoryHash,
+    manifestHash,
+    entryCount: manifest.entries.length,
+    bundleHeads: verified.bundleHeads
   })
   const carrierPatchCount = await verifyArchivedCarrierEvidence({
     archiveRoot: args.archiveRoot,
@@ -247,8 +282,9 @@ async function verifyPublishedArchive({ args, inventory, inventoryText, map, dep
   })
   const summary = {
     ...verified,
+    generatedAt: manifest.generatedAt,
     inventoryGeneratedAt: inventory.generatedAt,
-    inventorySha256: createHash('sha256').update(inventoryText).digest('hex'),
+    inventorySha256: inventoryHash,
     manifestSha256: manifestHash,
     carrierPatchCount
   }
@@ -276,6 +312,73 @@ async function prepareArchiveParent(args, dependencies) {
     expectedLeaf: EXPECTED_ARCHIVE_LEAF,
     inventory: { readyForArchive: true }
   })
+}
+
+async function publishArchiveExclusively({ stagingRoot, archiveRoot, markerPath, markerContents, manifest, dependencies }) {
+  const makeDirectory = dependencies.mkdir ?? mkdir
+  const move = dependencies.rename ?? rename
+  const remove = dependencies.rm ?? rm
+  const removeDirectory = dependencies.rmdir ?? rmdir
+  const inspect = dependencies.lstat ?? lstat
+  const list = dependencies.readdir ?? readdir
+  const finalMarker = path.join(archiveRoot, '.archive-incomplete')
+  let claimed = false
+  let finalMarkerCreated = false
+  let stagingMarkerRemoved = false
+  try {
+    try {
+      await makeDirectory(archiveRoot)
+      claimed = true
+    } catch (error) {
+      if (error?.code === 'EEXIST') throw new Error('exclusive archive claim refused an existing destination')
+      throw error
+    }
+    try {
+      await writeExclusive(finalMarker, markerContents, dependencies)
+      finalMarkerCreated = true
+    } catch (error) {
+      const children = await list(archiveRoot)
+      if (children.length === 0) {
+        await removeDirectory(archiveRoot)
+        claimed = false
+      }
+      throw error
+    }
+    await dependencies.afterArchiveRootClaim?.()
+    const children = (await list(stagingRoot)).filter((name) => name !== path.basename(markerPath)).sort(compareText)
+    for (const name of children) {
+      const destination = path.join(archiveRoot, name)
+      if (await existsByLstat(destination, inspect)) throw new Error(`archive publication child already exists: ${name}`)
+      await move(path.join(stagingRoot, name), destination)
+    }
+    await verifyTransferredArchive({ archiveRoot, manifest, dependencies })
+    const remaining = (await list(stagingRoot)).sort(compareText)
+    if (JSON.stringify(remaining) !== JSON.stringify([path.basename(markerPath)])) throw new Error('archive staging is not empty after publication transfer')
+    await remove(markerPath)
+    stagingMarkerRemoved = true
+    await removeDirectory(stagingRoot)
+    await remove(finalMarker)
+    finalMarkerCreated = false
+  } catch (error) {
+    if (stagingMarkerRemoved && await existsByLstat(stagingRoot, inspect) && !await existsByLstat(markerPath, inspect)) {
+      await writeExclusive(markerPath, markerContents, dependencies)
+    }
+    if (claimed && finalMarkerCreated && !await existsByLstat(finalMarker, inspect)) {
+      await writeExclusive(finalMarker, markerContents, dependencies)
+    }
+    throw error
+  }
+}
+
+async function verifyTransferredArchive({ archiveRoot, manifest, dependencies }) {
+  for (const entry of manifest.entries) {
+    await assertArchivePathComponents({ archiveRoot, relativePath: entry.path }, { lstat: dependencies.lstat })
+    const actual = await hashFile(path.join(archiveRoot, ...entry.path.split('/')))
+    if (actual.byteSize !== entry.byteSize || actual.sha256 !== entry.sha256) throw new Error(`published archive entry hash mismatch: ${entry.path}`)
+  }
+  for (const name of ['archive-manifest.json', 'archive-manifest.sha256']) {
+    await assertArchivePathComponents({ archiveRoot, relativePath: name }, { lstat: dependencies.lstat })
+  }
 }
 
 async function findExistingAncestor(start, inspect) {
@@ -307,6 +410,7 @@ function validateExplicitSources(args, inventory) {
     if (!LABEL.test(artifact?.label ?? '') || artifactLabels.has(artifact.label) || !path.isAbsolute(artifact?.sourcePath ?? '')) throw new Error('inventory artifact list is invalid')
     artifactLabels.add(artifact.label)
   }
+  if (JSON.stringify([...artifactLabels].sort(compareText)) !== JSON.stringify(APPROVED_ARTIFACT_LABELS)) throw new Error('inventory artifact list is invalid')
 }
 
 async function validateRepositorySource(repository, dependencies) {
@@ -575,16 +679,131 @@ function validateInventoryMapBinding(inventory, mapBytes) {
   if (inventory.consolidationMapSha256 !== actual) throw new Error('inventory consolidation map SHA-256 mismatch')
 }
 
-function assertFixedCarrierPatchSet(manifest, map) {
-  if (!Array.isArray(manifest?.entries)) throw new Error('archive manifest is missing the fixed carrier patch set')
-  const expected = new Set([
+function validateArchiveInventory(inventory, map) {
+  if (!Array.isArray(inventory?.remoteHeads) || !SHA1.test(inventory?.topology?.mainSha ?? '')) throw new Error('inventory remote heads do not match the approved map')
+  const expected = new Map(flattenLegacyHeads(map).map((entry) => [entry.branch, { sha: entry.expectedSha, owner: entry.owner }]))
+  expected.set('main', { sha: inventory.topology.mainSha, owner: 'main' })
+  for (const branch of map.processBranches) expected.set(branch, { sha: null, owner: 'process' })
+  const observed = new Map()
+  for (const entry of inventory.remoteHeads) {
+    if (observed.has(entry?.branch) || !SHA1.test(entry?.sha ?? '')) throw new Error('inventory remote heads do not match the approved map')
+    observed.set(entry.branch, entry)
+  }
+  if (observed.size !== expected.size) throw new Error('inventory remote heads do not match the approved map')
+  for (const [branch, contract] of expected) {
+    const entry = observed.get(branch)
+    if (!entry || entry.owner !== contract.owner || (contract.sha !== null && entry.sha !== contract.sha)) {
+      throw new Error('inventory remote heads do not match the approved map')
+    }
+  }
+}
+
+function assertRequiredArchiveContract(manifest, inventory, map) {
+  if (!Array.isArray(manifest?.entries)) throw new Error('archive manifest does not contain the required archive entry set')
+  const expectedCarrierPaths = new Set([
     'carrier-patches/carrier-patches.json',
     ...map.carriers.map((carrier) => `carrier-patches/${carrierPatchName(carrier.id)}`)
   ])
-  const observed = manifest.entries.map((entry) => entry?.path).filter((entry) => typeof entry === 'string' && entry.startsWith('carrier-patches/'))
-  if (observed.length !== expected.size || new Set(observed).size !== expected.size || observed.some((entry) => !expected.has(entry))) {
+  const observedCarrierPaths = manifest.entries.map((entry) => entry?.path).filter((entry) => typeof entry === 'string' && entry.startsWith('carrier-patches/'))
+  if (observedCarrierPaths.length !== expectedCarrierPaths.size || new Set(observedCarrierPaths).size !== expectedCarrierPaths.size ||
+      observedCarrierPaths.some((entry) => !expectedCarrierPaths.has(entry))) {
     throw new Error('archive manifest does not contain the fixed carrier patch set')
   }
+  const artifactEntries = expectedArtifactEntries(inventory)
+  const snapshots = inventorySnapshots(inventory)
+  const expected = new Set([
+    ...REQUIRED_BUNDLE_PATHS,
+    ...artifactEntries.keys(),
+    ...Object.keys(snapshots).map((name) => `inventory/${name}`),
+    ...expectedCarrierPaths
+  ])
+  const observed = manifest.entries.map((entry) => entry?.path)
+  if (expected.size !== 24 || observed.length !== expected.size || new Set(observed).size !== expected.size || observed.some((entry) => !expected.has(entry))) {
+    throw new Error('archive manifest does not contain the required archive entry set')
+  }
+  const manifestByPath = new Map(manifest.entries.map((entry) => [entry.path, entry]))
+  for (const [archivePath, artifact] of artifactEntries) {
+    const archived = manifestByPath.get(archivePath)
+    if (archived?.byteSize !== artifact.byteSize || archived?.sha256 !== artifact.sha256) throw new Error('archive artifact does not match bound inventory')
+  }
+  for (const [name, contents] of Object.entries(snapshots)) {
+    const bytes = Buffer.from(contents, 'utf8')
+    const archived = manifestByPath.get(`inventory/${name}`)
+    if (archived?.byteSize !== bytes.byteLength || archived?.sha256 !== createHash('sha256').update(bytes).digest('hex')) {
+      throw new Error('archive inventory snapshot does not match bound inventory')
+    }
+  }
+}
+
+function expectedArtifactEntries(inventory) {
+  if (!Array.isArray(inventory?.artifacts)) throw new Error('inventory artifact list is invalid')
+  const entries = new Map()
+  const labels = []
+  for (const artifact of inventory.artifacts) {
+    if (!LABEL.test(artifact?.label ?? '') || !path.isAbsolute(artifact?.sourcePath ?? '') || !Number.isSafeInteger(artifact?.byteSize) ||
+        artifact.byteSize < 0 || !SHA256.test(artifact?.sha256 ?? '') || entries.has(artifact.label)) throw new Error('inventory artifact list is invalid')
+    labels.push(artifact.label)
+    entries.set(`artifacts/${artifact.label}/${path.basename(artifact.sourcePath)}`, artifact)
+  }
+  if (JSON.stringify(labels.sort(compareText)) !== JSON.stringify(APPROVED_ARTIFACT_LABELS)) throw new Error('inventory artifact list is invalid')
+  return entries
+}
+
+function validateVerifiedBundleHeads(bundleHeads, inventory) {
+  const observedBundles = new Map(bundleHeads.map((entry) => [entry.path, parseBundleHeads(entry.heads, `archive bundle heads do not match bound inventory: ${entry.path}`)]))
+  if (observedBundles.size !== REQUIRED_BUNDLE_PATHS.length || REQUIRED_BUNDLE_PATHS.some((bundlePath) => !observedBundles.has(bundlePath))) {
+    throw new Error('archive bundle heads do not match bound inventory')
+  }
+  if (!Array.isArray(inventory?.localBranches) || !Array.isArray(inventory?.remoteHeads) || !Array.isArray(inventory?.externalRepositories)) {
+    throw new Error('archive bundle heads do not match bound inventory')
+  }
+  const primary = observedBundles.get('bundles/repository-all-refs.bundle')
+  const requiredPrimary = new Map()
+  for (const [ref, sha] of [
+    ...inventory.localBranches.map((entry) => [`refs/heads/${entry.branch}`, entry.sha]),
+    ...inventory.remoteHeads.map((entry) => [`refs/remotes/origin/${entry.branch}`, entry.sha]),
+    ['HEAD', inventory.topology?.mainSha],
+    ['refs/remotes/origin/HEAD', inventory.topology?.mainSha]
+  ]) {
+    if (requiredPrimary.has(ref)) throw new Error('archive primary bundle heads do not match bound inventory')
+    requiredPrimary.set(ref, sha)
+  }
+  assertRequiredHeads(primary, requiredPrimary, 'archive primary bundle heads do not match bound inventory')
+  const externalByLabel = new Map(inventory.externalRepositories.map((entry) => [entry.label, entry]))
+  if (externalByLabel.size !== 2 || externalByLabel.size !== inventory.externalRepositories.length) throw new Error('archive external bundle heads do not match bound inventory')
+  for (const label of ['accepted-main', 'integration-xlsx-on-prereq']) {
+    const external = externalByLabel.get(label)
+    if (!external || !SHA1.test(external.head ?? '')) throw new Error('archive external bundle heads do not match bound inventory')
+    const required = new Map([['HEAD', external.head]])
+    if (external.branch !== null) required.set(`refs/heads/${external.branch}`, external.head)
+    assertRequiredHeads(observedBundles.get(`bundles/${label}-all-refs.bundle`), required, 'archive external bundle heads do not match bound inventory')
+  }
+}
+
+function assertRequiredHeads(observed, required, message) {
+  for (const [ref, sha] of required) if (!SHA1.test(sha ?? '') || observed.get(ref) !== sha) throw new Error(message)
+}
+
+async function readExistingSummary(summaryPath, dependencies) {
+  let metadata
+  try {
+    metadata = await (dependencies.lstat ?? lstat)(summaryPath)
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null
+    throw error
+  }
+  if (metadata.isSymbolicLink() || !metadata.isFile()) throw new Error('existing archive summary is not a regular file')
+  return parseJson(String(await (dependencies.readFile ?? readFile)(summaryPath, 'utf8')), 'existing archive summary')
+}
+
+function validatePriorSummary(summary, expected) {
+  if (summary?.schemaVersion !== ARCHIVE_SCHEMA || !samePath(summary.archiveRoot, expected.archiveRoot) || summary.verified !== true ||
+      summary.generatedAt !== expected.generatedAt || summary.inventoryGeneratedAt !== expected.inventoryGeneratedAt ||
+      summary.inventorySha256 !== expected.inventoryHash || summary.manifestSha256 !== expected.manifestHash ||
+      summary.entryCount !== expected.entryCount || summary.bundleCount !== expected.bundleHeads.length) {
+    throw new Error('existing archive summary identity, inventory, or manifest does not match')
+  }
+  if (JSON.stringify(summary.bundleHeads) !== JSON.stringify(expected.bundleHeads)) throw new Error('existing archive summary bundle heads do not match')
 }
 
 async function verifyArchivedCarrierEvidence({ archiveRoot, repoRoot, manifest, map, dependencies }) {
@@ -743,6 +962,16 @@ function samePath(left, right) {
 function normalizedPathKey(value) {
   const resolved = path.resolve(value)
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+async function existsByLstat(filePath, inspect = lstat) {
+  try {
+    await inspect(filePath)
+    return true
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
 }
 
 function nonEmptyLines(value) {

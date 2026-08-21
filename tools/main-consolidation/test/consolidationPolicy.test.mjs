@@ -72,6 +72,26 @@ test('map validation rejects duplicate pull request ownership', () => {
   assert.throws(() => validateConsolidationMap(invalid), /duplicate pull request ownership/)
 })
 
+test('map validation rejects semantic changes to the approved consolidation contract', async (t) => {
+  const mutations = {
+    '19 pull requests': (invalid) => {
+      const removed = invalid.carriers[0].pullRequests.pop()
+      delete invalid.carriers[0].branches.find((entry) => entry.pullRequest === removed).pullRequest
+    },
+    'legacy SHA': (invalid) => { invalid.checkpoints[0].expectedSha = 'c'.repeat(40) },
+    'pull request base': (invalid) => { invalid.carriers[0].branches[0].baseBranch = 'codex/changed-base' },
+    'legacy owner': (invalid) => { invalid.checkpoints[0].owner = 'changed-owner' },
+    'carrier range': (invalid) => { invalid.carriers[0].fromSha = 'd'.repeat(40) }
+  }
+  for (const [name, mutate] of Object.entries(mutations)) {
+    await t.test(name, () => {
+      const invalid = cloneMap()
+      mutate(invalid)
+      assert.throws(() => validateConsolidationMap(invalid), /approved consolidation map contract/u)
+    })
+  }
+})
+
 test('topology assessment accepts the frozen observed topology', () => {
   assert.deepEqual(assessTopology(validTopology()), {
     readyForArchive: true,

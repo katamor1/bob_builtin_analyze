@@ -1,8 +1,11 @@
+import { createHash } from 'node:crypto'
+
 const MAP_SCHEMA = 'bob-builtin-analyze/main-consolidation-map/v1'
 const REPOSITORY = 'katamor1/bob_builtin_analyze'
 const SHA = /^[0-9a-f]{40}$/u
 const CARRIER_IDS = new Set(['workflow-a', 'workflow-b', 'workflow-c', 'processing-a', 'processing-b', 'processing-c'])
 const PROCESS_BRANCH = 'codex/main-consolidation-control-plane'
+const APPROVED_MAP_SEMANTIC_SHA256 = '55352a62d82dd9c8175180fe66c64b792c69861b012ded09ab301f53993c7478'
 
 function assertSha(value, label) {
   if (!SHA.test(value ?? '')) throw new Error(`invalid SHA for ${label}`)
@@ -77,7 +80,17 @@ export function validateConsolidationMap(map) {
   if (heads.length !== 30) throw new Error('exactly 30 legacy remote heads are required')
   if (new Set(heads.map((entry) => entry.branch)).size !== heads.length) throw new Error('duplicate legacy branch')
   for (const entry of heads) assertSha(entry.expectedSha, entry.branch)
+  const semanticDigest = createHash('sha256').update(canonicalJson(map)).digest('hex')
+  if (semanticDigest !== APPROVED_MAP_SEMANTIC_SHA256) throw new Error('map does not match the approved consolidation map contract')
   return map
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map((entry) => canonicalJson(entry)).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
 }
 
 export function assessTopology({ map, mainSha, baselineIsAncestor, remoteRefs, openPullRequests, processRefs }) {
