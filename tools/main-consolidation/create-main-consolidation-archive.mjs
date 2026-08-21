@@ -16,6 +16,7 @@ import {
 import { freezeCarrierPatches, verifyPatchedTree } from './freeze-carrier-patches.mjs'
 import { carrierPatchName } from './carrierPatchPolicy.mjs'
 import { validateConsolidationMap } from './consolidationPolicy.mjs'
+import { parseWorktreePorcelain } from './capture-main-consolidation-inventory.mjs'
 
 const EXPECTED_ARCHIVE_LEAF = '2026-08-21-main-consolidation'
 const ARCHIVE_SCHEMA = 'bob-builtin-analyze/main-consolidation-archive/v1'
@@ -76,7 +77,13 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
     const repositoryBoundary = repository.label === 'repository'
       ? {
           kind: 'primary',
-          snapshot: observeAndValidatePrimaryRefs({ repository, inventory, run, mismatchMessage: 'primary repository refs do not match inventory' })
+          snapshot: observeAndValidatePrimaryRefs({
+            repository,
+            inventory,
+            run,
+            mismatchMessage: 'primary repository refs do not match inventory',
+            worktreeMismatchMessage: 'primary repository worktrees do not match inventory'
+          })
         }
       : {
           kind: 'external',
@@ -96,7 +103,8 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
         repository,
         inventory,
         run,
-        mismatchMessage: 'primary repository refs changed during bundle creation'
+        mismatchMessage: 'primary repository refs changed during bundle creation',
+        worktreeMismatchMessage: 'primary repository worktree boundary changed during bundle creation'
       })
       if (JSON.stringify(after.ownedRefs) !== JSON.stringify(repositoryBoundary.snapshot.ownedRefs) ||
           JSON.stringify(after.symbolicRemoteHead) !== JSON.stringify(repositoryBoundary.snapshot.symbolicRemoteHead) ||
@@ -105,6 +113,9 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
       }
       if (JSON.stringify(after.otherRefs) !== JSON.stringify(repositoryBoundary.snapshot.otherRefs)) {
         throw new Error('primary repository other refs changed during bundle creation')
+      }
+      if (JSON.stringify(after.worktreeHeads) !== JSON.stringify(repositoryBoundary.snapshot.worktreeHeads)) {
+        throw new Error('primary repository worktree boundary changed during bundle creation')
       }
       validatePrimaryBundleHeads(heads, repositoryBoundary.snapshot)
     } else {
@@ -309,7 +320,7 @@ async function validateRepositorySource(repository, dependencies) {
   if (head !== repository.expectedHead) throw new Error(`repository head does not match inventory: ${repository.label}`)
 }
 
-function observeAndValidatePrimaryRefs({ repository, inventory, run, mismatchMessage }) {
+function observeAndValidatePrimaryRefs({ repository, inventory, run, mismatchMessage, worktreeMismatchMessage }) {
   const expected = expectedPrimaryRefs(inventory)
   const observed = parsePrimaryRefs(runChecked(
     run,
@@ -319,6 +330,7 @@ function observeAndValidatePrimaryRefs({ repository, inventory, run, mismatchMes
   ))
   const headTarget = runChecked(run, 'git', ['-C', repository.sourcePath, 'symbolic-ref', '--quiet', 'HEAD'], 'primary symbolic HEAD').trim()
   if (!expected.has(headTarget)) throw new Error(mismatchMessage)
+  const worktreeHeads = observeAndValidatePrimaryWorktrees({ repository, inventory, run, mismatchMessage: worktreeMismatchMessage })
 
   const regular = new Map()
   const otherRefs = []
@@ -342,8 +354,72 @@ function observeAndValidatePrimaryRefs({ repository, inventory, run, mismatchMes
     ownedRefs: [...regular].map(([ref, sha]) => ({ ref, sha })),
     otherRefs,
     symbolicRemoteHead,
-    head: { ref: 'HEAD', sha: expected.get(headTarget), target: headTarget }
+    head: { ref: 'HEAD', sha: expected.get(headTarget), target: headTarget },
+    worktreeHeads
   }
+}
+
+function observeAndValidatePrimaryWorktrees({ repository, inventory, run, mismatchMessage }) {
+  if (!Array.isArray(inventory.worktrees) || inventory.worktrees.length === 0) throw new Error(mismatchMessage)
+  const observed = parseWorktreePorcelain(runChecked(
+    run,
+    'git',
+    ['-C', repository.sourcePath, 'worktree', 'list', '--porcelain'],
+    'primary repository worktrees'
+  ))
+  if (observed.length !== inventory.worktrees.length) throw new Error(mismatchMessage)
+
+  const inventoryByPath = new Map()
+  for (const entry of inventory.worktrees) {
+    if (!path.isAbsolute(entry?.path ?? '') || !SHA1.test(entry?.head ?? '') ||
+        (entry.branch !== null && !/^refs\/heads\/[^\s]+$/u.test(entry.branch ?? '')) || typeof entry.detached !== 'boolean') {
+      throw new Error(mismatchMessage)
+    }
+    const key = normalizedPathKey(entry.path)
+    if (inventoryByPath.has(key)) throw new Error(mismatchMessage)
+    inventoryByPath.set(key, entry)
+  }
+
+  const primaryGitDirectory = path.resolve(runChecked(
+    run,
+    'git',
+    ['-C', repository.sourcePath, 'rev-parse', '--absolute-git-dir'],
+    'primary repository git directory'
+  ).trim())
+  const adminRoot = path.join(primaryGitDirectory, 'worktrees')
+  const seenPaths = new Set()
+  const seenAdminIds = new Set()
+  const worktreeHeads = []
+  let primaryFound = false
+
+  for (const entry of observed) {
+    const key = normalizedPathKey(entry.path)
+    const approved = inventoryByPath.get(key)
+    if (!approved || seenPaths.has(key) || entry.head !== approved.head || entry.branch !== approved.branch || entry.detached !== approved.detached) {
+      throw new Error(mismatchMessage)
+    }
+    seenPaths.add(key)
+    const gitDirectory = path.resolve(runChecked(
+      run,
+      'git',
+      ['-C', entry.path, 'rev-parse', '--absolute-git-dir'],
+      'primary worktree git directory'
+    ).trim())
+    if (samePath(entry.path, repository.sourcePath)) {
+      if (primaryFound || !samePath(gitDirectory, primaryGitDirectory)) throw new Error(mismatchMessage)
+      primaryFound = true
+      continue
+    }
+    const relativeAdmin = path.relative(adminRoot, gitDirectory)
+    if (!relativeAdmin || path.isAbsolute(relativeAdmin) || relativeAdmin === '..' || relativeAdmin.startsWith(`..${path.sep}`) ||
+        relativeAdmin.includes(path.sep) || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(relativeAdmin) || seenAdminIds.has(relativeAdmin)) {
+      throw new Error(mismatchMessage)
+    }
+    seenAdminIds.add(relativeAdmin)
+    worktreeHeads.push({ ref: `worktrees/${relativeAdmin}/HEAD`, sha: entry.head, path: path.resolve(entry.path), adminId: relativeAdmin })
+  }
+  if (!primaryFound || seenPaths.size !== inventoryByPath.size) throw new Error(mismatchMessage)
+  return worktreeHeads.sort((left, right) => left.ref.localeCompare(right.ref))
 }
 
 function observeAndValidateExternalRefs({ repository, run, mismatchMessage }) {
@@ -399,7 +475,7 @@ function parsePrimaryRefs(text) {
 }
 
 function validatePrimaryBundleHeads(lines, boundary) {
-  const expected = new Map([...boundary.ownedRefs, ...boundary.otherRefs].map(({ ref, sha }) => [ref, sha]))
+  const expected = new Map([...boundary.ownedRefs, ...boundary.otherRefs, ...boundary.worktreeHeads].map(({ ref, sha }) => [ref, sha]))
   if (boundary.symbolicRemoteHead) expected.set(boundary.symbolicRemoteHead.ref, boundary.symbolicRemoteHead.sha)
   expected.set('HEAD', boundary.head.sha)
   const observed = new Map()
@@ -662,6 +738,11 @@ function samePath(left, right) {
   const normalizedLeft = path.resolve(left)
   const normalizedRight = path.resolve(right)
   return process.platform === 'win32' ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase() : normalizedLeft === normalizedRight
+}
+
+function normalizedPathKey(value) {
+  const resolved = path.resolve(value)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
 }
 
 function nonEmptyLines(value) {

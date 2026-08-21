@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { lstat, mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -287,6 +287,68 @@ test('primary all-refs bundle preserves stable stash, tag, and notes namespaces'
     for (const line of expected) assert.ok(repositoryBundle.heads.includes(line), `missing archived ref: ${line}`)
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('primary all-refs bundle preserves stable auxiliary refs and linked-worktree pseudo HEADs', async () => {
+  const fixture = await createFixture()
+  try {
+    await addLinkedWorktreeBoundary(fixture)
+    const result = await createMainConsolidationArchive(fixture.args, { randomUUID: () => 'stable-linked-worktrees' })
+    const repositoryBundle = result.summary.bundleHeads.find((entry) => entry.path === 'bundles/repository-all-refs.bundle')
+    const expected = [
+      `${git(['-C', fixture.repositoryRoot, 'rev-parse', 'refs/stash']).trim()} refs/stash`,
+      `${fixture.mainSha} refs/codex/turn-diffs/archive-test/base`,
+      ...fixture.linkedWorktrees.map((worktree) => `${worktree.head} worktrees/${worktree.adminId}/HEAD`)
+    ]
+    for (const line of expected) assert.ok(repositoryBundle.heads.includes(line), `missing bundle-visible boundary ref: ${line}`)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('primary bundle rejects linked-worktree add, remove, move, and admin identity changes during creation', async (t) => {
+  const scenarios = [
+    {
+      name: 'added',
+      mutate: (fixture) => git(['-C', fixture.repositoryRoot, 'worktree', 'add', '--detach', path.join(fixture.root, 'linked-added'), fixture.mainSha])
+    },
+    {
+      name: 'removed',
+      mutate: (fixture) => git(['-C', fixture.repositoryRoot, 'worktree', 'remove', fixture.linkedWorktrees[0].path])
+    },
+    {
+      name: 'moved',
+      mutate: (fixture) => git(['-C', fixture.repositoryRoot, 'worktree', 'move', fixture.linkedWorktrees[0].path, path.join(fixture.root, 'linked-moved')])
+    },
+    {
+      name: 'admin identity changed',
+      mutate: (fixture) => renameLinkedWorktreeAdmin(fixture.repositoryRoot, fixture.linkedWorktrees[0].path)
+    }
+  ]
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, async () => {
+      const fixture = await createFixture()
+      try {
+        await addLinkedWorktreeBoundary(fixture)
+        let mutated = false
+        const run = (command, args) => {
+          const result = spawnSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+          if (!mutated && command === 'git' && args.includes(fixture.repositoryRoot) && args.includes('bundle') && args.includes('create')) {
+            mutated = true
+            scenario.mutate(fixture)
+          }
+          return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
+        }
+        await assert.rejects(
+          createMainConsolidationArchive(fixture.args, { run }),
+          /primary repository worktree boundary changed during bundle creation/
+        )
+        assert.equal(existsSync(fixture.archiveRoot), false)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    })
   }
 })
 
@@ -592,6 +654,45 @@ async function createFixture() {
     stagingRoot: path.join(path.dirname(archiveRoot), `.${EXPECTED_LEAF}.staging-${process.pid}-archive-test`),
     stagingRootFor: (suffix) => path.join(path.dirname(archiveRoot), `.${EXPECTED_LEAF}.staging-${process.pid}-${suffix}`)
   }
+}
+
+async function addLinkedWorktreeBoundary(fixture) {
+  const linked = [
+    { name: 'linked-one', start: fixture.mainSha },
+    { name: 'linked-two', start: fixture.featureSha }
+  ]
+  for (const entry of linked) {
+    const worktreePath = path.join(fixture.root, entry.name)
+    git(['-C', fixture.repositoryRoot, 'worktree', 'add', '-b', entry.name, worktreePath, entry.start])
+  }
+  writeFileSync(path.join(fixture.repositoryRoot, 'tracked.txt'), 'linked boundary stash\n')
+  git(['-C', fixture.repositoryRoot, 'stash', 'push', '-m', 'linked boundary stash'])
+  git(['-C', fixture.repositoryRoot, 'update-ref', 'refs/codex/turn-diffs/archive-test/base', fixture.mainSha])
+
+  const inventory = JSON.parse(await readFile(fixture.inventoryPath, 'utf8'))
+  fixture.linkedWorktrees = linked.map((entry) => {
+    const worktreePath = path.join(fixture.root, entry.name)
+    const head = git(['-C', worktreePath, 'rev-parse', 'HEAD']).trim()
+    const adminDirectory = git(['-C', worktreePath, 'rev-parse', '--absolute-git-dir']).trim()
+    inventory.localBranches.push({ branch: entry.name, sha: head })
+    inventory.worktrees.push({ path: worktreePath, head, branch: `refs/heads/${entry.name}`, detached: false, status: [] })
+    return { path: worktreePath, head, adminId: path.basename(adminDirectory) }
+  })
+  inventory.localBranches.sort((left, right) => left.branch.localeCompare(right.branch))
+  inventory.worktrees.sort((left, right) => left.path.localeCompare(right.path))
+  await writeFile(fixture.inventoryPath, `${JSON.stringify(inventory, null, 2)}\n`)
+}
+
+function renameLinkedWorktreeAdmin(repositoryRoot, worktreePath) {
+  const branch = git(['-C', worktreePath, 'symbolic-ref', '--short', 'HEAD']).trim()
+  const head = git(['-C', worktreePath, 'rev-parse', 'HEAD']).trim()
+  const holder = path.join(path.dirname(worktreePath), 'admin-holder')
+  const placeholder = path.join(holder, path.basename(worktreePath))
+  git(['-C', repositoryRoot, 'worktree', 'remove', worktreePath])
+  mkdirSync(holder, { recursive: true })
+  git(['-C', repositoryRoot, 'worktree', 'add', '--detach', placeholder, head])
+  git(['-C', repositoryRoot, 'worktree', 'add', worktreePath, branch])
+  git(['-C', repositoryRoot, 'worktree', 'remove', placeholder])
 }
 
 function verifyArguments(fixture) {
