@@ -1,10 +1,10 @@
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID as nodeRandomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
 import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  assertArchivePathComponents,
   assertArchiveDestinationAvailable,
   buildArchiveManifest,
   copyVerifiedFile,
@@ -33,9 +33,9 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
 
   if (args.verifyExisting) return verifyPublishedArchive({ args, inventory, dependencies })
 
-  assertArchiveDestinationAvailable({ archiveRoot: args.archiveRoot, exists: dependencies.exists ?? existsSync })
+  assertArchiveDestinationAvailable({ archiveRoot: args.archiveRoot, lstat: dependencies.lstatSync })
   await prepareArchiveParent(args, dependencies)
-  assertArchiveDestinationAvailable({ archiveRoot: args.archiveRoot, exists: dependencies.exists ?? existsSync })
+  assertArchiveDestinationAvailable({ archiveRoot: args.archiveRoot, lstat: dependencies.lstatSync })
   validateExplicitSources(args, inventory)
 
   const generatedAt = dependencies.now ? dependencies.now().toISOString() : new Date().toISOString()
@@ -61,11 +61,25 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
   const bundleHeads = []
   for (const repository of repositories) {
     await validateRepositorySource(repository, { lstat: dependencies.lstat ?? lstat, run })
+    const primaryBoundary = repository.label === 'repository'
+      ? observeAndValidatePrimaryRefs({ repository, inventory, run, mismatchMessage: 'primary repository refs do not match inventory' })
+      : null
     const relativePath = `bundles/${repository.label}-all-refs.bundle`
     const bundlePath = path.join(stagingRoot, ...relativePath.split('/'))
     await mkdirOwned(path.dirname(bundlePath), dependencies)
     await createBundle(repository, bundlePath, { run, createBundle: dependencies.createBundle })
-    bundleHeads.push({ path: relativePath, heads: verifyBundle(bundlePath, run) })
+    const heads = verifyBundle(bundlePath, run)
+    if (primaryBoundary) {
+      const after = observeAndValidatePrimaryRefs({
+        repository,
+        inventory,
+        run,
+        mismatchMessage: 'primary repository refs changed during bundle creation'
+      })
+      if (JSON.stringify(after) !== JSON.stringify(primaryBoundary)) throw new Error('primary repository refs changed during bundle creation')
+      validatePrimaryBundleHeads(heads, primaryBoundary)
+    }
+    bundleHeads.push({ path: relativePath, heads })
     manifestEntries.push({ path: relativePath, ...(await hashFile(bundlePath)) })
   }
 
@@ -95,7 +109,7 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
   await writeExclusive(path.join(stagingRoot, 'archive-manifest.json'), manifestText, dependencies)
   await writeExclusive(path.join(stagingRoot, 'archive-manifest.sha256'), `${manifestHash}\n`, dependencies)
   await (dependencies.rm ?? rm)(markerPath)
-  assertArchiveDestinationAvailable({ archiveRoot: args.archiveRoot, exists: dependencies.exists ?? existsSync })
+  assertArchiveDestinationAvailable({ archiveRoot: args.archiveRoot, lstat: dependencies.lstatSync })
   try {
     await (dependencies.rename ?? rename)(stagingRoot, args.archiveRoot)
   } catch (error) {
@@ -131,8 +145,17 @@ export function renderArchiveMarkdown(summary) {
 }
 
 async function verifyPublishedArchive({ args, inventory, dependencies }) {
-  if (!(dependencies.exists ?? existsSync)(args.archiveRoot)) throw new Error('existing archive root is required for --verify-existing')
+  let rootMetadata
+  try {
+    rootMetadata = await (dependencies.lstat ?? lstat)(args.archiveRoot)
+  } catch (error) {
+    if (error?.code === 'ENOENT') throw new Error('existing archive root is required for --verify-existing')
+    throw error
+  }
+  if (rootMetadata.isSymbolicLink() || !rootMetadata.isDirectory()) throw new Error('archive root is not a regular directory')
   const manifestPath = path.join(args.archiveRoot, 'archive-manifest.json')
+  await assertArchivePathComponents({ archiveRoot: args.archiveRoot, relativePath: 'archive-manifest.json' }, { lstat: dependencies.lstat })
+  await assertArchivePathComponents({ archiveRoot: args.archiveRoot, relativePath: 'archive-manifest.sha256' }, { lstat: dependencies.lstat })
   const manifestText = String(await (dependencies.readFile ?? readFile)(manifestPath, 'utf8'))
   const manifest = parseJson(manifestText, 'archive manifest')
   const expectedManifestHash = String(await (dependencies.readFile ?? readFile)(path.join(args.archiveRoot, 'archive-manifest.sha256'), 'utf8')).trim()
@@ -214,6 +237,78 @@ async function validateRepositorySource(repository, dependencies) {
   if (status.length > 0 && !allowedPrimary) throw new Error(`${repository.label === 'repository' ? 'repository' : 'external repository'} is dirty: ${repository.label}`)
   const head = runChecked(dependencies.run, 'git', [...prefix, '-C', repository.sourcePath, 'rev-parse', 'HEAD'], 'repository head').trim()
   if (head !== repository.expectedHead) throw new Error(`repository head does not match inventory: ${repository.label}`)
+}
+
+function observeAndValidatePrimaryRefs({ repository, inventory, run, mismatchMessage }) {
+  const expected = expectedPrimaryRefs(inventory)
+  const observed = parsePrimaryRefs(runChecked(
+    run,
+    'git',
+    ['-C', repository.sourcePath, 'for-each-ref', '--sort=refname', '--format=%(refname)%09%(objectname)%09%(symref)', 'refs/heads', 'refs/remotes/origin'],
+    'primary repository refs'
+  ))
+  const headTarget = runChecked(run, 'git', ['-C', repository.sourcePath, 'symbolic-ref', '--quiet', 'HEAD'], 'primary symbolic HEAD').trim()
+  if (!expected.has(headTarget)) throw new Error(mismatchMessage)
+
+  const regular = new Map()
+  let symbolicRemoteHead = null
+  for (const entry of observed) {
+    if (entry.symref) {
+      if (entry.ref !== 'refs/remotes/origin/HEAD' || entry.symref !== 'refs/remotes/origin/main' || expected.get(entry.symref) !== entry.sha) throw new Error(mismatchMessage)
+      symbolicRemoteHead = { ref: entry.ref, sha: entry.sha, target: entry.symref }
+      continue
+    }
+    if (!expected.has(entry.ref) || expected.get(entry.ref) !== entry.sha || regular.has(entry.ref)) throw new Error(mismatchMessage)
+    regular.set(entry.ref, entry.sha)
+  }
+  if (regular.size !== expected.size || [...expected].some(([ref, sha]) => regular.get(ref) !== sha)) throw new Error(mismatchMessage)
+  return {
+    refs: [...regular].map(([ref, sha]) => ({ ref, sha })),
+    symbolicRemoteHead,
+    head: { ref: 'HEAD', sha: expected.get(headTarget), target: headTarget }
+  }
+}
+
+function expectedPrimaryRefs(inventory) {
+  if (!Array.isArray(inventory.localBranches) || !Array.isArray(inventory.remoteHeads)) throw new Error('inventory primary ref lists are invalid')
+  const expected = new Map()
+  for (const entry of inventory.localBranches) addExpectedRef(expected, `refs/heads/${entry.branch}`, entry.sha)
+  for (const entry of inventory.remoteHeads) addExpectedRef(expected, `refs/remotes/origin/${entry.branch}`, entry.sha)
+  return expected
+}
+
+function addExpectedRef(expected, ref, sha) {
+  if (!/^refs\/(?:heads|remotes\/origin)\/.+/u.test(ref) || !/^[0-9a-f]{40}$/u.test(sha ?? '') || expected.has(ref)) throw new Error('inventory primary ref lists are invalid')
+  expected.set(ref, sha)
+}
+
+function parsePrimaryRefs(text) {
+  const entries = []
+  const seen = new Set()
+  for (const line of nonEmptyLines(text)) {
+    const fields = line.split('\t')
+    if (fields.length < 2 || fields.length > 3 || !/^refs\/(?:heads|remotes\/origin)\/.+/u.test(fields[0]) || !/^[0-9a-f]{40}$/u.test(fields[1]) || seen.has(fields[0])) {
+      throw new Error('invalid primary repository ref observation')
+    }
+    seen.add(fields[0])
+    entries.push({ ref: fields[0], sha: fields[1], symref: fields[2] ?? '' })
+  }
+  return entries
+}
+
+function validatePrimaryBundleHeads(lines, boundary) {
+  const expected = new Map(boundary.refs.map(({ ref, sha }) => [ref, sha]))
+  if (boundary.symbolicRemoteHead) expected.set(boundary.symbolicRemoteHead.ref, boundary.symbolicRemoteHead.sha)
+  expected.set('HEAD', boundary.head.sha)
+  const observed = new Map()
+  for (const line of lines) {
+    const match = line.match(/^([0-9a-f]{40}) (.+)$/u)
+    if (!match || observed.has(match[2]) || !expected.has(match[2]) || expected.get(match[2]) !== match[1]) {
+      throw new Error('primary bundle refs do not match inventory')
+    }
+    observed.set(match[2], match[1])
+  }
+  if (observed.size !== expected.size || [...expected].some(([ref, sha]) => observed.get(ref) !== sha)) throw new Error('primary bundle refs do not match inventory')
 }
 
 async function createBundle(repository, bundlePath, dependencies) {

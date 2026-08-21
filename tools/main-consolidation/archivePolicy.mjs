@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { lstatSync } from 'node:fs'
 import { lstat, open } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -20,9 +20,14 @@ export function validateArchiveRequest({ repoRoot, archiveRoot, expectedLeaf, in
   return true
 }
 
-export function assertArchiveDestinationAvailable({ archiveRoot, exists = existsSync }) {
-  if (exists(archiveRoot)) throw new Error(`archive root already exists: ${archiveRoot}`)
-  return true
+export function assertArchiveDestinationAvailable({ archiveRoot, lstat: inspect = lstatSync }) {
+  try {
+    inspect(archiveRoot)
+  } catch (error) {
+    if (error?.code === 'ENOENT') return true
+    throw error
+  }
+  throw new Error(`archive root already exists: ${archiveRoot}`)
 }
 
 export async function hashFile(filePath) {
@@ -71,7 +76,7 @@ export async function verifyExistingArchive({ archiveRoot, manifest }, dependenc
   const root = path.resolve(archiveRoot)
   const rootStats = await (dependencies.lstat ?? lstat)(root)
   if (rootStats.isSymbolicLink() || !rootStats.isDirectory()) throw new Error('archive root is not a regular directory')
-  if ((dependencies.exists ?? existsSync)(path.join(root, '.archive-incomplete'))) throw new Error('archive is incomplete')
+  if (await existsByLstat(path.join(root, '.archive-incomplete'), dependencies.lstat ?? lstat)) throw new Error('archive is incomplete')
   if (manifest?.schemaVersion !== MANIFEST_SCHEMA || !Array.isArray(manifest.entries)) throw new Error('unsupported archive manifest schema')
   const canonical = buildArchiveManifest(manifest.entries, { generatedAt: manifest.generatedAt })
   if (JSON.stringify(canonical) !== JSON.stringify(manifest)) throw new Error('archive manifest is not canonical')
@@ -80,6 +85,7 @@ export async function verifyExistingArchive({ archiveRoot, manifest }, dependenc
   const bundleHeads = []
   for (const entry of canonical.entries) {
     const archivePath = resolveManifestPath(root, entry.path)
+    await assertArchivePathComponents({ archiveRoot: root, relativePath: entry.path }, dependencies)
     const actual = await hashFile(archivePath)
     assertExpectedHash(actual, entry, `archive entry ${entry.path}`)
     verifiedEntries.push({ ...entry })
@@ -98,6 +104,22 @@ export async function verifyExistingArchive({ archiveRoot, manifest }, dependenc
     bundleCount: bundleHeads.length,
     bundleHeads
   }
+}
+
+export async function assertArchivePathComponents({ archiveRoot, relativePath }, dependencies = {}) {
+  const root = path.resolve(archiveRoot)
+  const normalized = normalizeArchivePath(relativePath)
+  const inspect = dependencies.lstat ?? lstat
+  const segments = normalized.split('/')
+  let current = root
+  for (let index = 0; index < segments.length; index += 1) {
+    current = path.join(current, segments[index])
+    const metadata = await inspect(current)
+    if (metadata.isSymbolicLink()) throw new Error(`archive path contains a symbolic link or reparse point: ${normalized}`)
+    if (index < segments.length - 1 && !metadata.isDirectory()) throw new Error(`archive path component is not a directory: ${normalized}`)
+    if (index === segments.length - 1 && !metadata.isFile()) throw new Error(`archive path is not a regular file: ${normalized}`)
+  }
+  return true
 }
 
 async function readStableRegularFile(filePath, { afterRead } = {}) {
@@ -158,6 +180,16 @@ function resolveManifestPath(root, archivePath) {
   const relative = path.relative(root, resolved)
   if (relative === '' || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error('unsafe manifest path')
   return resolved
+}
+
+async function existsByLstat(filePath, inspect) {
+  try {
+    await inspect(filePath)
+    return true
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
 }
 
 function runChecked(run, command, args, operation) {

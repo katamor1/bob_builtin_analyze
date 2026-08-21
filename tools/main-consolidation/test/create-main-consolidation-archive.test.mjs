@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, writeFileSync } from 'node:fs'
-import { mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -64,6 +64,63 @@ test('normal creation refuses an existing final archive without changing it', as
     await writeFile(path.join(fixture.archiveRoot, 'sentinel.txt'), 'keep')
     await assert.rejects(createMainConsolidationArchive(fixture.args), /already exists/)
     assert.equal(await readFile(path.join(fixture.archiveRoot, 'sentinel.txt'), 'utf8'), 'keep')
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('normal creation treats a dangling final-root junction as existing', async (t) => {
+  const fixture = await createFixture()
+  try {
+    await mkdir(path.dirname(fixture.archiveRoot), { recursive: true })
+    try {
+      await symlink(path.join(fixture.root, 'missing-archive-target'), fixture.archiveRoot, 'junction')
+    } catch (error) {
+      if (error?.code === 'EPERM') return t.skip('junction creation is not permitted on this host')
+      throw error
+    }
+    await assert.rejects(createMainConsolidationArchive(fixture.args), /already exists/)
+    assert.equal((await lstat(fixture.archiveRoot)).isSymbolicLink(), true)
+    assert.deepEqual((await readdir(path.dirname(fixture.archiveRoot))).sort(), [EXPECTED_LEAF])
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('primary bundle rejects moved, disappeared, and newly appeared refs since inventory', async (t) => {
+  const cases = [
+    ['non-HEAD local ref moved', (fixture) => git(['-C', fixture.repositoryRoot, 'update-ref', 'refs/heads/feature', fixture.mainSha])],
+    ['approved remote ref disappeared', (fixture) => git(['-C', fixture.repositoryRoot, 'update-ref', '-d', 'refs/remotes/origin/feature'])],
+    ['unexpected local ref appeared', (fixture) => git(['-C', fixture.repositoryRoot, 'update-ref', 'refs/heads/unexpected', fixture.mainSha])]
+  ]
+  for (const [name, mutate] of cases) {
+    await t.test(name, async () => {
+      const fixture = await createFixture()
+      try {
+        mutate(fixture)
+        await assert.rejects(createMainConsolidationArchive(fixture.args), /primary repository refs do not match inventory/)
+        assert.equal(existsSync(fixture.archiveRoot), false)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    })
+  }
+})
+
+test('primary bundle rejects a non-HEAD ref mutation during bundle creation', async () => {
+  const fixture = await createFixture()
+  try {
+    let mutated = false
+    const run = (command, args) => {
+      const result = spawnSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+      if (!mutated && command === 'git' && args.includes('bundle') && args.includes('create') && args.includes(fixture.repositoryRoot)) {
+        mutated = true
+        git(['-C', fixture.repositoryRoot, 'update-ref', 'refs/heads/feature', fixture.mainSha])
+      }
+      return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
+    }
+    await assert.rejects(createMainConsolidationArchive(fixture.args, { run }), /primary repository refs changed during bundle creation/)
+    assert.equal(existsSync(fixture.archiveRoot), false)
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
   }
@@ -180,6 +237,30 @@ test('verify-existing rehashes and verifies without copy, bundle creation, renam
   }
 })
 
+test('verify-existing rejects symlinked manifest and detached-hash files with matching bytes', async (t) => {
+  for (const archiveFile of ['archive-manifest.json', 'archive-manifest.sha256']) {
+    await t.test(archiveFile, async (subtest) => {
+      const fixture = await createFixture()
+      try {
+        await createMainConsolidationArchive(fixture.args, { randomUUID: () => `link-${archiveFile}` })
+        const archivedPath = path.join(fixture.archiveRoot, archiveFile)
+        const externalPath = path.join(fixture.root, `external-${archiveFile}`)
+        await writeFile(externalPath, await readFile(archivedPath))
+        await rm(archivedPath)
+        try {
+          await symlink(externalPath, archivedPath, 'file')
+        } catch (error) {
+          if (error?.code === 'EPERM') return subtest.skip('file symlink creation is not permitted on this host')
+          throw error
+        }
+        await assert.rejects(createMainConsolidationArchive(verifyArguments(fixture)), /symbolic link|reparse/u)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    })
+  }
+})
+
 async function createFixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'main-consolidation-archive-'))
   const repositoryRoot = path.join(root, 'repository')
@@ -191,6 +272,9 @@ async function createFixture() {
   initRepository(externalTwo)
   const mainSha = git(['-C', repositoryRoot, 'rev-parse', 'main']).trim()
   const featureSha = git(['-C', repositoryRoot, 'rev-parse', 'feature']).trim()
+  git(['-C', repositoryRoot, 'update-ref', 'refs/remotes/origin/main', mainSha])
+  git(['-C', repositoryRoot, 'update-ref', 'refs/remotes/origin/feature', featureSha])
+  git(['-C', repositoryRoot, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main'])
   await writeFile(artifactPath, 'accepted evidence')
   const artifactBytes = await readFile(artifactPath)
   const inventory = {
@@ -247,6 +331,17 @@ async function createFixture() {
     stagingRoot: path.join(path.dirname(archiveRoot), `.${EXPECTED_LEAF}.staging-${process.pid}-archive-test`),
     stagingRootFor: (suffix) => path.join(path.dirname(archiveRoot), `.${EXPECTED_LEAF}.staging-${process.pid}-${suffix}`)
   }
+}
+
+function verifyArguments(fixture) {
+  const summaryJson = path.join(fixture.root, 'verified-link-summary.json')
+  const summaryMarkdown = path.join(fixture.root, 'verified-link-summary.md')
+  return [
+    ...fixture.args.filter((_, index, values) => !['--summary-json', '--summary-markdown'].includes(values[index - 1]) && !['--summary-json', '--summary-markdown'].includes(values[index])),
+    '--summary-json', summaryJson,
+    '--summary-markdown', summaryMarkdown,
+    '--verify-existing'
+  ]
 }
 
 function replaceArgument(argv, flag, value) {

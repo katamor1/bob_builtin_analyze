@@ -39,7 +39,7 @@ test('archive root must be outside the repository and use the exact leaf', () =>
 test('archive creation refuses an existing final root', () => {
   assert.throws(() => assertArchiveDestinationAvailable({
     archiveRoot: path.resolve('archives', EXPECTED_LEAF),
-    exists: () => true
+    lstat: () => ({ isDirectory: () => true })
   }), /already exists/)
 })
 
@@ -142,6 +142,31 @@ test('verifyExistingArchive rejects an incomplete archive marker', async () => {
       archiveRoot: temporary,
       manifest: buildArchiveManifest([], { generatedAt: '2026-08-21T00:00:00.000Z' })
     }), /incomplete/)
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+})
+
+test('verifyExistingArchive rejects a symlinked entry ancestor even when target bytes match', async (t) => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), 'archive-policy-entry-link-'))
+  try {
+    const archiveRoot = path.join(temporary, 'archive')
+    const external = path.join(temporary, 'external')
+    await mkdir(archiveRoot)
+    await mkdir(external)
+    const target = path.join(external, 'evidence.bin')
+    await writeFile(target, 'matching evidence')
+    try {
+      await symlink(external, path.join(archiveRoot, 'artifacts'), 'junction')
+    } catch (error) {
+      if (error?.code === 'EPERM') return t.skip('junction creation is not permitted on this host')
+      throw error
+    }
+    const hashed = await hashFile(target)
+    await assert.rejects(verifyExistingArchive({
+      archiveRoot,
+      manifest: buildArchiveManifest([{ path: 'artifacts/evidence.bin', ...hashed }], { generatedAt: '2026-08-21T00:00:00.000Z' })
+    }), /symbolic link|reparse/u)
   } finally {
     await rm(temporary, { recursive: true, force: true })
   }
