@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { lstat, mkdtemp, mkdir, readFile, readdir, rename as fsRename, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { link as fsLink, lstat, mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -49,6 +49,7 @@ test('creates a staged archive whose real bundle restores every branch head', as
     const manifest = JSON.parse(manifestText)
     const manifestPaths = manifest.entries.map((entry) => entry.path)
     assert.equal(manifestPaths.length, 24)
+    assert.equal((await treeSnapshot(fixture.archiveRoot)).length, 26)
     assert.deepEqual(manifestPaths, [...manifestPaths].sort())
     assert.deepEqual(manifest.entries.filter((entry) => entry.path.endsWith('.bundle')).map((entry) => entry.path), [
       'bundles/accepted-main-all-refs.bundle',
@@ -261,6 +262,23 @@ test('verify-existing binds artifacts, snapshots, bundle heads, and prior summar
       await rm(fixture.root, { recursive: true, force: true })
     }
   })
+
+})
+
+test('verify-existing rejects a prior summary carrier patch count that differs from verified evidence', async () => {
+  const fixture = await createFixture()
+  try {
+    await createMainConsolidationArchive(fixture.args, { randomUUID: () => 'summary-carrier-count' })
+    const summary = JSON.parse(await readFile(fixture.summaryJson, 'utf8'))
+    summary.carrierPatchCount = 5
+    await writeFile(fixture.summaryJson, `${JSON.stringify(summary, null, 2)}\n`)
+    await assert.rejects(
+      createMainConsolidationArchive([...fixture.args, '--verify-existing']),
+      /summary.*carrier patch|carrier patch.*summary/u
+    )
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
 })
 
 test('verify-existing binds verification to the inventory map hash before reading the archive', async () => {
@@ -627,11 +645,11 @@ test('publish transfer failure preserves incomplete markers in staging and the c
   const fixture = await createFixture()
   try {
     await assert.rejects(createMainConsolidationArchive(fixture.args, {
-      randomUUID: () => 'rename-failure-test',
-      rename: async () => { throw new Error('synthetic rename failure') }
-    }), /synthetic rename failure/)
+      randomUUID: () => 'transfer-failure-test',
+      link: async () => { throw new Error('synthetic transfer failure') }
+    }), /synthetic transfer failure/)
     assert.equal(existsSync(path.join(fixture.archiveRoot, '.archive-incomplete')), true)
-    assert.equal(existsSync(path.join(fixture.stagingRootFor('rename-failure-test'), '.archive-incomplete')), true)
+    assert.equal(existsSync(path.join(fixture.stagingRootFor('transfer-failure-test'), '.archive-incomplete')), true)
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
   }
@@ -673,6 +691,44 @@ test('exclusive publication refuses raced final roots and top-level children wit
       await rm(fixture.root, { recursive: true, force: true })
     }
   })
+
+  await t.test('raced regular file immediately before transfer', async () => {
+    const fixture = await createFixture()
+    const sentinel = 'keep-raced-file'
+    try {
+      await assert.rejects(createMainConsolidationArchive(fixture.args, {
+        randomUUID: () => 'raced-file-transfer',
+        beforeArchiveEntryTransfer: async ({ relativePath, kind, destination }) => {
+          if (relativePath === 'archive-manifest.json' && kind === 'file') await writeFile(destination, sentinel)
+        }
+      }), /archive publication child already exists/u)
+      assert.equal(await readFile(path.join(fixture.archiveRoot, 'archive-manifest.json'), 'utf8'), sentinel)
+      assert.equal(existsSync(path.join(fixture.archiveRoot, '.archive-incomplete')), true)
+      assert.equal(existsSync(path.join(fixture.stagingRootFor('raced-file-transfer'), '.archive-incomplete')), true)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
+
+  await t.test('raced directory immediately before transfer', async () => {
+    const fixture = await createFixture()
+    try {
+      await assert.rejects(createMainConsolidationArchive(fixture.args, {
+        randomUUID: () => 'raced-directory-transfer',
+        beforeArchiveEntryTransfer: async ({ relativePath, kind, destination }) => {
+          if (relativePath === 'bundles' && kind === 'directory') {
+            await mkdir(destination)
+            await writeFile(path.join(destination, 'sentinel.txt'), 'keep-raced-directory')
+          }
+        }
+      }), /archive publication child already exists/u)
+      assert.equal(await readFile(path.join(fixture.archiveRoot, 'bundles', 'sentinel.txt'), 'utf8'), 'keep-raced-directory')
+      assert.equal(existsSync(path.join(fixture.archiveRoot, '.archive-incomplete')), true)
+      assert.equal(existsSync(path.join(fixture.stagingRootFor('raced-directory-transfer'), '.archive-incomplete')), true)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
 })
 
 test('exclusive publication preserves incomplete markers when claim marking or entry transfer fails', async (t) => {
@@ -699,12 +755,10 @@ test('exclusive publication preserves incomplete markers when claim marking or e
       let transfers = 0
       await assert.rejects(createMainConsolidationArchive(fixture.args, {
         randomUUID: () => 'transfer-failure',
-        rename: async (source, destination) => {
-          if (path.dirname(source) === fixture.stagingRootFor('transfer-failure')) {
-            transfers += 1
-            if (transfers === 2) throw new Error('synthetic entry transfer failure')
-          }
-          return fsRename(source, destination)
+        link: async (source, destination) => {
+          transfers += 1
+          if (transfers === 2) throw new Error('synthetic entry transfer failure')
+          return fsLink(source, destination)
         }
       }), /synthetic entry transfer failure/u)
       assert.equal(existsSync(path.join(fixture.archiveRoot, '.archive-incomplete')), true)

@@ -115,6 +115,8 @@ test('verifyExistingArchive rejects path traversal and changed bytes', async () 
     await mkdir(path.join(temporary, 'artifacts'), { recursive: true })
     const archived = path.join(temporary, 'artifacts', 'evidence.bin')
     await writeFile(archived, 'evidence')
+    await writeFile(path.join(temporary, 'archive-manifest.json'), '{}\n')
+    await writeFile(path.join(temporary, 'archive-manifest.sha256'), `${'a'.repeat(64)}\n`)
     const hashed = await hashFile(archived)
     await assert.rejects(verifyExistingArchive({
       archiveRoot: temporary,
@@ -170,4 +172,65 @@ test('verifyExistingArchive rejects a symlinked entry ancestor even when target 
   } finally {
     await rm(temporary, { recursive: true, force: true })
   }
+})
+
+test('archive tree validation requires only manifest files and its two control files', async (t) => {
+  async function createExactTree() {
+    const temporary = await mkdtemp(path.join(os.tmpdir(), 'archive-policy-exact-tree-'))
+    await mkdir(path.join(temporary, 'artifacts'))
+    const entryPath = path.join(temporary, 'artifacts', 'evidence.bin')
+    await writeFile(entryPath, 'evidence')
+    await writeFile(path.join(temporary, 'archive-manifest.json'), '{}\n')
+    await writeFile(path.join(temporary, 'archive-manifest.sha256'), `${'a'.repeat(64)}\n`)
+    const manifest = buildArchiveManifest([
+      { path: 'artifacts/evidence.bin', ...(await hashFile(entryPath)) }
+    ], { generatedAt: '2026-08-21T00:00:00.000Z' })
+    return { temporary, manifest }
+  }
+
+  await t.test('exact tree succeeds', async () => {
+    const fixture = await createExactTree()
+    try {
+      const verified = await verifyExistingArchive({ archiveRoot: fixture.temporary, manifest: fixture.manifest })
+      assert.equal(verified.verified, true)
+    } finally {
+      await rm(fixture.temporary, { recursive: true, force: true })
+    }
+  })
+
+  for (const [name, addUnexpected] of [
+    ['unexpected file', async (root) => writeFile(path.join(root, 'unexpected.txt'), 'unexpected')],
+    ['unexpected directory', async (root) => mkdir(path.join(root, 'unexpected-directory'))]
+  ]) {
+    await t.test(name, async () => {
+      const fixture = await createExactTree()
+      try {
+        await addUnexpected(fixture.temporary)
+        await assert.rejects(
+          verifyExistingArchive({ archiveRoot: fixture.temporary, manifest: fixture.manifest }),
+          /archive tree does not match the manifest/u
+        )
+      } finally {
+        await rm(fixture.temporary, { recursive: true, force: true })
+      }
+    })
+  }
+
+  await t.test('unexpected symlink or reparse point', async (t) => {
+    const fixture = await createExactTree()
+    try {
+      try {
+        await symlink(path.join(fixture.temporary, 'artifacts'), path.join(fixture.temporary, 'unexpected-link'), 'junction')
+      } catch (error) {
+        if (error?.code === 'EPERM') return t.skip('junction creation is not permitted on this host')
+        throw error
+      }
+      await assert.rejects(
+        verifyExistingArchive({ archiveRoot: fixture.temporary, manifest: fixture.manifest }),
+        /symbolic link|reparse/u
+      )
+    } finally {
+      await rm(fixture.temporary, { recursive: true, force: true })
+    }
+  })
 })

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { assessTopology, flattenLegacyHeads, validateConsolidationMap } from '../consolidationPolicy.mjs'
+import * as consolidationPolicy from '../consolidationPolicy.mjs'
+
+const { assessTopology, flattenLegacyHeads, validateConsolidationMap } = consolidationPolicy
 
 const map = JSON.parse(await readFile(new URL('../consolidation-map.json', import.meta.url), 'utf8'))
 
@@ -33,6 +35,30 @@ function validTopology(sourceMap = map) {
     remoteRefs,
     openPullRequests: expectedPullRequests(sourceMap),
     processRefs
+  }
+}
+
+function validArchiveInventory(sourceMap = map) {
+  const topology = validTopology(sourceMap)
+  return {
+    readyForArchive: true,
+    topology: {
+      readyForArchive: true,
+      mainSha: topology.mainSha,
+      legacyHeadCount: 30,
+      processHeadCount: 1,
+      openPullRequestCount: 20
+    },
+    remoteHeads: [
+      ...flattenLegacyHeads(sourceMap).map((entry) => ({
+        branch: entry.branch,
+        sha: entry.expectedSha,
+        owner: entry.owner
+      })),
+      { branch: 'main', sha: topology.mainSha, owner: 'main' },
+      { branch: sourceMap.processBranches[0], sha: 'b'.repeat(40), owner: 'process' }
+    ],
+    openPullRequests: expectedPullRequests(sourceMap)
   }
 }
 
@@ -141,4 +167,26 @@ test('topology assessment rejects a process ref outside the frozen allowlist', (
   topology.processRefs.set('codex/unapproved-process', 'e'.repeat(40))
   topology.remoteRefs.set('codex/unapproved-process', 'e'.repeat(40))
   assert.throws(() => assessTopology(topology), /unexpected process branch/)
+})
+
+test('archive inventory freezes all 20 pull request identities from the approved map', async (t) => {
+  assert.equal(typeof consolidationPolicy.validateArchiveInventory, 'function')
+  assert.doesNotThrow(() => consolidationPolicy.validateArchiveInventory(validArchiveInventory(), map))
+
+  const mutations = {
+    '19 pull requests': (inventory) => { inventory.openPullRequests.pop() },
+    'changed head branch': (inventory) => { inventory.openPullRequests[0].headRefName = 'codex/changed-head' },
+    'changed head SHA': (inventory) => { inventory.openPullRequests[0].headRefOid = 'f'.repeat(40) },
+    'changed base branch': (inventory) => { inventory.openPullRequests[0].baseRefName = 'codex/changed-base' }
+  }
+  for (const [name, mutate] of Object.entries(mutations)) {
+    await t.test(name, () => {
+      const inventory = validArchiveInventory()
+      mutate(inventory)
+      assert.throws(
+        () => consolidationPolicy.validateArchiveInventory(inventory, map),
+        /open pull request.*approved map/u
+      )
+    })
+  }
 })

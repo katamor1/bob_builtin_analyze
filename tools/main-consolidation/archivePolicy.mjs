@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { lstatSync } from 'node:fs'
-import { lstat, open } from 'node:fs/promises'
+import { lstat, open, readdir } from 'node:fs/promises'
 import path from 'node:path'
 
 const MANIFEST_SCHEMA = 'bob-builtin-analyze/main-consolidation-archive-manifest/v1'
@@ -80,6 +80,7 @@ export async function verifyExistingArchive({ archiveRoot, manifest }, dependenc
   if (manifest?.schemaVersion !== MANIFEST_SCHEMA || !Array.isArray(manifest.entries)) throw new Error('unsupported archive manifest schema')
   const canonical = buildArchiveManifest(manifest.entries, { generatedAt: manifest.generatedAt })
   if (JSON.stringify(canonical) !== JSON.stringify(manifest)) throw new Error('archive manifest is not canonical')
+  await assertExactArchiveTree({ archiveRoot: root, manifest: canonical }, dependencies)
 
   const verifiedEntries = []
   const bundleHeads = []
@@ -104,6 +105,51 @@ export async function verifyExistingArchive({ archiveRoot, manifest }, dependenc
     bundleCount: bundleHeads.length,
     bundleHeads
   }
+}
+
+async function assertExactArchiveTree({ archiveRoot, manifest }, dependencies = {}) {
+  const root = path.resolve(archiveRoot)
+  const inspect = dependencies.lstat ?? lstat
+  const list = dependencies.readdir ?? readdir
+  const rootMetadata = await inspect(root)
+  if (rootMetadata.isSymbolicLink() || !rootMetadata.isDirectory()) throw new Error('archive root is not a regular directory')
+  if (!Array.isArray(manifest?.entries)) throw new Error('archive tree does not match the manifest')
+
+  const expectedFiles = new Set([
+    ...manifest.entries.map((entry) => normalizeArchivePath(entry?.path)),
+    'archive-manifest.json',
+    'archive-manifest.sha256'
+  ])
+  if (expectedFiles.size !== manifest.entries.length + 2) throw new Error('archive tree does not match the manifest')
+  const expectedDirectories = new Set()
+  for (const file of expectedFiles) {
+    const segments = file.split('/')
+    for (let index = 1; index < segments.length; index += 1) expectedDirectories.add(segments.slice(0, index).join('/'))
+  }
+
+  const observedFiles = new Set()
+  const observedDirectories = new Set()
+  async function visit(directory, relativeDirectory = '') {
+    const names = (await list(directory)).sort(compareText)
+    for (const name of names) {
+      const relativePath = relativeDirectory === '' ? name : `${relativeDirectory}/${name}`
+      const metadata = await inspect(path.join(directory, name))
+      if (metadata.isSymbolicLink()) throw new Error(`archive path contains a symbolic link or reparse point: ${relativePath}`)
+      if (metadata.isDirectory()) {
+        observedDirectories.add(relativePath)
+        await visit(path.join(directory, name), relativePath)
+      } else if (metadata.isFile()) {
+        observedFiles.add(relativePath)
+      } else {
+        throw new Error(`archive path is not a regular file or directory: ${relativePath}`)
+      }
+    }
+  }
+  await visit(root)
+  if (!equalSets(observedFiles, expectedFiles) || !equalSets(observedDirectories, expectedDirectories)) {
+    throw new Error('archive tree does not match the manifest')
+  }
+  return true
 }
 
 export async function assertArchivePathComponents({ archiveRoot, relativePath }, dependencies = {}) {
@@ -180,6 +226,10 @@ function resolveManifestPath(root, archivePath) {
   const relative = path.relative(root, resolved)
   if (relative === '' || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error('unsafe manifest path')
   return resolved
+}
+
+function equalSets(left, right) {
+  return left.size === right.size && [...left].every((entry) => right.has(entry))
 }
 
 async function existsByLstat(filePath, inspect) {

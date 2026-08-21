@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID as nodeRandomUUID } from 'node:crypto'
-import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir, writeFile } from 'node:fs/promises'
+import { link, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,7 +15,7 @@ import {
 } from './archivePolicy.mjs'
 import { freezeCarrierPatches, verifyPatchedTree } from './freeze-carrier-patches.mjs'
 import { carrierPatchName } from './carrierPatchPolicy.mjs'
-import { flattenLegacyHeads, validateConsolidationMap } from './consolidationPolicy.mjs'
+import { validateArchiveInventory, validateConsolidationMap } from './consolidationPolicy.mjs'
 import { parseWorktreePorcelain } from './capture-main-consolidation-inventory.mjs'
 
 const EXPECTED_ARCHIVE_LEAF = '2026-08-21-main-consolidation'
@@ -261,9 +261,17 @@ async function verifyPublishedArchive({ args, inventory, inventoryText, map, dep
   const verified = await verifyExistingArchive({ archiveRoot: args.archiveRoot, manifest }, {
     run: dependencies.run,
     now: dependencies.now,
-    lstat: dependencies.lstat
+    lstat: dependencies.lstat,
+    readdir: dependencies.readdir
   })
   validateVerifiedBundleHeads(verified.bundleHeads, inventory)
+  const carrierPatchCount = await verifyArchivedCarrierEvidence({
+    archiveRoot: args.archiveRoot,
+    repoRoot: args.repositoryRoot,
+    manifest,
+    map,
+    dependencies
+  })
   if (priorSummary) validatePriorSummary(priorSummary, {
     archiveRoot: args.archiveRoot,
     generatedAt: manifest.generatedAt,
@@ -271,14 +279,8 @@ async function verifyPublishedArchive({ args, inventory, inventoryText, map, dep
     inventoryHash,
     manifestHash,
     entryCount: manifest.entries.length,
-    bundleHeads: verified.bundleHeads
-  })
-  const carrierPatchCount = await verifyArchivedCarrierEvidence({
-    archiveRoot: args.archiveRoot,
-    repoRoot: args.repositoryRoot,
-    manifest,
-    map,
-    dependencies
+    bundleHeads: verified.bundleHeads,
+    carrierPatchCount
   })
   const summary = {
     ...verified,
@@ -316,7 +318,6 @@ async function prepareArchiveParent(args, dependencies) {
 
 async function publishArchiveExclusively({ stagingRoot, archiveRoot, markerPath, markerContents, manifest, dependencies }) {
   const makeDirectory = dependencies.mkdir ?? mkdir
-  const move = dependencies.rename ?? rename
   const remove = dependencies.rm ?? rm
   const removeDirectory = dependencies.rmdir ?? rmdir
   const inspect = dependencies.lstat ?? lstat
@@ -347,9 +348,12 @@ async function publishArchiveExclusively({ stagingRoot, archiveRoot, markerPath,
     await dependencies.afterArchiveRootClaim?.()
     const children = (await list(stagingRoot)).filter((name) => name !== path.basename(markerPath)).sort(compareText)
     for (const name of children) {
-      const destination = path.join(archiveRoot, name)
-      if (await existsByLstat(destination, inspect)) throw new Error(`archive publication child already exists: ${name}`)
-      await move(path.join(stagingRoot, name), destination)
+      await transferArchiveEntryNoReplace({
+        source: path.join(stagingRoot, name),
+        destination: path.join(archiveRoot, name),
+        relativePath: name,
+        dependencies
+      })
     }
     await verifyTransferredArchive({ archiveRoot, manifest, dependencies })
     const remaining = (await list(stagingRoot)).sort(compareText)
@@ -368,6 +372,64 @@ async function publishArchiveExclusively({ stagingRoot, archiveRoot, markerPath,
     }
     throw error
   }
+}
+
+async function transferArchiveEntryNoReplace({ source, destination, relativePath, dependencies }) {
+  const inspect = dependencies.lstat ?? lstat
+  const makeDirectory = dependencies.mkdir ?? mkdir
+  const list = dependencies.readdir ?? readdir
+  const createLink = dependencies.link ?? link
+  const removeFile = dependencies.unlink ?? unlink
+  const removeDirectory = dependencies.rmdir ?? rmdir
+  const before = await inspect(source, { bigint: true })
+  if (before.isSymbolicLink()) throw new Error(`archive publication source contains a symbolic link or reparse point: ${relativePath}`)
+  const kind = before.isFile() ? 'file' : before.isDirectory() ? 'directory' : null
+  if (kind === null) throw new Error(`archive publication source is not a regular file or directory: ${relativePath}`)
+
+  if (await existsByLstat(destination, inspect)) throw new Error(`archive publication child already exists: ${relativePath}`)
+  await dependencies.beforeArchiveEntryTransfer?.({ source, destination, relativePath, kind })
+
+  if (kind === 'file') {
+    try {
+      await createLink(source, destination)
+    } catch (error) {
+      if (error?.code === 'EEXIST') throw new Error(`archive publication child already exists: ${relativePath}`)
+      throw error
+    }
+    const [sourceAfter, destinationAfter] = await Promise.all([
+      inspect(source, { bigint: true }),
+      inspect(destination, { bigint: true })
+    ])
+    if (sourceAfter.isSymbolicLink() || destinationAfter.isSymbolicLink() || !sourceAfter.isFile() || !destinationAfter.isFile() ||
+        sourceAfter.dev !== destinationAfter.dev || sourceAfter.ino !== destinationAfter.ino ||
+        before.dev !== sourceAfter.dev || before.ino !== sourceAfter.ino) {
+      throw new Error(`archive publication source changed during transfer: ${relativePath}`)
+    }
+    await removeFile(source)
+    return
+  }
+
+  try {
+    await makeDirectory(destination)
+  } catch (error) {
+    if (error?.code === 'EEXIST') throw new Error(`archive publication child already exists: ${relativePath}`)
+    throw error
+  }
+  const sourceAfterClaim = await inspect(source, { bigint: true })
+  if (sourceAfterClaim.isSymbolicLink() || !sourceAfterClaim.isDirectory() ||
+      before.dev !== sourceAfterClaim.dev || before.ino !== sourceAfterClaim.ino) {
+    throw new Error(`archive publication source changed during transfer: ${relativePath}`)
+  }
+  for (const name of (await list(source)).sort(compareText)) {
+    await transferArchiveEntryNoReplace({
+      source: path.join(source, name),
+      destination: path.join(destination, name),
+      relativePath: `${relativePath}/${name}`,
+      dependencies
+    })
+  }
+  if ((await list(source)).length !== 0) throw new Error(`archive publication source directory is not empty after transfer: ${relativePath}`)
+  await removeDirectory(source)
 }
 
 async function verifyTransferredArchive({ archiveRoot, manifest, dependencies }) {
@@ -679,25 +741,6 @@ function validateInventoryMapBinding(inventory, mapBytes) {
   if (inventory.consolidationMapSha256 !== actual) throw new Error('inventory consolidation map SHA-256 mismatch')
 }
 
-function validateArchiveInventory(inventory, map) {
-  if (!Array.isArray(inventory?.remoteHeads) || !SHA1.test(inventory?.topology?.mainSha ?? '')) throw new Error('inventory remote heads do not match the approved map')
-  const expected = new Map(flattenLegacyHeads(map).map((entry) => [entry.branch, { sha: entry.expectedSha, owner: entry.owner }]))
-  expected.set('main', { sha: inventory.topology.mainSha, owner: 'main' })
-  for (const branch of map.processBranches) expected.set(branch, { sha: null, owner: 'process' })
-  const observed = new Map()
-  for (const entry of inventory.remoteHeads) {
-    if (observed.has(entry?.branch) || !SHA1.test(entry?.sha ?? '')) throw new Error('inventory remote heads do not match the approved map')
-    observed.set(entry.branch, entry)
-  }
-  if (observed.size !== expected.size) throw new Error('inventory remote heads do not match the approved map')
-  for (const [branch, contract] of expected) {
-    const entry = observed.get(branch)
-    if (!entry || entry.owner !== contract.owner || (contract.sha !== null && entry.sha !== contract.sha)) {
-      throw new Error('inventory remote heads do not match the approved map')
-    }
-  }
-}
-
 function assertRequiredArchiveContract(manifest, inventory, map) {
   if (!Array.isArray(manifest?.entries)) throw new Error('archive manifest does not contain the required archive entry set')
   const expectedCarrierPaths = new Set([
@@ -804,6 +847,7 @@ function validatePriorSummary(summary, expected) {
     throw new Error('existing archive summary identity, inventory, or manifest does not match')
   }
   if (JSON.stringify(summary.bundleHeads) !== JSON.stringify(expected.bundleHeads)) throw new Error('existing archive summary bundle heads do not match')
+  if (summary.carrierPatchCount !== expected.carrierPatchCount) throw new Error('existing archive summary carrier patch count does not match verified evidence')
 }
 
 async function verifyArchivedCarrierEvidence({ archiveRoot, repoRoot, manifest, map, dependencies }) {

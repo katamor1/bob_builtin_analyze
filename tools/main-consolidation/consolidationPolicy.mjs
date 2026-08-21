@@ -85,6 +85,54 @@ export function validateConsolidationMap(map) {
   return map
 }
 
+export function validateArchiveInventory(inventory, map) {
+  validateConsolidationMap(map)
+  if (inventory?.readyForArchive !== true || !Array.isArray(inventory.remoteHeads) || !Array.isArray(inventory.openPullRequests) ||
+      !SHA.test(inventory?.topology?.mainSha ?? '')) {
+    throw new Error('inventory topology does not match the approved map')
+  }
+
+  const expectedHeads = new Map(flattenLegacyHeads(map).map((entry) => [entry.branch, {
+    sha: entry.expectedSha,
+    owner: entry.owner
+  }]))
+  expectedHeads.set('main', { sha: inventory.topology.mainSha, owner: 'main' })
+  for (const branch of map.processBranches) expectedHeads.set(branch, { sha: null, owner: 'process' })
+  const observedHeads = new Map()
+  for (const entry of inventory.remoteHeads) {
+    if (observedHeads.has(entry?.branch) || !SHA.test(entry?.sha ?? '')) throw new Error('inventory remote heads do not match the approved map')
+    observedHeads.set(entry.branch, entry)
+  }
+  if (observedHeads.size !== expectedHeads.size) throw new Error('inventory remote heads do not match the approved map')
+  for (const [branch, contract] of expectedHeads) {
+    const entry = observedHeads.get(branch)
+    if (!entry || entry.owner !== contract.owner || (contract.sha !== null && entry.sha !== contract.sha)) {
+      throw new Error('inventory remote heads do not match the approved map')
+    }
+  }
+
+  const remoteRefs = new Map(inventory.remoteHeads.map((entry) => [entry.branch, entry.sha]))
+  const processRefs = new Map(map.processBranches.map((branch) => [branch, remoteRefs.get(branch)]))
+  let recomputed
+  try {
+    recomputed = assessTopology({
+      map,
+      mainSha: inventory.topology.mainSha,
+      baselineIsAncestor: true,
+      remoteRefs,
+      openPullRequests: inventory.openPullRequests,
+      processRefs
+    })
+  } catch (error) {
+    if (/pull request/u.test(error instanceof Error ? error.message : '')) {
+      throw new Error('inventory open pull requests do not match the approved map')
+    }
+    throw error
+  }
+  if (canonicalJson(inventory.topology) !== canonicalJson(recomputed)) throw new Error('inventory topology does not match the approved map')
+  return inventory
+}
+
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map((entry) => canonicalJson(entry)).join(',')}]`
   if (value && typeof value === 'object') {
