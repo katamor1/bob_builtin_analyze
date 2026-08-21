@@ -9,6 +9,7 @@ import test from 'node:test'
 import { createMainConsolidationArchive } from '../create-main-consolidation-archive.mjs'
 
 const EXPECTED_LEAF = '2026-08-21-main-consolidation'
+const sourceMap = JSON.parse(await readFile(new URL('../consolidation-map.json', import.meta.url), 'utf8'))
 
 test('creates a staged archive whose real bundle restores every branch head', async () => {
   const fixture = await createFixture()
@@ -86,6 +87,114 @@ test('carrier target-tree mismatch prevents final publication and retains incomp
     }), /target tree/u)
     assert.equal(existsSync(fixture.archiveRoot), false)
     assert.equal(existsSync(path.join(fixture.stagingRootFor('carrier-tree-mismatch'), '.archive-incomplete')), true)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('invalid or hash-replaced maps fail before archive staging', async (t) => {
+  for (const mutation of ['invalid', 'hash-replaced']) {
+    await t.test(mutation, async () => {
+      const fixture = await createFixture()
+      try {
+        const changed = structuredClone(fixture.map)
+        if (mutation === 'invalid') changed.carriers[0].pullRequests = []
+        else changed.baselineMain = 'f'.repeat(40)
+        await writeFile(fixture.mapPath, `${JSON.stringify(changed, null, 2)}\n`)
+        await assert.rejects(createMainConsolidationArchive(fixture.args, {
+          randomUUID: () => `map-${mutation}`
+        }), /map|carrier pull request mapping|SHA-256/u)
+        assert.equal(existsSync(fixture.archiveRoot), false)
+        assert.equal(existsSync(fixture.stagingRootFor(`map-${mutation}`)), false)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    })
+  }
+})
+
+test('verify-existing rejects a canonical manifest that omits the fixed carrier patch set', async () => {
+  const fixture = await createFixture()
+  try {
+    await createMainConsolidationArchive(fixture.args, { randomUUID: () => 'missing-carriers' })
+    const manifestPath = path.join(fixture.archiveRoot, 'archive-manifest.json')
+    const detachedPath = path.join(fixture.archiveRoot, 'archive-manifest.sha256')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    manifest.entries = manifest.entries.filter((entry) => !entry.path.startsWith('carrier-patches/'))
+    const manifestText = `${JSON.stringify(manifest, null, 2)}\n`
+    await writeFile(manifestPath, manifestText)
+    await writeFile(detachedPath, `${createHash('sha256').update(manifestText).digest('hex')}\n`)
+    await assert.rejects(createMainConsolidationArchive(verifyArguments(fixture)), /carrier patch set/u)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('verify-existing binds verification to the inventory map hash before reading the archive', async () => {
+  const fixture = await createFixture()
+  try {
+    await createMainConsolidationArchive(fixture.args, { randomUUID: () => 'verify-map-binding' })
+    const changed = structuredClone(fixture.map)
+    changed.baselineMain = 'e'.repeat(40)
+    await writeFile(fixture.mapPath, `${JSON.stringify(changed, null, 2)}\n`)
+    await assert.rejects(createMainConsolidationArchive(verifyArguments(fixture)), /map.*SHA-256|SHA-256.*map/u)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('verify-existing rejects canonical carrier evidence that disagrees with the bound map, patch hash, or target tree', async (t) => {
+  const fixture = await createFixture()
+  try {
+    await createMainConsolidationArchive(fixture.args, { randomUUID: () => 'carrier-evidence-mutation' })
+    const evidencePath = path.join(fixture.archiveRoot, 'carrier-patches', 'carrier-patches.json')
+    const manifestPath = path.join(fixture.archiveRoot, 'archive-manifest.json')
+    const detachedPath = path.join(fixture.archiveRoot, 'archive-manifest.sha256')
+    const originalEvidence = JSON.parse(await readFile(evidencePath, 'utf8'))
+    const originalManifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    const firstPatchPath = path.join(fixture.archiveRoot, 'carrier-patches', originalEvidence.carriers[0].patch)
+    const originalPatch = await readFile(firstPatchPath)
+    const mutations = {
+      range: (entry) => { entry.fromSha = 'd'.repeat(40) },
+      'patch-hash': (entry) => { entry.sha256 = 'c'.repeat(64) },
+      tree: (entry) => { entry.reconstructedTreeSha = 'b'.repeat(40) }
+    }
+    for (const [name, mutate] of Object.entries(mutations)) {
+      await t.test(name, async () => {
+        const evidence = structuredClone(originalEvidence)
+        mutate(evidence.carriers[0])
+        const evidenceText = `${JSON.stringify(evidence, null, 2)}\n`
+        await writeFile(evidencePath, evidenceText)
+        const manifest = structuredClone(originalManifest)
+        const evidenceEntry = manifest.entries.find((entry) => entry.path === 'carrier-patches/carrier-patches.json')
+        evidenceEntry.byteSize = Buffer.byteLength(evidenceText)
+        evidenceEntry.sha256 = createHash('sha256').update(evidenceText).digest('hex')
+        const manifestText = `${JSON.stringify(manifest, null, 2)}\n`
+        await writeFile(manifestPath, manifestText)
+        await writeFile(detachedPath, `${createHash('sha256').update(manifestText).digest('hex')}\n`)
+        await assert.rejects(createMainConsolidationArchive(verifyArguments(fixture)), /carrier patch|target tree/u)
+      })
+    }
+    await t.test('patch-bytes', async () => {
+      const changedPatch = originalPatch.subarray(0, Math.max(1, Math.floor(originalPatch.byteLength / 2)))
+      await writeFile(firstPatchPath, changedPatch)
+      const evidence = structuredClone(originalEvidence)
+      evidence.carriers[0].byteSize = changedPatch.byteLength
+      evidence.carriers[0].sha256 = createHash('sha256').update(changedPatch).digest('hex')
+      const evidenceText = `${JSON.stringify(evidence, null, 2)}\n`
+      await writeFile(evidencePath, evidenceText)
+      const manifest = structuredClone(originalManifest)
+      const patchEntry = manifest.entries.find((entry) => entry.path === `carrier-patches/${evidence.carriers[0].patch}`)
+      patchEntry.byteSize = changedPatch.byteLength
+      patchEntry.sha256 = evidence.carriers[0].sha256
+      const evidenceEntry = manifest.entries.find((entry) => entry.path === 'carrier-patches/carrier-patches.json')
+      evidenceEntry.byteSize = Buffer.byteLength(evidenceText)
+      evidenceEntry.sha256 = createHash('sha256').update(evidenceText).digest('hex')
+      const manifestText = `${JSON.stringify(manifest, null, 2)}\n`
+      await writeFile(manifestPath, manifestText)
+      await writeFile(detachedPath, `${createHash('sha256').update(manifestText).digest('hex')}\n`)
+      await assert.rejects(createMainConsolidationArchive(verifyArguments(fixture)), /carrier patch|apply|reconstruct/u)
+    })
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
   }
@@ -420,10 +529,16 @@ async function createFixture() {
   git(['-C', repositoryRoot, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main'])
   await writeFile(artifactPath, 'accepted evidence')
   const artifactBytes = await readFile(artifactPath)
+  const carrierMap = {
+    ...structuredClone(sourceMap),
+    carriers: sourceMap.carriers.map((carrier) => ({ ...structuredClone(carrier), fromSha: mainSha, toSha: featureSha }))
+  }
+  const mapText = `${JSON.stringify(carrierMap, null, 2)}\n`
   const inventory = {
     schemaVersion: 'bob-builtin-analyze/main-consolidation-inventory/v1',
     generatedAt: '2026-08-21T00:00:00.000Z',
     repository: 'katamor1/bob_builtin_analyze',
+    consolidationMapSha256: createHash('sha256').update(mapText).digest('hex'),
     readyForArchive: true,
     topology: { readyForArchive: true, mainSha, legacyHeadCount: 30, processHeadCount: 1, openPullRequestCount: 1 },
     remoteHeads: [{ branch: 'main', sha: mainSha, owner: 'main' }, { branch: 'feature', sha: featureSha, owner: 'test' }],
@@ -448,11 +563,7 @@ async function createFixture() {
   const summaryJson = path.join(root, 'archive-summary.json')
   const summaryMarkdown = path.join(root, 'archive-summary.md')
   await writeFile(inventoryPath, `${JSON.stringify(inventory, null, 2)}\n`)
-  const carrierIds = ['workflow-a', 'workflow-b', 'workflow-c', 'processing-a', 'processing-b', 'processing-c']
-  await writeFile(mapPath, `${JSON.stringify({
-    schemaVersion: 'bob-builtin-analyze/main-consolidation-map/v1',
-    carriers: carrierIds.map((id, index) => ({ id, fromSha: mainSha, toSha: featureSha, pullRequests: [index + 1] }))
-  }, null, 2)}\n`)
+  await writeFile(mapPath, mapText)
   const args = [
     '--inventory', inventoryPath,
     '--map', mapPath,
@@ -474,6 +585,9 @@ async function createFixture() {
     summaryMarkdown,
     mainSha,
     featureSha,
+    map: carrierMap,
+    mapPath,
+    inventoryPath,
     args,
     stagingRoot: path.join(path.dirname(archiveRoot), `.${EXPECTED_LEAF}.staging-${process.pid}-archive-test`),
     stagingRootFor: (suffix) => path.join(path.dirname(archiveRoot), `.${EXPECTED_LEAF}.staging-${process.pid}-${suffix}`)

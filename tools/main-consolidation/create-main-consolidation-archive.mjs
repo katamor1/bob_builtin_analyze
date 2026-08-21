@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID as nodeRandomUUID } from 'node:crypto'
-import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -12,10 +13,13 @@ import {
   validateArchiveRequest,
   verifyExistingArchive
 } from './archivePolicy.mjs'
-import { freezeCarrierPatches } from './freeze-carrier-patches.mjs'
+import { freezeCarrierPatches, verifyPatchedTree } from './freeze-carrier-patches.mjs'
+import { carrierPatchName } from './carrierPatchPolicy.mjs'
+import { validateConsolidationMap } from './consolidationPolicy.mjs'
 
 const EXPECTED_ARCHIVE_LEAF = '2026-08-21-main-consolidation'
 const ARCHIVE_SCHEMA = 'bob-builtin-analyze/main-consolidation-archive/v1'
+const INVENTORY_SCHEMA = 'bob-builtin-analyze/main-consolidation-inventory/v1'
 const LABEL = /^[a-z0-9][a-z0-9-]*$/u
 const SHA1 = /^[0-9a-f]{40}$/u
 const SHA256 = /^[0-9a-f]{64}$/u
@@ -25,7 +29,11 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
   const read = dependencies.readFile ?? readFile
   const inventoryText = String(await read(args.inventory, 'utf8'))
   const inventory = parseJson(inventoryText, 'inventory')
-  const map = parseJson(String(await read(args.map, 'utf8')), 'map')
+  const rawMap = await read(args.map)
+  const mapBytes = Buffer.isBuffer(rawMap) ? rawMap : Buffer.from(String(rawMap), 'utf8')
+  const map = parseJson(mapBytes.toString('utf8'), 'map')
+  validateConsolidationMap(map)
+  validateInventoryMapBinding(inventory, mapBytes)
   validateArchiveRequest({
     repoRoot: args.repositoryRoot,
     archiveRoot: args.archiveRoot,
@@ -34,7 +42,7 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
   })
   assertSummaryDestinations(args)
 
-  if (args.verifyExisting) return verifyPublishedArchive({ args, inventory, dependencies })
+  if (args.verifyExisting) return verifyPublishedArchive({ args, inventory, inventoryText, map, dependencies })
 
   assertArchiveDestinationAvailable({ archiveRoot: args.archiveRoot, lstat: dependencies.lstatSync })
   await prepareArchiveParent(args, dependencies)
@@ -197,7 +205,7 @@ export function renderArchiveMarkdown(summary) {
   ].join('\n')
 }
 
-async function verifyPublishedArchive({ args, inventory, dependencies }) {
+async function verifyPublishedArchive({ args, inventory, inventoryText, map, dependencies }) {
   let rootMetadata
   try {
     rootMetadata = await (dependencies.lstat ?? lstat)(args.archiveRoot)
@@ -211,6 +219,7 @@ async function verifyPublishedArchive({ args, inventory, dependencies }) {
   await assertArchivePathComponents({ archiveRoot: args.archiveRoot, relativePath: 'archive-manifest.sha256' }, { lstat: dependencies.lstat })
   const manifestText = String(await (dependencies.readFile ?? readFile)(manifestPath, 'utf8'))
   const manifest = parseJson(manifestText, 'archive manifest')
+  assertFixedCarrierPatchSet(manifest, map)
   const expectedManifestHash = String(await (dependencies.readFile ?? readFile)(path.join(args.archiveRoot, 'archive-manifest.sha256'), 'utf8')).trim()
   const manifestHash = createHash('sha256').update(manifestText).digest('hex')
   if (manifestHash !== expectedManifestHash) throw new Error('archive manifest detached hash mismatch')
@@ -218,11 +227,19 @@ async function verifyPublishedArchive({ args, inventory, dependencies }) {
     run: dependencies.run,
     now: dependencies.now
   })
+  const carrierPatchCount = await verifyArchivedCarrierEvidence({
+    archiveRoot: args.archiveRoot,
+    repoRoot: args.repositoryRoot,
+    manifest,
+    map,
+    dependencies
+  })
   const summary = {
     ...verified,
     inventoryGeneratedAt: inventory.generatedAt,
-    inventorySha256: createHash('sha256').update(String(await (dependencies.readFile ?? readFile)(args.inventory, 'utf8'))).digest('hex'),
-    manifestSha256: manifestHash
+    inventorySha256: createHash('sha256').update(inventoryText).digest('hex'),
+    manifestSha256: manifestHash,
+    carrierPatchCount
   }
   await writeSummaries(args, summary, dependencies)
   return { exitCode: 0, summary, manifest }
@@ -457,7 +474,12 @@ function validateCarrierEvidence(carriers, evidence) {
   const paths = new Set()
   for (const entry of evidence) {
     const carrier = expected.get(entry?.id)
+    const expectedPrerequisites = (carrier?.prerequisiteBranches ?? (carrier?.branches ?? [])
+      .filter((branch) => branch.pullRequest === undefined)
+      .map((branch) => branch.branch))
     if (!carrier || entry.fromSha !== carrier.fromSha || entry.toSha !== carrier.toSha ||
+        JSON.stringify(entry.pullRequests) !== JSON.stringify(carrier.pullRequests ?? []) ||
+        JSON.stringify(entry.prerequisiteBranches) !== JSON.stringify(expectedPrerequisites) ||
         !SHA1.test(entry.reconstructedTreeSha ?? '') || entry.reconstructedTreeSha !== entry.targetTreeSha) {
       throw new Error(`carrier patch evidence does not match target tree: ${entry?.id ?? 'unknown'}`)
     }
@@ -467,6 +489,56 @@ function validateCarrierEvidence(carriers, evidence) {
         !Number.isSafeInteger(entry.pathCount) || entry.pathCount <= 0) throw new Error('invalid carrier patch evidence')
     paths.add(entry.patch)
   }
+}
+
+function validateInventoryMapBinding(inventory, mapBytes) {
+  if (inventory?.schemaVersion !== INVENTORY_SCHEMA || !SHA256.test(inventory?.consolidationMapSha256 ?? '')) {
+    throw new Error('inventory is missing a valid consolidation map SHA-256')
+  }
+  const actual = createHash('sha256').update(mapBytes).digest('hex')
+  if (inventory.consolidationMapSha256 !== actual) throw new Error('inventory consolidation map SHA-256 mismatch')
+}
+
+function assertFixedCarrierPatchSet(manifest, map) {
+  if (!Array.isArray(manifest?.entries)) throw new Error('archive manifest is missing the fixed carrier patch set')
+  const expected = new Set([
+    'carrier-patches/carrier-patches.json',
+    ...map.carriers.map((carrier) => `carrier-patches/${carrierPatchName(carrier.id)}`)
+  ])
+  const observed = manifest.entries.map((entry) => entry?.path).filter((entry) => typeof entry === 'string' && entry.startsWith('carrier-patches/'))
+  if (observed.length !== expected.size || new Set(observed).size !== expected.size || observed.some((entry) => !expected.has(entry))) {
+    throw new Error('archive manifest does not contain the fixed carrier patch set')
+  }
+}
+
+async function verifyArchivedCarrierEvidence({ archiveRoot, repoRoot, manifest, map, dependencies }) {
+  const relativePath = 'carrier-patches/carrier-patches.json'
+  await assertArchivePathComponents({ archiveRoot, relativePath }, { lstat: dependencies.lstat })
+  const evidenceDocument = parseJson(String(await (dependencies.readFile ?? readFile)(path.join(archiveRoot, ...relativePath.split('/')), 'utf8')), 'carrier patch manifest')
+  if (evidenceDocument.schemaVersion !== 'bob-builtin-analyze/carrier-patches/v1') throw new Error('unsupported carrier patch manifest schema')
+  validateCarrierEvidence(map.carriers, evidenceDocument.carriers)
+  const manifestEntries = new Map(manifest.entries.map((entry) => [entry.path, entry]))
+  for (const entry of evidenceDocument.carriers) {
+    const archived = manifestEntries.get(`carrier-patches/${entry.patch}`)
+    if (!archived || archived.sha256 !== entry.sha256 || archived.byteSize !== entry.byteSize) throw new Error(`carrier patch hash mismatch: ${entry.patch}`)
+    const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'bob-verify-carrier-index-'))
+    try {
+      const verifiedTree = await verifyPatchedTree({
+        fromSha: entry.fromSha,
+        toSha: entry.toSha,
+        patchPath: path.join(archiveRoot, 'carrier-patches', entry.patch),
+        run: dependencies.run ?? defaultRun,
+        temporaryIndex: path.join(temporaryDirectory, 'index'),
+        repoRoot
+      })
+      if (verifiedTree.reconstructedTreeSha !== entry.reconstructedTreeSha || verifiedTree.targetTreeSha !== entry.targetTreeSha) {
+        throw new Error(`carrier patch tree evidence mismatch: ${entry.patch}`)
+      }
+    } finally {
+      await rm(temporaryDirectory, { recursive: true, force: true })
+    }
+  }
+  return evidenceDocument.carriers.length
 }
 
 async function writeSummaries(args, summary, dependencies) {

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -13,7 +14,9 @@ import {
 import { flattenLegacyHeads } from '../consolidationPolicy.mjs'
 
 const mapUrl = new URL('../consolidation-map.json', import.meta.url)
-const map = JSON.parse(await readFile(mapUrl, 'utf8'))
+const mapText = await readFile(mapUrl, 'utf8')
+const map = JSON.parse(mapText)
+const mapSha256 = createHash('sha256').update(mapText).digest('hex')
 const mainSha = 'a'.repeat(40)
 const processSha = 'b'.repeat(40)
 const externalSha = 'c'.repeat(40)
@@ -34,6 +37,7 @@ test('parses complete worktree porcelain records and rejects incomplete records'
 
 test('only the primary root may contain the approved integration-clone entry', () => {
   const evidence = inventoryFromObservations({
+    consolidationMapSha256: mapSha256,
     topology: validTopology(),
     primaryStatus: ['?? .integration-xlsx-on-prereq/'],
     currentWorktreeStatus: ['?? .integration-xlsx-on-prereq/'],
@@ -47,6 +51,7 @@ test('only the primary root may contain the approved integration-clone entry', (
 
 test('inventory records dirty state and blocks archive readiness', () => {
   const evidence = inventoryFromObservations({
+    consolidationMapSha256: mapSha256,
     topology: { readyForArchive: true, mainSha, legacyHeadCount: 30, processHeadCount: 1, openPullRequestCount: 20 },
     primaryStatus: ['?? .integration-xlsx-on-prereq/'],
     worktrees: [{ path: 'C:/repo', head: mainSha, branch: 'refs/heads/main', detached: false, status: [] }],
@@ -55,6 +60,19 @@ test('inventory records dirty state and blocks archive readiness', () => {
   })
   assert.equal(evidence.readyForArchive, false)
   assert.match(renderInventoryMarkdown(evidence), /integration-xlsx-on-prereq.*dirty/u)
+})
+
+test('inventory schema requires the exact lowercase SHA-256 of the validated consolidation map', () => {
+  const observations = {
+    topology: validTopology(),
+    primaryStatus: [],
+    worktrees: [],
+    externalRepositories: [],
+    artifacts: []
+  }
+  assert.throws(() => inventoryFromObservations(observations), /consolidation map SHA-256/u)
+  assert.throws(() => inventoryFromObservations({ ...observations, consolidationMapSha256: 'A'.repeat(64) }), /consolidation map SHA-256/u)
+  assert.equal(inventoryFromObservations({ ...observations, consolidationMapSha256: mapSha256 }).consolidationMapSha256, mapSha256)
 })
 
 test('capture runs the approved read-only observations and atomically writes ready evidence', async () => {
@@ -77,8 +95,9 @@ test('capture runs the approved read-only observations and atomically writes rea
     assert.equal(result.exitCode, 0)
     assert.equal(result.evidence.readyForArchive, true)
     assert.deepEqual(Object.keys(result.evidence), [
-      'schemaVersion', 'generatedAt', 'repository', 'readyForArchive', 'topology', 'remoteHeads', 'openPullRequests', 'localBranches', 'worktrees', 'externalRepositories', 'artifacts', 'blockers'
+      'schemaVersion', 'generatedAt', 'repository', 'consolidationMapSha256', 'readyForArchive', 'topology', 'remoteHeads', 'openPullRequests', 'localBranches', 'worktrees', 'externalRepositories', 'artifacts', 'blockers'
     ])
+    assert.equal(result.evidence.consolidationMapSha256, createHash('sha256').update(JSON.stringify(map)).digest('hex'))
     assert.deepEqual(result.evidence.topology, validTopology())
     assert.deepEqual(result.evidence.remoteHeads, expectedRemoteHeads())
     assert.deepEqual(result.evidence.openPullRequests, openPullRequests().map(({ number, headRefName, headRefOid, baseRefName, url }) => ({ number, headRefName, headRefOid, baseRefName, url })).sort((left, right) => left.number - right.number))

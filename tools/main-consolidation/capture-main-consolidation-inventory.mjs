@@ -9,6 +9,7 @@ import { assessTopology, validateConsolidationMap } from './consolidationPolicy.
 
 const INVENTORY_SCHEMA = 'bob-builtin-analyze/main-consolidation-inventory/v1'
 const SHA = /^[0-9a-f]{40}$/u
+const SHA256 = /^[0-9a-f]{64}$/u
 const ALLOWED_PRIMARY_STATUS = '?? .integration-xlsx-on-prereq/'
 const LABEL = /^[a-z0-9][a-z0-9-]*$/u
 
@@ -63,6 +64,7 @@ export function parseWorktreePorcelain(text) {
 }
 
 export function inventoryFromObservations({
+  consolidationMapSha256,
   topology,
   primaryStatus,
   currentWorktreeStatus = [],
@@ -76,6 +78,7 @@ export function inventoryFromObservations({
   generatedAt = new Date().toISOString()
 }) {
   if (topology?.readyForArchive !== true) throw new Error('topology is not ready for archive')
+  if (!SHA256.test(consolidationMapSha256 ?? '')) throw new Error('invalid consolidation map SHA-256')
   const normalizedPrimaryStatus = normalizeStatus(primaryStatus)
   const normalizedCurrentStatus = normalizeStatus(currentWorktreeStatus)
   const normalizedWorktrees = normalizeWorktrees(worktrees)
@@ -90,6 +93,7 @@ export function inventoryFromObservations({
     schemaVersion: INVENTORY_SCHEMA,
     generatedAt,
     repository,
+    consolidationMapSha256,
     readyForArchive: blockers.length === 0,
     topology: normalizeTopology(topology),
     remoteHeads: normalizeRemoteHeads(remoteHeads),
@@ -109,6 +113,7 @@ export function renderInventoryMarkdown(evidence) {
     `- Repository: \`${escapeMarkdown(evidence.repository)}\``,
     `- Generated: \`${escapeMarkdown(evidence.generatedAt)}\``,
     `- Audited main: \`${escapeMarkdown(evidence.topology.mainSha)}\``,
+    `- Consolidation map SHA-256: \`${escapeMarkdown(evidence.consolidationMapSha256)}\``,
     `- Ready for archive: **${evidence.readyForArchive ? 'yes' : 'no'}**`,
     `- Legacy heads: ${evidence.topology.legacyHeadCount}`,
     `- Open pull requests: ${evidence.topology.openPullRequestCount}`,
@@ -141,8 +146,11 @@ export async function captureMainConsolidationInventory(argv = process.argv.slic
   const stat = dependencies.lstat ?? lstat
   const write = dependencies.atomicWriteText ?? atomicWriteText
   const generatedAt = dependencies.now ? dependencies.now().toISOString() : new Date().toISOString()
-  const map = JSON.parse(String(await read(args.map, 'utf8')))
+  const rawMap = await read(args.map)
+  const mapBytes = Buffer.isBuffer(rawMap) ? rawMap : Buffer.from(String(rawMap), 'utf8')
+  const map = JSON.parse(mapBytes.toString('utf8'))
   validateConsolidationMap(map)
+  const consolidationMapSha256 = createHash('sha256').update(mapBytes).digest('hex')
   if (map.repository !== args.repository) throw new Error('map repository does not match --repository')
 
   runChecked(run, 'git', ['fetch', '--no-tags', args.remote, '+refs/heads/*:refs/remotes/origin/*'])
@@ -180,6 +188,7 @@ export async function captureMainConsolidationInventory(argv = process.argv.slic
   }
   const topology = assessTopology({ map, mainSha, baselineIsAncestor, remoteRefs, openPullRequests, processRefs })
   const evidence = inventoryFromObservations({
+    consolidationMapSha256,
     topology,
     primaryStatus: primary.status,
     currentWorktreeStatus: invokingWorktreeStatus,
