@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { link as fsLink, lstat, mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { link as fsLink, lstat, mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -890,6 +890,42 @@ test('publication rejects unmanifested staging entries before and during transfe
         assert.equal(await readFile(scenario.extraPath(fixture), 'utf8'), scenario.expected)
         assert.equal(existsSync(path.join(fixture.archiveRoot, '.archive-incomplete')), true)
         assert.equal(existsSync(path.join(fixture.stagingRootFor(scenario.id), '.archive-incomplete')), true)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    })
+  }
+})
+
+test('publication never removes incomplete markers that were replaced or modified after exclusive creation', async (t) => {
+  const cases = [
+    { target: 'staging', mutation: 'replace', hook: 'afterArchiveRootClaim' },
+    { target: 'final', mutation: 'replace', hook: 'afterArchiveRootClaim' },
+    { target: 'staging', mutation: 'modify', hook: 'afterArchiveRootClaim' },
+    { target: 'final', mutation: 'modify', hook: 'afterArchiveRootClaim' },
+    { target: 'final', mutation: 'replace', hook: 'beforeArchiveMarkerRemoval' }
+  ]
+
+  for (const scenario of cases) {
+    await t.test(`${scenario.target} marker ${scenario.mutation} via ${scenario.hook}`, async () => {
+      const fixture = await createFixture()
+      const id = `marker-${scenario.target}-${scenario.mutation}-${scenario.hook}`
+      const stagingMarker = path.join(fixture.stagingRootFor(id), '.archive-incomplete')
+      const finalMarker = path.join(fixture.archiveRoot, '.archive-incomplete')
+      const targetMarker = scenario.target === 'staging' ? stagingMarker : finalMarker
+      const sentinel = `keep-${id}`
+      const mutateMarker = async () => {
+        if (scenario.mutation === 'replace') await unlink(targetMarker)
+        await writeFile(targetMarker, sentinel)
+      }
+      try {
+        await assert.rejects(createMainConsolidationArchive(fixture.args, {
+          randomUUID: () => id,
+          [scenario.hook]: mutateMarker
+        }), /archive incomplete marker.*changed|marker ownership/u)
+        assert.equal(existsSync(stagingMarker), true)
+        assert.equal(existsSync(finalMarker), true)
+        assert.equal(await readFile(targetMarker, 'utf8'), sentinel)
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }

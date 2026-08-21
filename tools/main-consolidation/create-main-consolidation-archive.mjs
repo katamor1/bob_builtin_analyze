@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID as nodeRandomUUID } from 'node:crypto'
-import { link, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
+import { link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -86,7 +86,9 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
   )
   await (dependencies.mkdir ?? mkdir)(stagingRoot)
   const markerPath = path.join(stagingRoot, '.archive-incomplete')
-  await writeExclusive(markerPath, `${generatedAt}\n`, dependencies)
+  const markerContents = `${generatedAt}\n`
+  await writeExclusive(markerPath, markerContents, dependencies)
+  const stagingMarkerOwnership = await captureMarkerOwnership(markerPath, markerContents, dependencies)
 
   const manifestEntries = []
   const repositories = [
@@ -213,7 +215,8 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
     stagingRoot,
     archiveRoot: args.archiveRoot,
     markerPath,
-    markerContents: `${generatedAt}\n`,
+    markerContents,
+    stagingMarkerOwnership,
     manifest,
     dependencies
   })
@@ -323,7 +326,7 @@ async function prepareArchiveParent(args, dependencies) {
   })
 }
 
-async function publishArchiveExclusively({ stagingRoot, archiveRoot, markerPath, markerContents, manifest, dependencies }) {
+async function publishArchiveExclusively({ stagingRoot, archiveRoot, markerPath, markerContents, stagingMarkerOwnership, manifest, dependencies }) {
   const makeDirectory = dependencies.mkdir ?? mkdir
   const remove = dependencies.rm ?? rm
   const removeDirectory = dependencies.rmdir ?? rmdir
@@ -333,6 +336,7 @@ async function publishArchiveExclusively({ stagingRoot, archiveRoot, markerPath,
   let claimed = false
   let finalMarkerCreated = false
   let stagingMarkerRemoved = false
+  let finalMarkerOwnership
   try {
     try {
       await makeDirectory(archiveRoot)
@@ -344,6 +348,7 @@ async function publishArchiveExclusively({ stagingRoot, archiveRoot, markerPath,
     try {
       await writeExclusive(finalMarker, markerContents, dependencies)
       finalMarkerCreated = true
+      finalMarkerOwnership = await captureMarkerOwnership(finalMarker, markerContents, dependencies)
     } catch (error) {
       const children = await list(archiveRoot)
       if (children.length === 0) {
@@ -353,10 +358,14 @@ async function publishArchiveExclusively({ stagingRoot, archiveRoot, markerPath,
       throw error
     }
     await dependencies.afterArchiveRootClaim?.()
+    await assertMarkerOwnership(stagingMarkerOwnership, dependencies)
+    await assertMarkerOwnership(finalMarkerOwnership, dependencies)
     await assertExactArchiveTree({ archiveRoot: stagingRoot, manifest, requireIncompleteMarker: true }, {
       lstat: dependencies.lstat,
       readdir: dependencies.readdir
     })
+    await assertMarkerOwnership(stagingMarkerOwnership, dependencies)
+    await assertMarkerOwnership(finalMarkerOwnership, dependencies)
     const children = (await list(stagingRoot)).filter((name) => name !== path.basename(markerPath)).sort(compareText)
     for (const name of children) {
       await transferArchiveEntryNoReplace({
@@ -367,15 +376,23 @@ async function publishArchiveExclusively({ stagingRoot, archiveRoot, markerPath,
       })
     }
     await verifyTransferredArchive({ archiveRoot, manifest, dependencies })
+    await assertMarkerOwnership(stagingMarkerOwnership, dependencies)
+    await assertMarkerOwnership(finalMarkerOwnership, dependencies)
     await assertExactArchiveTree({ archiveRoot, manifest, requireIncompleteMarker: true }, {
       lstat: dependencies.lstat,
       readdir: dependencies.readdir
     })
+    await assertMarkerOwnership(stagingMarkerOwnership, dependencies)
+    await assertMarkerOwnership(finalMarkerOwnership, dependencies)
     const remaining = (await list(stagingRoot)).sort(compareText)
     if (JSON.stringify(remaining) !== JSON.stringify([path.basename(markerPath)])) throw new Error('archive staging is not empty after publication transfer')
+    await dependencies.beforeArchiveMarkerRemoval?.({ stagingMarker: markerPath, finalMarker })
+    await assertMarkerOwnership(stagingMarkerOwnership, dependencies)
+    await assertMarkerOwnership(finalMarkerOwnership, dependencies)
     await remove(markerPath)
     stagingMarkerRemoved = true
     await removeDirectory(stagingRoot)
+    await assertMarkerOwnership(finalMarkerOwnership, dependencies)
     await remove(finalMarker)
     finalMarkerCreated = false
   } catch (error) {
@@ -387,6 +404,56 @@ async function publishArchiveExclusively({ stagingRoot, archiveRoot, markerPath,
     }
     throw error
   }
+}
+
+async function captureMarkerOwnership(markerPath, markerContents, dependencies) {
+  const expectedBytes = Buffer.from(markerContents, 'utf8')
+  const observed = await readStableMarker(markerPath, dependencies)
+  const expectedHash = createHash('sha256').update(expectedBytes).digest('hex')
+  if (!observed.bytes.equals(expectedBytes) || observed.hash !== expectedHash) {
+    throw new Error('archive incomplete marker contents changed during ownership capture')
+  }
+  return Object.freeze({ markerPath, bytes: expectedBytes, hash: expectedHash, identity: observed.identity })
+}
+
+async function assertMarkerOwnership(ownership, dependencies) {
+  if (!ownership) throw new Error('archive incomplete marker ownership was not captured')
+  const observed = await readStableMarker(ownership.markerPath, dependencies)
+  if (observed.identity !== ownership.identity || observed.hash !== ownership.hash || !observed.bytes.equals(ownership.bytes)) {
+    throw new Error('archive incomplete marker ownership changed')
+  }
+}
+
+async function readStableMarker(markerPath, dependencies) {
+  const openFile = dependencies.open ?? open
+  const inspect = dependencies.lstat ?? lstat
+  let handle
+  try {
+    handle = await openFile(markerPath, 'r')
+    const before = await handle.stat({ bigint: true })
+    if (!before.isFile()) throw new Error('archive incomplete marker is not a regular file')
+    const bytes = await handle.readFile()
+    const after = await handle.stat({ bigint: true })
+    const pathMetadata = await inspect(markerPath, { bigint: true })
+    if (pathMetadata.isSymbolicLink() || !pathMetadata.isFile() ||
+        markerIdentity(before) !== markerIdentity(after) || markerIdentity(after) !== markerIdentity(pathMetadata)) {
+      throw new Error('archive incomplete marker ownership changed')
+    }
+    return {
+      bytes,
+      hash: createHash('sha256').update(bytes).digest('hex'),
+      identity: markerIdentity(after)
+    }
+  } catch (error) {
+    if (/^archive incomplete marker/u.test(error?.message ?? '')) throw error
+    throw new Error('archive incomplete marker ownership changed')
+  } finally {
+    await handle?.close()
+  }
+}
+
+function markerIdentity(metadata) {
+  return JSON.stringify(['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs'].map((key) => String(metadata[key] ?? '')))
 }
 
 function observeBaselineAncestry({ repositoryRoot, baselineMain, mainSha, run }) {
