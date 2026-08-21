@@ -191,6 +191,50 @@ test('primary bundle rejects movement, disappearance, and appearance in other re
   }
 })
 
+test('external repositories reject inventory-owned branch and HEAD movement across bundle boundaries', async (t) => {
+  const scenarios = [
+    { label: 'integration-xlsx-on-prereq', timing: 'after-validation', pathKey: 'externalOne' },
+    { label: 'accepted-main', timing: 'during-bundle', pathKey: 'externalTwo' }
+  ]
+  for (const scenario of scenarios) {
+    await t.test(`${scenario.label} ${scenario.timing}`, async () => {
+      const fixture = await createFixture()
+      try {
+        const repositoryPath = fixture[scenario.pathKey]
+        const oldHead = git(['-C', repositoryPath, 'rev-parse', 'HEAD']).trim()
+        const tree = git(['-C', repositoryPath, 'rev-parse', 'HEAD^{tree}']).trim()
+        const movedHead = git(['-C', repositoryPath, 'commit-tree', tree, '-p', oldHead, '-m', 'moved during archive'])
+          .trim()
+        const calls = []
+        let mutated = false
+        const run = (command, args) => {
+          calls.push([command, [...args]])
+          const result = spawnSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+          const afterValidation = scenario.timing === 'after-validation' && args.includes(repositoryPath) && args.includes('rev-parse') && args.at(-1) === 'HEAD'
+          const duringBundle = scenario.timing === 'during-bundle' && args.includes(repositoryPath) && args.includes('bundle') && args.includes('create')
+          if (!mutated && command === 'git' && (afterValidation || duringBundle)) {
+            mutated = true
+            git(['-C', repositoryPath, 'update-ref', 'refs/heads/main', movedHead, oldHead])
+          }
+          return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
+        }
+        await assert.rejects(
+          createMainConsolidationArchive(fixture.args, { run }),
+          /external repository refs (?:do not match inventory|changed during bundle creation)/
+        )
+        assert.equal(existsSync(fixture.archiveRoot), false)
+        if (scenario.label === 'integration-xlsx-on-prereq') {
+          const sourceCalls = calls.filter(([command, args]) => command === 'git' && args.includes(repositoryPath))
+          assert.ok(sourceCalls.length > 0)
+          assert.ok(sourceCalls.every(([, args]) => args[0] === '-c' && args[1] === `safe.directory=${repositoryPath}`))
+        }
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    })
+  }
+})
+
 test('dirty external repositories fail closed and retain only the diagnostic staging directory', async () => {
   const fixture = await createFixture()
   try {

@@ -55,36 +55,57 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
       label: repository.label,
       sourcePath: repository.path,
       expectedHead: inventory.externalRepositories.find((entry) => entry.label === repository.label)?.head,
+      expectedBranch: inventory.externalRepositories.find((entry) => entry.label === repository.label)?.branch,
       safeDirectory: true
     }))
   ]
   const bundleHeads = []
   for (const repository of repositories) {
     await validateRepositorySource(repository, { lstat: dependencies.lstat ?? lstat, run })
-    const primaryBoundary = repository.label === 'repository'
-      ? observeAndValidatePrimaryRefs({ repository, inventory, run, mismatchMessage: 'primary repository refs do not match inventory' })
-      : null
+    const repositoryBoundary = repository.label === 'repository'
+      ? {
+          kind: 'primary',
+          snapshot: observeAndValidatePrimaryRefs({ repository, inventory, run, mismatchMessage: 'primary repository refs do not match inventory' })
+        }
+      : {
+          kind: 'external',
+          snapshot: observeAndValidateExternalRefs({
+            repository,
+            run,
+            mismatchMessage: `external repository refs do not match inventory: ${repository.label}`
+          })
+        }
     const relativePath = `bundles/${repository.label}-all-refs.bundle`
     const bundlePath = path.join(stagingRoot, ...relativePath.split('/'))
     await mkdirOwned(path.dirname(bundlePath), dependencies)
     await createBundle(repository, bundlePath, { run, createBundle: dependencies.createBundle })
     const heads = verifyBundle(bundlePath, run)
-    if (primaryBoundary) {
+    if (repositoryBoundary.kind === 'primary') {
       const after = observeAndValidatePrimaryRefs({
         repository,
         inventory,
         run,
         mismatchMessage: 'primary repository refs changed during bundle creation'
       })
-      if (JSON.stringify(after.ownedRefs) !== JSON.stringify(primaryBoundary.ownedRefs) ||
-          JSON.stringify(after.symbolicRemoteHead) !== JSON.stringify(primaryBoundary.symbolicRemoteHead) ||
-          JSON.stringify(after.head) !== JSON.stringify(primaryBoundary.head)) {
+      if (JSON.stringify(after.ownedRefs) !== JSON.stringify(repositoryBoundary.snapshot.ownedRefs) ||
+          JSON.stringify(after.symbolicRemoteHead) !== JSON.stringify(repositoryBoundary.snapshot.symbolicRemoteHead) ||
+          JSON.stringify(after.head) !== JSON.stringify(repositoryBoundary.snapshot.head)) {
         throw new Error('primary repository refs changed during bundle creation')
       }
-      if (JSON.stringify(after.otherRefs) !== JSON.stringify(primaryBoundary.otherRefs)) {
+      if (JSON.stringify(after.otherRefs) !== JSON.stringify(repositoryBoundary.snapshot.otherRefs)) {
         throw new Error('primary repository other refs changed during bundle creation')
       }
-      validatePrimaryBundleHeads(heads, primaryBoundary)
+      validatePrimaryBundleHeads(heads, repositoryBoundary.snapshot)
+    } else {
+      const after = observeAndValidateExternalRefs({
+        repository,
+        run,
+        mismatchMessage: `external repository refs changed during bundle creation: ${repository.label}`
+      })
+      if (JSON.stringify(after) !== JSON.stringify(repositoryBoundary.snapshot)) {
+        throw new Error(`external repository refs changed during bundle creation: ${repository.label}`)
+      }
+      validateExternalBundleHeads(heads, repositoryBoundary.snapshot, repository.label)
     }
     bundleHeads.push({ path: relativePath, heads })
     manifestEntries.push({ path: relativePath, ...(await hashFile(bundlePath)) })
@@ -283,6 +304,30 @@ function observeAndValidatePrimaryRefs({ repository, inventory, run, mismatchMes
   }
 }
 
+function observeAndValidateExternalRefs({ repository, run, mismatchMessage }) {
+  const prefix = repository.safeDirectory ? ['-c', `safe.directory=${repository.sourcePath}`] : []
+  const observed = parsePrimaryRefs(runChecked(
+    run,
+    'git',
+    [...prefix, '-C', repository.sourcePath, 'for-each-ref', '--sort=refname', '--format=%(refname)%09%(objectname)%09%(symref)', 'refs'],
+    'external repository refs'
+  ))
+  const headTarget = runOptional(run, 'git', [...prefix, '-C', repository.sourcePath, 'symbolic-ref', '--quiet', 'HEAD'], 'external symbolic HEAD')
+  const headSha = runChecked(run, 'git', [...prefix, '-C', repository.sourcePath, 'rev-parse', 'HEAD'], 'external repository boundary head').trim()
+  if (headSha !== repository.expectedHead) throw new Error(mismatchMessage)
+  if (repository.expectedBranch === null) {
+    if (headTarget !== null) throw new Error(mismatchMessage)
+  } else {
+    const expectedTarget = `refs/heads/${repository.expectedBranch}`
+    const branch = observed.find((entry) => entry.ref === expectedTarget)
+    if (headTarget !== expectedTarget || !branch || branch.symref || branch.sha !== repository.expectedHead) throw new Error(mismatchMessage)
+  }
+  return {
+    refs: observed,
+    head: { ref: 'HEAD', sha: headSha, target: headTarget }
+  }
+}
+
 function expectedPrimaryRefs(inventory) {
   if (!Array.isArray(inventory.localBranches) || !Array.isArray(inventory.remoteHeads)) throw new Error('inventory primary ref lists are invalid')
   const expected = new Map()
@@ -324,6 +369,25 @@ function validatePrimaryBundleHeads(lines, boundary) {
     observed.set(match[2], match[1])
   }
   if (observed.size !== expected.size || [...expected].some(([ref, sha]) => observed.get(ref) !== sha)) throw new Error('primary bundle refs do not match captured boundary')
+}
+
+function validateExternalBundleHeads(lines, boundary, label) {
+  const expected = new Map(boundary.refs.map(({ ref, sha }) => [ref, sha]))
+  expected.set('HEAD', boundary.head.sha)
+  const observed = parseBundleHeads(lines, `external bundle refs do not match captured boundary: ${label}`)
+  if (observed.size !== expected.size || [...expected].some(([ref, sha]) => observed.get(ref) !== sha)) {
+    throw new Error(`external bundle refs do not match captured boundary: ${label}`)
+  }
+}
+
+function parseBundleHeads(lines, mismatchMessage) {
+  const observed = new Map()
+  for (const line of lines) {
+    const match = line.match(/^([0-9a-f]{40}) (.+)$/u)
+    if (!match || observed.has(match[2])) throw new Error(mismatchMessage)
+    observed.set(match[2], match[1])
+  }
+  return observed
 }
 
 async function createBundle(repository, bundlePath, dependencies) {
@@ -451,6 +515,13 @@ function runChecked(run, command, args, operation) {
   const result = normalizeRunResult(run(command, args))
   if (result.status !== 0) throw new Error(`${operation} failed: ${sanitize(result.stderr || result.stdout)}`)
   return result.stdout
+}
+
+function runOptional(run, command, args, operation) {
+  const result = normalizeRunResult(run(command, args))
+  if (result.status === 0) return result.stdout.trim()
+  if (result.status === 1) return null
+  throw new Error(`${operation} failed: ${sanitize(result.stderr || result.stdout)}`)
 }
 
 function normalizeRunResult(result) {
