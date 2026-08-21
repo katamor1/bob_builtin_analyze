@@ -234,7 +234,7 @@ Expected: the two paths above and a clean worktree.
 $retirementTests = @(Get-ChildItem tools\branch-retirement\test -Filter '*.test.mjs' | Sort-Object Name | ForEach-Object FullName)
 node --test $retirementTests
 node --test scripts/three-extension-documentation-contract.test.js
-git diff --check $baseline..HEAD
+git diff --check $baseline HEAD
 ```
 
 Expected: 11 retirement tests pass, documentation contract passes, diff check exits 0.
