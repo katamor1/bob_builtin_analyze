@@ -1,0 +1,456 @@
+{
+  "schemaVersion": "bob-builtin-analyze/main-consolidation-inventory/v1",
+  "generatedAt": "2026-08-21T17:00:39.581Z",
+  "repository": "katamor1/bob_builtin_analyze",
+  "consolidationMapSha256": "010025bf9fbf1e82d49769fa4dc561a4871896712c07531aad718d1c872ca0e3",
+  "readyForArchive": true,
+  "topology": {
+    "readyForArchive": true,
+    "mainSha": "fe404e88ac843230010ea5111325c2426049e14b",
+    "legacyHeadCount": 30,
+    "processHeadCount": 1,
+    "openPullRequestCount": 20
+  },
+  "remoteHeads": [
+    {
+      "branch": "codex/contract-v2-design",
+      "sha": "7d8225a2547095ae587c4a4ff1ca9a43b2ec08d9",
+      "owner": "independent-triage"
+    },
+    {
+      "branch": "codex/contract-v2-f5-rebased",
+      "sha": "3e82579a45291604ccd3313b561d8bc62557b1ce",
+      "owner": "workflow-checkpoint"
+    },
+    {
+      "branch": "codex/contract-v2-f6-rebased",
+      "sha": "9a0bd62d817992bca8fa31f3b7c986c8c0fe97f8",
+      "owner": "workflow-checkpoint"
+    },
+    {
+      "branch": "codex/fix-bazaar-minimal-xlsx",
+      "sha": "5adc59d50fa54d54b883ba8be2e9fe3571aa406f",
+      "owner": "merged-xlsx"
+    },
+    {
+      "branch": "codex/harden-ooxml-snapshot-input",
+      "sha": "64b5f3c293e379f8877a0cf11a41c19ea6f58fb7",
+      "owner": "merged-xlsx"
+    },
+    {
+      "branch": "codex/main-consolidation-control-plane",
+      "sha": "77e84a4207d55bb536471a1c8cbc51bd1bec9557",
+      "owner": "process"
+    },
+    {
+      "branch": "codex/operator-ux-closure",
+      "sha": "b9773edf61882c3092e63d73997d2b35c2352b0f",
+      "owner": "independent-triage"
+    },
+    {
+      "branch": "codex/reproducible-runtime-v2-design-20260717",
+      "sha": "f7f65b0d42df953cfe46b64b0d7a9dcec652ee2c",
+      "owner": "independent-triage"
+    },
+    {
+      "branch": "codex/task13-processing-budget-runtime-20260723",
+      "sha": "bd29233dac84922e2f868dcb9d654644f6ee0d6a",
+      "owner": "processing-a"
+    },
+    {
+      "branch": "codex/task14-bounded-document-extraction-20260723",
+      "sha": "4d0fb728763db9d13c87d000790a88c45900733e",
+      "owner": "processing-a"
+    },
+    {
+      "branch": "codex/task15-workbook-document-aggregate-caps-20260724",
+      "sha": "7fc7a371e6506290d8626d06e9b12c2a67888b47",
+      "owner": "processing-b"
+    },
+    {
+      "branch": "codex/task16-review-input-process-budgets-20260724",
+      "sha": "49f39e1a6ec35e5db98e9ef698d4ce43369c9760",
+      "owner": "processing-b"
+    },
+    {
+      "branch": "codex/task17-deadlines-process-control-paths-20260724",
+      "sha": "7ea786afd5715d841526000a402c831d6c2a203c",
+      "owner": "processing-c"
+    },
+    {
+      "branch": "codex/task18-processing-budget-report-handoff-20260726",
+      "sha": "2d8a570fa1c0646fd662346744449b1abc1142b2",
+      "owner": "processing-c"
+    },
+    {
+      "branch": "codex/three-extension-p1-release-gates",
+      "sha": "3e2dd68d4a0a880e7fa7ed065f5a1be2bd25a0ca",
+      "owner": "processing-a"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-f7",
+      "sha": "2af41862b61d3e0f53218cc0f760b19292870a3b",
+      "owner": "workflow-a"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-p1",
+      "sha": "a0da0c8f17cbb648873577a573230c8241f755f2",
+      "owner": "workflow-a"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-p2",
+      "sha": "629f53ade7fcb42481fad6906d36ef6425fd1071",
+      "owner": "workflow-a"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-p3",
+      "sha": "683e794eb4a39eea7bc3630bedbd2a557f4af8af",
+      "owner": "workflow-a"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-p4",
+      "sha": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "owner": "workflow-b"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-p5",
+      "sha": "45260e0b5a96e50bf01b820b71103b33f2067d8c",
+      "owner": "workflow-b"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-p6",
+      "sha": "95d245ce2eba9ac1412038afe96dc509bd6735de",
+      "owner": "workflow-b"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-p7",
+      "sha": "e860d1ebbafe7068fc6871b16c9586a11b4fe19d",
+      "owner": "workflow-b"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-r1",
+      "sha": "66e005faf0046ca931c83abc41ce533488d2f581",
+      "owner": "workflow-c"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-r2",
+      "sha": "7bad4e42f2146b8ae229e05427a5d2ae013cdb2e",
+      "owner": "workflow-c"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-r3",
+      "sha": "e0a4b1b25166c4d47cf8f5564c01cf30c63d9180",
+      "owner": "workflow-c"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-r4",
+      "sha": "266f13f8544338ce0445c749f4625a1f80791c36",
+      "owner": "workflow-c"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-r5",
+      "sha": "de65647c18a122b6f88af3967ba509282b64d6db",
+      "owner": "workflow-c"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-r5-pre-r4-merge",
+      "sha": "6c9684f2a11b14adc2a8d3a600c09d47c865f133",
+      "owner": "independent-triage"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-r5-rebased",
+      "sha": "2920dc4f15b35532fbbb4e22f4d286afc2e8b19f",
+      "owner": "workflow-checkpoint"
+    },
+    {
+      "branch": "codex/workflow-contract-v2-r6",
+      "sha": "a18c09b10fa51702d312e34940a694ad971a48cc",
+      "owner": "workflow-c"
+    },
+    {
+      "branch": "main",
+      "sha": "fe404e88ac843230010ea5111325c2426049e14b",
+      "owner": "main"
+    }
+  ],
+  "openPullRequests": [
+    {
+      "number": 143,
+      "headRefName": "codex/workflow-contract-v2-f7",
+      "headRefOid": "2af41862b61d3e0f53218cc0f760b19292870a3b",
+      "baseRefName": "main",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/143"
+    },
+    {
+      "number": 145,
+      "headRefName": "codex/task13-processing-budget-runtime-20260723",
+      "headRefOid": "bd29233dac84922e2f868dcb9d654644f6ee0d6a",
+      "baseRefName": "codex/three-extension-p1-release-gates",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/145"
+    },
+    {
+      "number": 146,
+      "headRefName": "codex/task14-bounded-document-extraction-20260723",
+      "headRefOid": "4d0fb728763db9d13c87d000790a88c45900733e",
+      "baseRefName": "codex/task13-processing-budget-runtime-20260723",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/146"
+    },
+    {
+      "number": 147,
+      "headRefName": "codex/task15-workbook-document-aggregate-caps-20260724",
+      "headRefOid": "7fc7a371e6506290d8626d06e9b12c2a67888b47",
+      "baseRefName": "codex/task14-bounded-document-extraction-20260723",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/147"
+    },
+    {
+      "number": 148,
+      "headRefName": "codex/workflow-contract-v2-p1",
+      "headRefOid": "a0da0c8f17cbb648873577a573230c8241f755f2",
+      "baseRefName": "codex/workflow-contract-v2-f7",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/148"
+    },
+    {
+      "number": 149,
+      "headRefName": "codex/workflow-contract-v2-p2",
+      "headRefOid": "629f53ade7fcb42481fad6906d36ef6425fd1071",
+      "baseRefName": "codex/workflow-contract-v2-p1",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/149"
+    },
+    {
+      "number": 150,
+      "headRefName": "codex/task16-review-input-process-budgets-20260724",
+      "headRefOid": "49f39e1a6ec35e5db98e9ef698d4ce43369c9760",
+      "baseRefName": "codex/task15-workbook-document-aggregate-caps-20260724",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/150"
+    },
+    {
+      "number": 151,
+      "headRefName": "codex/workflow-contract-v2-p3",
+      "headRefOid": "683e794eb4a39eea7bc3630bedbd2a557f4af8af",
+      "baseRefName": "codex/workflow-contract-v2-p2",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/151"
+    },
+    {
+      "number": 152,
+      "headRefName": "codex/task17-deadlines-process-control-paths-20260724",
+      "headRefOid": "7ea786afd5715d841526000a402c831d6c2a203c",
+      "baseRefName": "codex/task16-review-input-process-budgets-20260724",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/152"
+    },
+    {
+      "number": 153,
+      "headRefName": "codex/workflow-contract-v2-p4",
+      "headRefOid": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "baseRefName": "codex/workflow-contract-v2-p3",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/153"
+    },
+    {
+      "number": 154,
+      "headRefName": "codex/workflow-contract-v2-p5",
+      "headRefOid": "45260e0b5a96e50bf01b820b71103b33f2067d8c",
+      "baseRefName": "codex/workflow-contract-v2-p4",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/154"
+    },
+    {
+      "number": 155,
+      "headRefName": "codex/workflow-contract-v2-p6",
+      "headRefOid": "95d245ce2eba9ac1412038afe96dc509bd6735de",
+      "baseRefName": "codex/workflow-contract-v2-p5",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/155"
+    },
+    {
+      "number": 157,
+      "headRefName": "codex/workflow-contract-v2-p7",
+      "headRefOid": "e860d1ebbafe7068fc6871b16c9586a11b4fe19d",
+      "baseRefName": "codex/workflow-contract-v2-p6",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/157"
+    },
+    {
+      "number": 158,
+      "headRefName": "codex/workflow-contract-v2-r1",
+      "headRefOid": "66e005faf0046ca931c83abc41ce533488d2f581",
+      "baseRefName": "codex/workflow-contract-v2-p7",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/158"
+    },
+    {
+      "number": 159,
+      "headRefName": "codex/task18-processing-budget-report-handoff-20260726",
+      "headRefOid": "2d8a570fa1c0646fd662346744449b1abc1142b2",
+      "baseRefName": "codex/task17-deadlines-process-control-paths-20260724",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/159"
+    },
+    {
+      "number": 160,
+      "headRefName": "codex/workflow-contract-v2-r2",
+      "headRefOid": "7bad4e42f2146b8ae229e05427a5d2ae013cdb2e",
+      "baseRefName": "codex/workflow-contract-v2-r1",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/160"
+    },
+    {
+      "number": 161,
+      "headRefName": "codex/workflow-contract-v2-r3",
+      "headRefOid": "e0a4b1b25166c4d47cf8f5564c01cf30c63d9180",
+      "baseRefName": "codex/workflow-contract-v2-r2",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/161"
+    },
+    {
+      "number": 162,
+      "headRefName": "codex/workflow-contract-v2-r4",
+      "headRefOid": "266f13f8544338ce0445c749f4625a1f80791c36",
+      "baseRefName": "codex/workflow-contract-v2-r3",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/162"
+    },
+    {
+      "number": 163,
+      "headRefName": "codex/workflow-contract-v2-r5",
+      "headRefOid": "de65647c18a122b6f88af3967ba509282b64d6db",
+      "baseRefName": "codex/workflow-contract-v2-r4",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/163"
+    },
+    {
+      "number": 164,
+      "headRefName": "codex/workflow-contract-v2-r6",
+      "headRefOid": "a18c09b10fa51702d312e34940a694ad971a48cc",
+      "baseRefName": "codex/workflow-contract-v2-r5",
+      "url": "https://github.com/katamor1/bob_builtin_analyze/pull/164"
+    }
+  ],
+  "localBranches": [
+    {
+      "branch": "codex/fix-bazaar-minimal-xlsx",
+      "sha": "20aa78d8038f9a874fc7af2e6d4f996fd9ad4488"
+    },
+    {
+      "branch": "codex/harden-ooxml-snapshot-input",
+      "sha": "64b5f3c293e379f8877a0cf11a41c19ea6f58fb7"
+    },
+    {
+      "branch": "codex/main-consolidation-control-plane",
+      "sha": "77e84a4207d55bb536471a1c8cbc51bd1bec9557"
+    },
+    {
+      "branch": "codex/main-consolidation-inventory-archive",
+      "sha": "54e4d683e6659abd599184139dc84741e2a53669"
+    },
+    {
+      "branch": "main",
+      "sha": "fe404e88ac843230010ea5111325c2426049e14b"
+    }
+  ],
+  "worktrees": [
+    {
+      "path": "C:/Users/stell/source/repos/bob_builtin_analyze",
+      "head": "fe404e88ac843230010ea5111325c2426049e14b",
+      "branch": "refs/heads/main",
+      "detached": false,
+      "status": []
+    },
+    {
+      "path": "C:/Users/stell/source/repos/bob_builtin_analyze/.worktrees/fix-bazaar-minimal-xlsx",
+      "head": "20aa78d8038f9a874fc7af2e6d4f996fd9ad4488",
+      "branch": "refs/heads/codex/fix-bazaar-minimal-xlsx",
+      "detached": false,
+      "status": []
+    },
+    {
+      "path": "C:/Users/stell/source/repos/bob_builtin_analyze/.worktrees/harden-ooxml-snapshot-input",
+      "head": "64b5f3c293e379f8877a0cf11a41c19ea6f58fb7",
+      "branch": "refs/heads/codex/harden-ooxml-snapshot-input",
+      "detached": false,
+      "status": []
+    },
+    {
+      "path": "C:/Users/stell/source/repos/bob_builtin_analyze/.worktrees/main-consolidation-control-plane",
+      "head": "77e84a4207d55bb536471a1c8cbc51bd1bec9557",
+      "branch": "refs/heads/codex/main-consolidation-control-plane",
+      "detached": false,
+      "status": []
+    },
+    {
+      "path": "C:/Users/stell/source/repos/bob_builtin_analyze/.worktrees/main-consolidation-inventory-archive",
+      "head": "54e4d683e6659abd599184139dc84741e2a53669",
+      "branch": "refs/heads/codex/main-consolidation-inventory-archive",
+      "detached": false,
+      "status": []
+    }
+  ],
+  "externalRepositories": [
+    {
+      "label": "accepted-main",
+      "path": "C:\\Users\\stell\\AppData\\Local\\Temp\\bob-ooxml-final-main-44027562",
+      "head": "44027562fe201d47f8f4cf08241ffe29384e9902",
+      "branch": "main",
+      "status": []
+    },
+    {
+      "label": "integration-xlsx-on-prereq",
+      "path": "C:\\Users\\stell\\source\\repos\\bob_builtin_analyze\\.integration-xlsx-on-prereq",
+      "head": "5adc59d50fa54d54b883ba8be2e9fe3571aa406f",
+      "branch": "codex/fix-bazaar-minimal-xlsx-final",
+      "status": []
+    }
+  ],
+  "artifacts": [
+    {
+      "label": "accepted-vsix",
+      "sourcePath": "C:\\Users\\stell\\AppData\\Local\\Temp\\bob-review-ooxml-final-44027562\\bazaar-core\\accepted-artifacts\\bob-bazaar-review-0.3.0-main-44027562.vsix",
+      "byteSize": 3758108,
+      "sha256": "4e0a9961fa1cd50882caa89d3eeecc9bcfc8a31871a5eca6262a37d99700a1dc"
+    },
+    {
+      "label": "bazaar-core-log",
+      "sourcePath": "C:\\Users\\stell\\AppData\\Local\\Temp\\bob-review-ooxml-final-44027562\\_logs\\bazaar-core.log",
+      "byteSize": 1831,
+      "sha256": "fa60f052f1bdf06062bd64583e9d3c8c6717e4f5e94d5fe27ece73d4b843b7d5"
+    },
+    {
+      "label": "fixture-docx",
+      "sourcePath": "C:\\Users\\stell\\AppData\\Local\\Temp\\bob-review-ooxml-final-44027562\\bazaar-core\\input-documents\\project-review-rules.docx",
+      "byteSize": 3952,
+      "sha256": "35e351677a044c3f5fb4ef58e466e7e98f32656c4955737d7db8f2cdc30c4d69"
+    },
+    {
+      "label": "fixture-manifest",
+      "sourcePath": "C:\\Users\\stell\\AppData\\Local\\Temp\\bob-review-ooxml-final-44027562\\bazaar-core\\input-documents\\document-fixture-manifest.json",
+      "byteSize": 1450,
+      "sha256": "5c753c7f1bce2e34ca61da2e1195647616472443d4d47f941ba27e0dec254e1f"
+    },
+    {
+      "label": "fixture-pdf",
+      "sourcePath": "C:\\Users\\stell\\AppData\\Local\\Temp\\bob-review-ooxml-final-44027562\\bazaar-core\\input-documents\\system-review-guidelines.pdf",
+      "byteSize": 1288,
+      "sha256": "199bf355f6530dd4bf0518f01c24f40f07e73e1cf05228ebae04f96ba433e26c"
+    },
+    {
+      "label": "fixture-xlsx",
+      "sourcePath": "C:\\Users\\stell\\AppData\\Local\\Temp\\bob-review-ooxml-final-44027562\\bazaar-core\\input-documents\\review-traceability-ledger.xlsx",
+      "byteSize": 6055,
+      "sha256": "8e7f106173eb131a36f650bd907b87b311224d8cdd1528beff396cda9cde5bd6"
+    },
+    {
+      "label": "old-vsix",
+      "sourcePath": "C:\\Users\\stell\\source\\repos\\bob_builtin_analyze\\.integration-xlsx-on-prereq\\extensions\\bob-bazaar-review\\bob-bazaar-review-0.3.0.vsix",
+      "byteSize": 3757611,
+      "sha256": "ce335c40f2d2a003b932134c02a2875e3996c6c7409863b9cf14956dca7c0d85"
+    },
+    {
+      "label": "operator-result",
+      "sourcePath": "C:\\Users\\stell\\AppData\\Local\\Temp\\bob-review-ooxml-final-44027562\\bazaar-core\\operator-result.json",
+      "byteSize": 3746,
+      "sha256": "8434379fefa65b5ed0c3a8d20302cf25e51347a55abe5a5d0da586f6ac2d9e42"
+    },
+    {
+      "label": "pra-win-001-evidence",
+      "sourcePath": "C:\\Users\\stell\\AppData\\Local\\Temp\\bob-review-ooxml-final-44027562\\bazaar-core\\PRA-WIN-001-evidence.json",
+      "byteSize": 2446,
+      "sha256": "2554afe6bc8ac15067d103ecb692b5c14cbe5e578336930e7c7fe5aa40bac954"
+    },
+    {
+      "label": "scenario-manifest",
+      "sourcePath": "C:\\Users\\stell\\AppData\\Local\\Temp\\bob-review-ooxml-final-44027562\\bazaar-core\\scenario-manifest.json",
+      "byteSize": 4520,
+      "sha256": "13539b81b62cb46e3281fc764b2907e707db992a7c7aff61a1a944975c4f6731"
+    }
+  ],
+  "blockers": []
+}
