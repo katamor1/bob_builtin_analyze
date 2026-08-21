@@ -187,6 +187,45 @@ test('capture removes remote credentials and absolute argv paths from wrapped er
   )
 })
 
+test('capture removes userinfo from every URI-scheme remote in wrapped errors', async () => {
+  const remote = 'ssh://operator:supersecret@example.test/repo'
+  await assert.rejects(
+    captureMainConsolidationInventory(baseArguments({
+      jsonPath: 'C:/safe/inventory.json',
+      markdownPath: 'C:/safe/inventory.md',
+      externalPath: 'C:/safe/external',
+      artifactPath: 'C:/safe/artifact.vsix',
+      remote
+    }), {
+      readFile: async () => JSON.stringify(map),
+      lstat: async () => ({ isSymbolicLink: () => false, isDirectory: () => true, isFile: () => true, size: 8 }),
+      run: () => ({ status: 1, stderr: `fatal: could not fetch ${remote}` })
+    }),
+    (error) => error instanceof Error && !error.message.includes('operator') && !error.message.includes('supersecret') && !error.message.includes(remote)
+  )
+})
+
+test('capture removes UNC and extended Windows paths from wrapped command errors', async () => {
+  for (const externalPath of ['\\\\server\\private\\repo', '\\\\?\\C:\\private\\repo']) {
+    await assert.rejects(
+      captureMainConsolidationInventory(baseArguments({
+        jsonPath: 'C:/safe/inventory.json',
+        markdownPath: 'C:/safe/inventory.md',
+        externalPath,
+        artifactPath: 'C:/safe/artifact.vsix'
+      }), {
+        readFile: async (filePath) => filePath === mapUrl.pathname ? JSON.stringify(map) : Buffer.from('artifact'),
+        lstat: async (filePath) => ({ isSymbolicLink: () => false, isDirectory: () => filePath === externalPath, isFile: () => filePath !== externalPath, size: 8 }),
+        run(command, args) {
+          if (command === 'git' && args[0] === '-c') return { status: 1, stderr: `fatal: cannot access '${externalPath}'` }
+          return observationFor(command, args)
+        }
+      }),
+      (error) => error instanceof Error && !error.message.includes(externalPath) && !error.message.includes('private') && !error.message.includes('server')
+    )
+  }
+})
+
 test('capture removes credentials when the injected runner throws', async () => {
   await assert.rejects(
     captureMainConsolidationInventory(baseArguments({

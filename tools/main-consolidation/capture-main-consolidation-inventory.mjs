@@ -387,7 +387,7 @@ function statusLines(text) {
 
 function runChecked(run, command, args) {
   const result = invokeRunner(run, command, args)
-  if (result.status !== 0) throw new Error(`${formatCommand(command, args)} failed: ${sanitize(result.stderr || result.stdout)}`)
+  if (result.status !== 0) throw new Error(`${formatCommand(command, args)} failed: ${sanitizeCommandOutput(result.stderr || result.stdout, args)}`)
   return result.stdout
 }
 
@@ -399,7 +399,7 @@ function runOptional(run, command, args) {
   const result = invokeRunner(run, command, args)
   if (result.status === 0) return result.stdout.trim()
   if (result.status === 1) return null
-  throw new Error(`${formatCommand(command, args)} failed: ${sanitize(result.stderr || result.stdout)}`)
+  throw new Error(`${formatCommand(command, args)} failed: ${sanitizeCommandOutput(result.stderr || result.stdout, args)}`)
 }
 
 function invokeRunner(run, command, args) {
@@ -407,7 +407,7 @@ function invokeRunner(run, command, args) {
     return normalizeRunResult(run(command, args))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    throw new Error(`${formatCommand(command, args)} failed: ${sanitize(message)}`)
+    throw new Error(`${formatCommand(command, args)} failed: ${sanitizeCommandOutput(message, args)}`)
   }
 }
 
@@ -428,8 +428,9 @@ function nonEmptyLines(value) {
 
 function sanitize(value) {
   return String(value)
-    .replace(/https?:\/\/[^/\s:@]+:[^@\s/]+@/gu, (match) => `${match.startsWith('https://') ? 'https' : 'http'}://***@`)
+    .replace(/([a-z][a-z0-9+.-]*):\/\/[^/\s:@]+:[^@\s/]+@/giu, '$1://***@')
     .replace(/(^|[\s'"(])[A-Za-z]:[\\/][^\s'"\)]*/gu, '$1[path]')
+    .replace(/(^|[\s'"(])\\\\(?:\?\\)?[^\s'"\)]*/gu, '$1[path]')
     .replace(/(^|[\s'"(])\/(?!\/)[^\s'"\)]*/gu, '$1[path]')
     .replace(/(?:gh[opsu]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)/gu, '***')
     .trim()
@@ -441,10 +442,22 @@ function formatCommand(command, args) {
 
 function sanitizeArgument(arg) {
   const value = String(arg)
-  if (/^https?:\/\//u.test(value)) return '[remote]'
+  if (/^[a-z][a-z0-9+.-]*:\/\/[^/\s:@]+:[^@\s/]+@/iu.test(value)) return '[remote]'
   if (value.startsWith('safe.directory=')) return 'safe.directory=[path]'
   if (path.isAbsolute(value) || path.win32.isAbsolute(value) || path.posix.isAbsolute(value)) return '[path]'
   return sanitize(value)
+}
+
+function sanitizeCommandOutput(value, args) {
+  let output = String(value)
+  for (const arg of args) {
+    const raw = String(arg)
+    const redacted = sanitizeArgument(raw)
+    if (redacted === raw) continue
+    output = output.split(raw).join(redacted)
+    if (raw.startsWith('safe.directory=')) output = output.split(raw.slice('safe.directory='.length)).join('[path]')
+  }
+  return sanitize(output)
 }
 
 function compareText(left, right) {
