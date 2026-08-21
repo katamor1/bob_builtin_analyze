@@ -47,11 +47,45 @@ test('creates a staged archive whose real bundle restores every branch head', as
       'remote-heads-before.txt',
       'worktrees-before.txt'
     ])
+    const carrierEvidence = JSON.parse(await readFile(path.join(fixture.archiveRoot, 'carrier-patches', 'carrier-patches.json'), 'utf8'))
+    assert.equal(carrierEvidence.carriers.length, 6)
+    assert.equal(result.summary.carrierPatchCount, 6)
+    assert.deepEqual(await readdir(path.join(fixture.archiveRoot, 'carrier-patches')), [
+      'carrier-patches.json',
+      'processing-a.patch',
+      'processing-b.patch',
+      'processing-c.patch',
+      'workflow-a.patch',
+      'workflow-b.patch',
+      'workflow-c.patch'
+    ])
+    assert.equal(manifestPaths.filter((entry) => entry.startsWith('carrier-patches/')).length, 7)
 
     const restored = path.join(fixture.root, 'restored')
     git(['clone', path.join(fixture.archiveRoot, 'bundles', 'repository-all-refs.bundle'), restored])
     assert.equal(git(['-C', restored, 'rev-parse', 'refs/heads/main']).trim(), fixture.mainSha)
     assert.equal(git(['-C', restored, 'rev-parse', 'refs/remotes/origin/feature']).trim(), fixture.featureSha)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('carrier target-tree mismatch prevents final publication and retains incomplete staging', async () => {
+  const fixture = await createFixture()
+  try {
+    await assert.rejects(createMainConsolidationArchive(fixture.args, {
+      randomUUID: () => 'carrier-tree-mismatch',
+      freezeCarrierPatches: async ({ map }) => map.carriers.map((carrier, index) => ({
+        id: carrier.id,
+        patch: `${carrier.id}.patch`,
+        fromSha: carrier.fromSha,
+        toSha: carrier.toSha,
+        reconstructedTreeSha: index === 0 ? 'a'.repeat(40) : 'b'.repeat(40),
+        targetTreeSha: 'b'.repeat(40)
+      }))
+    }), /target tree/u)
+    assert.equal(existsSync(fixture.archiveRoot), false)
+    assert.equal(existsSync(path.join(fixture.stagingRootFor('carrier-tree-mismatch'), '.archive-incomplete')), true)
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
   }
@@ -414,7 +448,11 @@ async function createFixture() {
   const summaryJson = path.join(root, 'archive-summary.json')
   const summaryMarkdown = path.join(root, 'archive-summary.md')
   await writeFile(inventoryPath, `${JSON.stringify(inventory, null, 2)}\n`)
-  await writeFile(mapPath, `${JSON.stringify({ schemaVersion: 'bob-builtin-analyze/main-consolidation-map/v1' })}\n`)
+  const carrierIds = ['workflow-a', 'workflow-b', 'workflow-c', 'processing-a', 'processing-b', 'processing-c']
+  await writeFile(mapPath, `${JSON.stringify({
+    schemaVersion: 'bob-builtin-analyze/main-consolidation-map/v1',
+    carriers: carrierIds.map((id, index) => ({ id, fromSha: mainSha, toSha: featureSha, pullRequests: [index + 1] }))
+  }, null, 2)}\n`)
   const args = [
     '--inventory', inventoryPath,
     '--map', mapPath,

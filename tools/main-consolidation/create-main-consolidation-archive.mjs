@@ -12,17 +12,20 @@ import {
   validateArchiveRequest,
   verifyExistingArchive
 } from './archivePolicy.mjs'
+import { freezeCarrierPatches } from './freeze-carrier-patches.mjs'
 
 const EXPECTED_ARCHIVE_LEAF = '2026-08-21-main-consolidation'
 const ARCHIVE_SCHEMA = 'bob-builtin-analyze/main-consolidation-archive/v1'
 const LABEL = /^[a-z0-9][a-z0-9-]*$/u
+const SHA1 = /^[0-9a-f]{40}$/u
+const SHA256 = /^[0-9a-f]{64}$/u
 
 export async function createMainConsolidationArchive(argv = process.argv.slice(2), dependencies = {}) {
   const args = parseArguments(argv)
   const read = dependencies.readFile ?? readFile
   const inventoryText = String(await read(args.inventory, 'utf8'))
   const inventory = parseJson(inventoryText, 'inventory')
-  parseJson(String(await read(args.map, 'utf8')), 'map')
+  const map = parseJson(String(await read(args.map, 'utf8')), 'map')
   validateArchiveRequest({
     repoRoot: args.repositoryRoot,
     archiveRoot: args.archiveRoot,
@@ -122,6 +125,27 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
     manifestEntries.push({ path: relativePath, byteSize: copied.byteSize, sha256: copied.sha256 })
   }
 
+  if (!Array.isArray(map?.carriers) || map.carriers.length !== 6) throw new Error('archive requires exactly six carriers')
+  const carrierDirectory = path.join(stagingRoot, 'carrier-patches')
+  const freeze = dependencies.freezeCarrierPatches ?? freezeCarrierPatches
+  const carrierEvidence = await freeze({ map, repoRoot: args.repositoryRoot, carrierDirectory, run })
+  validateCarrierEvidence(map.carriers, carrierEvidence)
+  const carrierManifestPath = path.join(carrierDirectory, 'carrier-patches.json')
+  const carrierManifest = parseJson(String(await readFile(carrierManifestPath, 'utf8')), 'carrier patch manifest')
+  if (carrierManifest.schemaVersion !== 'bob-builtin-analyze/carrier-patches/v1' ||
+      JSON.stringify(carrierManifest.carriers) !== JSON.stringify(carrierEvidence)) {
+    throw new Error('carrier patch manifest does not match verified evidence')
+  }
+  for (const name of ['carrier-patches.json', ...carrierEvidence.map((entry) => entry.patch)]) {
+    const relativePath = `carrier-patches/${name}`
+    const actual = await hashFile(path.join(carrierDirectory, name))
+    if (name !== 'carrier-patches.json') {
+      const entry = carrierEvidence.find((candidate) => candidate.patch === name)
+      if (!entry || entry.byteSize !== actual.byteSize || entry.sha256 !== actual.sha256) throw new Error(`carrier patch hash mismatch: ${name}`)
+    }
+    manifestEntries.push({ path: relativePath, ...actual })
+  }
+
   const inventoryFiles = inventorySnapshots(inventory)
   for (const [name, contents] of Object.entries(inventoryFiles)) {
     const relativePath = `inventory/${name}`
@@ -152,7 +176,8 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
     inventoryText,
     manifest,
     manifestHash,
-    bundleHeads: bundleHeads.sort((left, right) => compareText(left.path, right.path))
+    bundleHeads: bundleHeads.sort((left, right) => compareText(left.path, right.path)),
+    carrierEvidence
   })
   await writeSummaries(args, summary, dependencies)
   return { exitCode: 0, summary, manifest }
@@ -410,7 +435,7 @@ function inventorySnapshots(inventory) {
   }
 }
 
-function archiveSummary({ archiveRoot, generatedAt, inventory, inventoryText, manifest, manifestHash, bundleHeads }) {
+function archiveSummary({ archiveRoot, generatedAt, inventory, inventoryText, manifest, manifestHash, bundleHeads, carrierEvidence }) {
   return {
     schemaVersion: ARCHIVE_SCHEMA,
     generatedAt,
@@ -421,7 +446,26 @@ function archiveSummary({ archiveRoot, generatedAt, inventory, inventoryText, ma
     verified: true,
     entryCount: manifest.entries.length,
     bundleCount: bundleHeads.length,
-    bundleHeads
+    bundleHeads,
+    carrierPatchCount: carrierEvidence.length
+  }
+}
+
+function validateCarrierEvidence(carriers, evidence) {
+  if (!Array.isArray(evidence) || evidence.length !== 6) throw new Error('carrier patch freeze did not produce exactly six entries')
+  const expected = new Map(carriers.map((carrier) => [carrier.id, carrier]))
+  const paths = new Set()
+  for (const entry of evidence) {
+    const carrier = expected.get(entry?.id)
+    if (!carrier || entry.fromSha !== carrier.fromSha || entry.toSha !== carrier.toSha ||
+        !SHA1.test(entry.reconstructedTreeSha ?? '') || entry.reconstructedTreeSha !== entry.targetTreeSha) {
+      throw new Error(`carrier patch evidence does not match target tree: ${entry?.id ?? 'unknown'}`)
+    }
+    if (entry.patch !== `${entry.id}.patch` || paths.has(entry.patch) || !SHA256.test(entry.sha256 ?? '') ||
+        !Number.isSafeInteger(entry.byteSize) || entry.byteSize <= 0 ||
+        !Number.isSafeInteger(entry.commitCount) || entry.commitCount <= 0 ||
+        !Number.isSafeInteger(entry.pathCount) || entry.pathCount <= 0) throw new Error('invalid carrier patch evidence')
+    paths.add(entry.patch)
   }
 }
 
@@ -530,8 +574,14 @@ function normalizeRunResult(result) {
   return { status: result.status, stdout: String(result.stdout ?? ''), stderr: String(result.stderr ?? '') }
 }
 
-function defaultRun(command, args) {
-  const result = spawnSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+function defaultRun(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    cwd: options.cwd,
+    env: options.env,
+    shell: false,
+    encoding: options.encoding === 'buffer' ? 'buffer' : 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
   return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
 }
 
