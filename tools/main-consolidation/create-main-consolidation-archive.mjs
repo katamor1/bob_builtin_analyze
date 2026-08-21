@@ -1,0 +1,392 @@
+import { spawnSync } from 'node:child_process'
+import { createHash, randomUUID as nodeRandomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {
+  assertArchiveDestinationAvailable,
+  buildArchiveManifest,
+  copyVerifiedFile,
+  hashFile,
+  validateArchiveRequest,
+  verifyExistingArchive
+} from './archivePolicy.mjs'
+
+const EXPECTED_ARCHIVE_LEAF = '2026-08-21-main-consolidation'
+const ARCHIVE_SCHEMA = 'bob-builtin-analyze/main-consolidation-archive/v1'
+const LABEL = /^[a-z0-9][a-z0-9-]*$/u
+
+export async function createMainConsolidationArchive(argv = process.argv.slice(2), dependencies = {}) {
+  const args = parseArguments(argv)
+  const read = dependencies.readFile ?? readFile
+  const inventoryText = String(await read(args.inventory, 'utf8'))
+  const inventory = parseJson(inventoryText, 'inventory')
+  parseJson(String(await read(args.map, 'utf8')), 'map')
+  validateArchiveRequest({
+    repoRoot: args.repositoryRoot,
+    archiveRoot: args.archiveRoot,
+    expectedLeaf: EXPECTED_ARCHIVE_LEAF,
+    inventory
+  })
+  assertSummaryDestinations(args)
+
+  if (args.verifyExisting) return verifyPublishedArchive({ args, inventory, dependencies })
+
+  assertArchiveDestinationAvailable({ archiveRoot: args.archiveRoot, exists: dependencies.exists ?? existsSync })
+  await prepareArchiveParent(args, dependencies)
+  assertArchiveDestinationAvailable({ archiveRoot: args.archiveRoot, exists: dependencies.exists ?? existsSync })
+  validateExplicitSources(args, inventory)
+
+  const generatedAt = dependencies.now ? dependencies.now().toISOString() : new Date().toISOString()
+  const stagingRoot = path.join(
+    path.dirname(args.archiveRoot),
+    `.${EXPECTED_ARCHIVE_LEAF}.staging-${process.pid}-${(dependencies.randomUUID ?? nodeRandomUUID)()}`
+  )
+  await (dependencies.mkdir ?? mkdir)(stagingRoot)
+  const markerPath = path.join(stagingRoot, '.archive-incomplete')
+  await writeExclusive(markerPath, `${generatedAt}\n`, dependencies)
+
+  const manifestEntries = []
+  const run = dependencies.run ?? defaultRun
+  const repositories = [
+    { label: 'repository', sourcePath: args.repositoryRoot, expectedHead: inventory.topology?.mainSha, safeDirectory: false },
+    ...args.bundleRepositories.map((repository) => ({
+      label: repository.label,
+      sourcePath: repository.path,
+      expectedHead: inventory.externalRepositories.find((entry) => entry.label === repository.label)?.head,
+      safeDirectory: true
+    }))
+  ]
+  const bundleHeads = []
+  for (const repository of repositories) {
+    await validateRepositorySource(repository, { lstat: dependencies.lstat ?? lstat, run })
+    const relativePath = `bundles/${repository.label}-all-refs.bundle`
+    const bundlePath = path.join(stagingRoot, ...relativePath.split('/'))
+    await mkdirOwned(path.dirname(bundlePath), dependencies)
+    await createBundle(repository, bundlePath, { run, createBundle: dependencies.createBundle })
+    bundleHeads.push({ path: relativePath, heads: verifyBundle(bundlePath, run) })
+    manifestEntries.push({ path: relativePath, ...(await hashFile(bundlePath)) })
+  }
+
+  for (const artifact of inventory.artifacts) {
+    const relativePath = `artifacts/${artifact.label}/${path.basename(artifact.sourcePath)}`
+    const destinationPath = path.join(stagingRoot, ...relativePath.split('/'))
+    await mkdirOwned(path.dirname(destinationPath), dependencies)
+    const copy = dependencies.copyVerifiedFile ?? copyVerifiedFile
+    const copied = await copy({ sourcePath: artifact.sourcePath, destinationPath, expected: artifact }, {
+      afterSourceRead: dependencies.afterSourceRead
+    })
+    manifestEntries.push({ path: relativePath, byteSize: copied.byteSize, sha256: copied.sha256 })
+  }
+
+  const inventoryFiles = inventorySnapshots(inventory)
+  for (const [name, contents] of Object.entries(inventoryFiles)) {
+    const relativePath = `inventory/${name}`
+    const destinationPath = path.join(stagingRoot, ...relativePath.split('/'))
+    await mkdirOwned(path.dirname(destinationPath), dependencies)
+    await writeExclusive(destinationPath, contents, dependencies)
+    manifestEntries.push({ path: relativePath, ...(await hashFile(destinationPath)) })
+  }
+
+  const manifest = buildArchiveManifest(manifestEntries, { generatedAt })
+  const manifestText = `${JSON.stringify(manifest, null, 2)}\n`
+  const manifestHash = createHash('sha256').update(manifestText).digest('hex')
+  await writeExclusive(path.join(stagingRoot, 'archive-manifest.json'), manifestText, dependencies)
+  await writeExclusive(path.join(stagingRoot, 'archive-manifest.sha256'), `${manifestHash}\n`, dependencies)
+  await (dependencies.rm ?? rm)(markerPath)
+  assertArchiveDestinationAvailable({ archiveRoot: args.archiveRoot, exists: dependencies.exists ?? existsSync })
+  try {
+    await (dependencies.rename ?? rename)(stagingRoot, args.archiveRoot)
+  } catch (error) {
+    await writeExclusive(markerPath, `${generatedAt}\n`, dependencies)
+    throw error
+  }
+
+  const summary = archiveSummary({
+    archiveRoot: args.archiveRoot,
+    generatedAt,
+    inventory,
+    inventoryText,
+    manifest,
+    manifestHash,
+    bundleHeads: bundleHeads.sort((left, right) => compareText(left.path, right.path))
+  })
+  await writeSummaries(args, summary, dependencies)
+  return { exitCode: 0, summary, manifest }
+}
+
+export function renderArchiveMarkdown(summary) {
+  return [
+    '# Main Consolidation Archive',
+    '',
+    `- Generated: \`${summary.generatedAt}\``,
+    `- Archive root: \`${escapeMarkdown(summary.archiveRoot)}\``,
+    `- Manifest SHA-256: \`${summary.manifestSha256}\``,
+    `- Entries: ${summary.entryCount}`,
+    `- Bundles: ${summary.bundleCount}`,
+    `- Verified: **${summary.verified ? 'yes' : 'no'}**`,
+    ''
+  ].join('\n')
+}
+
+async function verifyPublishedArchive({ args, inventory, dependencies }) {
+  if (!(dependencies.exists ?? existsSync)(args.archiveRoot)) throw new Error('existing archive root is required for --verify-existing')
+  const manifestPath = path.join(args.archiveRoot, 'archive-manifest.json')
+  const manifestText = String(await (dependencies.readFile ?? readFile)(manifestPath, 'utf8'))
+  const manifest = parseJson(manifestText, 'archive manifest')
+  const expectedManifestHash = String(await (dependencies.readFile ?? readFile)(path.join(args.archiveRoot, 'archive-manifest.sha256'), 'utf8')).trim()
+  const manifestHash = createHash('sha256').update(manifestText).digest('hex')
+  if (manifestHash !== expectedManifestHash) throw new Error('archive manifest detached hash mismatch')
+  const verified = await verifyExistingArchive({ archiveRoot: args.archiveRoot, manifest }, {
+    run: dependencies.run,
+    now: dependencies.now
+  })
+  const summary = {
+    ...verified,
+    inventoryGeneratedAt: inventory.generatedAt,
+    inventorySha256: createHash('sha256').update(String(await (dependencies.readFile ?? readFile)(args.inventory, 'utf8'))).digest('hex'),
+    manifestSha256: manifestHash
+  }
+  await writeSummaries(args, summary, dependencies)
+  return { exitCode: 0, summary, manifest }
+}
+
+async function prepareArchiveParent(args, dependencies) {
+  const parent = path.dirname(args.archiveRoot)
+  const repositoryReal = await (dependencies.realpath ?? realpath)(args.repositoryRoot)
+  const existingAncestor = await findExistingAncestor(parent, dependencies.lstat ?? lstat)
+  const ancestorReal = await (dependencies.realpath ?? realpath)(existingAncestor)
+  const prospectiveParent = path.resolve(ancestorReal, path.relative(existingAncestor, parent))
+  validateArchiveRequest({
+    repoRoot: repositoryReal,
+    archiveRoot: path.join(prospectiveParent, path.basename(args.archiveRoot)),
+    expectedLeaf: EXPECTED_ARCHIVE_LEAF,
+    inventory: { readyForArchive: true }
+  })
+  await (dependencies.mkdir ?? mkdir)(parent, { recursive: true })
+  const parentReal = await (dependencies.realpath ?? realpath)(parent)
+  validateArchiveRequest({
+    repoRoot: repositoryReal,
+    archiveRoot: path.join(parentReal, path.basename(args.archiveRoot)),
+    expectedLeaf: EXPECTED_ARCHIVE_LEAF,
+    inventory: { readyForArchive: true }
+  })
+}
+
+async function findExistingAncestor(start, inspect) {
+  let current = path.resolve(start)
+  while (true) {
+    try {
+      await inspect(current)
+      return current
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+    }
+    const parent = path.dirname(current)
+    if (parent === current) throw new Error('archive parent has no existing ancestor')
+    current = parent
+  }
+}
+
+function validateExplicitSources(args, inventory) {
+  if (!Array.isArray(inventory.externalRepositories) || !Array.isArray(inventory.artifacts)) throw new Error('inventory source lists are invalid')
+  const requested = new Map(args.bundleRepositories.map((entry) => [entry.label, path.resolve(entry.path)]))
+  if (requested.size !== args.bundleRepositories.length || requested.size !== inventory.externalRepositories.length) throw new Error('bundle repository list does not match inventory')
+  for (const entry of inventory.externalRepositories) {
+    if (!LABEL.test(entry?.label ?? '') || !path.isAbsolute(entry?.path ?? '') || !samePath(requested.get(entry.label), entry.path)) {
+      throw new Error('bundle repository list does not match inventory')
+    }
+  }
+  const artifactLabels = new Set()
+  for (const artifact of inventory.artifacts) {
+    if (!LABEL.test(artifact?.label ?? '') || artifactLabels.has(artifact.label) || !path.isAbsolute(artifact?.sourcePath ?? '')) throw new Error('inventory artifact list is invalid')
+    artifactLabels.add(artifact.label)
+  }
+}
+
+async function validateRepositorySource(repository, dependencies) {
+  const metadata = await dependencies.lstat(repository.sourcePath)
+  if (metadata.isSymbolicLink() || !metadata.isDirectory()) throw new Error(`bundle repository is not a regular directory: ${repository.label}`)
+  const prefix = repository.safeDirectory ? ['-c', `safe.directory=${repository.sourcePath}`] : []
+  const status = nonEmptyLines(runChecked(dependencies.run, 'git', [...prefix, '-C', repository.sourcePath, 'status', '--porcelain=v1'], 'repository status'))
+  const allowedPrimary = repository.label === 'repository' && (status.length === 0 || status.length === 1 && status[0] === '?? .integration-xlsx-on-prereq/')
+  if (status.length > 0 && !allowedPrimary) throw new Error(`${repository.label === 'repository' ? 'repository' : 'external repository'} is dirty: ${repository.label}`)
+  const head = runChecked(dependencies.run, 'git', [...prefix, '-C', repository.sourcePath, 'rev-parse', 'HEAD'], 'repository head').trim()
+  if (head !== repository.expectedHead) throw new Error(`repository head does not match inventory: ${repository.label}`)
+}
+
+async function createBundle(repository, bundlePath, dependencies) {
+  if (dependencies.createBundle) return dependencies.createBundle({ repository, bundlePath })
+  const prefix = repository.safeDirectory ? ['-c', `safe.directory=${repository.sourcePath}`] : []
+  runChecked(dependencies.run, 'git', [...prefix, '-C', repository.sourcePath, 'bundle', 'create', bundlePath, '--all'], 'bundle create')
+}
+
+function verifyBundle(bundlePath, run) {
+  runChecked(run, 'git', ['bundle', 'verify', bundlePath], 'bundle verify')
+  return nonEmptyLines(runChecked(run, 'git', ['bundle', 'list-heads', bundlePath], 'bundle list-heads'))
+}
+
+function inventorySnapshots(inventory) {
+  return {
+    'remote-heads-before.txt': `${inventory.remoteHeads.map((entry) => `${entry.sha}\trefs/heads/${entry.branch}\t${entry.owner}`).join('\n')}\n`,
+    'local-branches-before.txt': `${inventory.localBranches.map((entry) => `${entry.sha}\trefs/heads/${entry.branch}`).join('\n')}\n`,
+    'worktrees-before.txt': `${inventory.worktrees.map((entry) => `${entry.head}\t${entry.branch ?? '(detached)'}\t${entry.path}`).join('\n')}\n`,
+    'open-prs-before.json': `${JSON.stringify(inventory.openPullRequests, null, 2)}\n`
+  }
+}
+
+function archiveSummary({ archiveRoot, generatedAt, inventory, inventoryText, manifest, manifestHash, bundleHeads }) {
+  return {
+    schemaVersion: ARCHIVE_SCHEMA,
+    generatedAt,
+    archiveRoot: path.resolve(archiveRoot),
+    inventoryGeneratedAt: inventory.generatedAt,
+    inventorySha256: createHash('sha256').update(inventoryText).digest('hex'),
+    manifestSha256: manifestHash,
+    verified: true,
+    entryCount: manifest.entries.length,
+    bundleCount: bundleHeads.length,
+    bundleHeads
+  }
+}
+
+async function writeSummaries(args, summary, dependencies) {
+  const write = dependencies.atomicWriteText ?? atomicWriteText
+  await write(args.summaryJson, `${JSON.stringify(summary, null, 2)}\n`)
+  await write(args.summaryMarkdown, renderArchiveMarkdown(summary))
+}
+
+async function atomicWriteText(destination, contents) {
+  await mkdir(path.dirname(destination), { recursive: true })
+  const temporary = path.join(path.dirname(destination), `.${path.basename(destination)}.${process.pid}.${nodeRandomUUID()}.tmp`)
+  await writeFile(temporary, contents, { flag: 'wx' })
+  await rename(temporary, destination)
+}
+
+async function mkdirOwned(directory, dependencies) {
+  await (dependencies.mkdir ?? mkdir)(directory, { recursive: true })
+}
+
+async function writeExclusive(destination, contents, dependencies) {
+  await (dependencies.writeFile ?? writeFile)(destination, contents, { flag: 'wx' })
+}
+
+function assertSummaryDestinations(args) {
+  if (samePath(args.summaryJson, args.summaryMarkdown)) throw new Error('archive summary outputs must differ')
+  for (const output of [args.summaryJson, args.summaryMarkdown]) {
+    const relative = path.relative(args.archiveRoot, path.resolve(output))
+    if (relative === '' || relative === '..' || !relative.startsWith(`..${path.sep}`)) throw new Error('archive summaries must stay outside the archive root')
+  }
+}
+
+function parseArguments(argv) {
+  const values = new Map()
+  const bundleRepositories = []
+  let verifyExisting = false
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index]
+    if (token === '--verify-existing') {
+      if (verifyExisting) throw new Error('duplicate argument: --verify-existing')
+      verifyExisting = true
+      continue
+    }
+    if (!token.startsWith('--')) throw new Error(`unexpected argument: ${sanitize(token)}`)
+    const value = argv[index + 1]
+    if (value === undefined || value.startsWith('--')) throw new Error(`missing value for ${token}`)
+    const key = token.slice(2)
+    if (key === 'bundle-repository') bundleRepositories.push(parseLabeledPath(value))
+    else if (['inventory', 'map', 'archive-root', 'repository-root', 'summary-json', 'summary-markdown'].includes(key)) {
+      if (values.has(key)) throw new Error(`duplicate argument: --${key}`)
+      values.set(key, value)
+    } else throw new Error(`unexpected argument: ${token}`)
+    index += 1
+  }
+  for (const key of ['inventory', 'map', 'archive-root', 'repository-root', 'summary-json', 'summary-markdown']) {
+    if (!values.has(key)) throw new Error(`--${key} is required`)
+  }
+  for (const key of ['inventory', 'map', 'archive-root', 'repository-root', 'summary-json', 'summary-markdown']) {
+    if (!path.isAbsolute(values.get(key))) throw new Error(`--${key} must be absolute`)
+  }
+  if (new Set(bundleRepositories.map((entry) => entry.label)).size !== bundleRepositories.length) throw new Error('duplicate bundle repository label')
+  return {
+    inventory: path.resolve(values.get('inventory')),
+    map: path.resolve(values.get('map')),
+    archiveRoot: path.resolve(values.get('archive-root')),
+    repositoryRoot: path.resolve(values.get('repository-root')),
+    summaryJson: path.resolve(values.get('summary-json')),
+    summaryMarkdown: path.resolve(values.get('summary-markdown')),
+    bundleRepositories,
+    verifyExisting
+  }
+}
+
+function parseLabeledPath(value) {
+  const separator = value.indexOf('=')
+  const label = value.slice(0, separator)
+  const sourcePath = value.slice(separator + 1)
+  if (separator <= 0 || !LABEL.test(label) || !path.isAbsolute(sourcePath)) throw new Error('invalid bundle repository argument')
+  return { label, path: path.resolve(sourcePath) }
+}
+
+function parseJson(text, label) {
+  try {
+    return JSON.parse(text)
+  } catch {
+    throw new Error(`invalid ${label} JSON`)
+  }
+}
+
+function runChecked(run, command, args, operation) {
+  const result = normalizeRunResult(run(command, args))
+  if (result.status !== 0) throw new Error(`${operation} failed: ${sanitize(result.stderr || result.stdout)}`)
+  return result.stdout
+}
+
+function normalizeRunResult(result) {
+  if (typeof result === 'string') return { status: 0, stdout: result, stderr: '' }
+  if (!result || !Number.isInteger(result.status)) throw new Error('invalid command runner result')
+  return { status: result.status, stdout: String(result.stdout ?? ''), stderr: String(result.stderr ?? '') }
+}
+
+function defaultRun(command, args) {
+  const result = spawnSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
+}
+
+function samePath(left, right) {
+  if (typeof left !== 'string' || typeof right !== 'string') return false
+  const normalizedLeft = path.resolve(left)
+  const normalizedRight = path.resolve(right)
+  return process.platform === 'win32' ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase() : normalizedLeft === normalizedRight
+}
+
+function nonEmptyLines(value) {
+  return String(value).split(/\r?\n/u).map((line) => line.trim()).filter(Boolean)
+}
+
+function sanitize(value) {
+  return String(value)
+    .replace(/([a-z][a-z0-9+.-]*):\/\/[^/\s:@]+:[^@\s/]+@/giu, '$1://***@')
+    .replace(/(^|[\s'"(])[A-Za-z]:[\\/][^\s'"\)]*/gu, '$1[path]')
+    .replace(/(^|[\s'"(])\\\\(?:\?\\)?[^\s'"\)]*/gu, '$1[path]')
+    .trim()
+}
+
+function escapeMarkdown(value) {
+  return String(value).replace(/[|`]/gu, '\\$&').replace(/\r?\n/gu, ' ')
+}
+
+function compareText(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+if (isMain) {
+  createMainConsolidationArchive().then(({ summary }) => {
+    process.stdout.write(`${JSON.stringify({ archiveRoot: summary.archiveRoot, verified: summary.verified, manifestSha256: summary.manifestSha256 })}\n`)
+  }).catch((error) => {
+    process.stderr.write(`${error instanceof Error ? sanitize(error.message) : 'archive operation failed'}\n`)
+    process.exitCode = 1
+  })
+}
