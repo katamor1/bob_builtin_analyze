@@ -16,6 +16,7 @@ const mapUrl = new URL('../consolidation-map.json', import.meta.url)
 const map = JSON.parse(await readFile(mapUrl, 'utf8'))
 const mainSha = 'a'.repeat(40)
 const processSha = 'b'.repeat(40)
+const externalSha = 'c'.repeat(40)
 
 test('parses exact heads without accepting symbolic or malformed refs', () => {
   assert.deepEqual([...parseRemoteRefs(`${'a'.repeat(40)}\trefs/heads/main\n`)], [['main', 'a'.repeat(40)]])
@@ -26,17 +27,30 @@ test('parses exact heads without accepting symbolic or malformed refs', () => {
 
 test('parses complete worktree porcelain records and rejects incomplete records', () => {
   assert.deepEqual(parseWorktreePorcelain(`worktree C:/repo\nHEAD ${mainSha}\nbranch refs/heads/main\n\n`), [
-    { path: 'C:/repo', head: mainSha, branch: 'refs/heads/main', status: [] }
+    { path: 'C:/repo', head: mainSha, branch: 'refs/heads/main', detached: false, status: [] }
   ])
   assert.throws(() => parseWorktreePorcelain('worktree C:/repo\nbranch refs/heads/main\n'), /invalid worktree record/)
+})
+
+test('only the primary root may contain the approved integration-clone entry', () => {
+  const evidence = inventoryFromObservations({
+    topology: validTopology(),
+    primaryStatus: ['?? .integration-xlsx-on-prereq/'],
+    currentWorktreeStatus: ['?? .integration-xlsx-on-prereq/'],
+    worktrees: [{ path: 'C:/repo', head: mainSha, branch: 'refs/heads/main', detached: false, status: [] }],
+    externalRepositories: [],
+    artifacts: []
+  })
+  assert.equal(evidence.readyForArchive, false)
+  assert.ok(evidence.blockers.some((blocker) => blocker.includes('invoking worktree is dirty')))
 })
 
 test('inventory records dirty state and blocks archive readiness', () => {
   const evidence = inventoryFromObservations({
     topology: { readyForArchive: true, mainSha, legacyHeadCount: 30, processHeadCount: 1, openPullRequestCount: 20 },
     primaryStatus: ['?? .integration-xlsx-on-prereq/'],
-    worktrees: [{ path: 'C:/repo', head: mainSha, branch: 'refs/heads/main', status: [] }],
-    externalRepositories: [{ label: 'integration-xlsx-on-prereq', head: 'b'.repeat(40), branch: 'codex/fix-bazaar-minimal-xlsx-final', status: [' M file.txt'] }],
+    worktrees: [{ path: 'C:/repo', head: mainSha, branch: 'refs/heads/main', detached: false, status: [] }],
+    externalRepositories: [{ label: 'integration-xlsx-on-prereq', path: 'C:/external', head: 'b'.repeat(40), branch: 'codex/fix-bazaar-minimal-xlsx-final', status: [' M file.txt'] }],
     artifacts: []
   })
   assert.equal(evidence.readyForArchive, false)
@@ -62,6 +76,20 @@ test('capture runs the approved read-only observations and atomically writes rea
 
     assert.equal(result.exitCode, 0)
     assert.equal(result.evidence.readyForArchive, true)
+    assert.deepEqual(Object.keys(result.evidence), [
+      'schemaVersion', 'generatedAt', 'repository', 'readyForArchive', 'topology', 'remoteHeads', 'openPullRequests', 'localBranches', 'worktrees', 'externalRepositories', 'artifacts', 'blockers'
+    ])
+    assert.deepEqual(result.evidence.topology, validTopology())
+    assert.deepEqual(result.evidence.remoteHeads, expectedRemoteHeads())
+    assert.deepEqual(result.evidence.openPullRequests, openPullRequests().map(({ number, headRefName, headRefOid, baseRefName, url }) => ({ number, headRefName, headRefOid, baseRefName, url })).sort((left, right) => left.number - right.number))
+    assert.deepEqual(result.evidence.localBranches, [
+      { branch: 'codex/main-consolidation-control-plane', sha: processSha },
+      { branch: 'main', sha: mainSha }
+    ])
+    assert.deepEqual(result.evidence.worktrees, [{ path: 'C:/repo', head: mainSha, branch: 'refs/heads/main', detached: false, status: [] }])
+    assert.deepEqual(result.evidence.externalRepositories, [{ label: 'integration-xlsx-on-prereq', path: externalPath, head: externalSha, branch: 'codex/fix-bazaar-minimal-xlsx-final', status: [] }])
+    assert.deepEqual(result.evidence.artifacts, [{ label: 'old-vsix', sourcePath: artifactPath, byteSize: 8, sha256: 'c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c' }])
+    assert.deepEqual(result.evidence.blockers, [])
     assert.deepEqual(calls.slice(0, 8), [
       ['git', ['fetch', '--no-tags', 'origin', '+refs/heads/*:refs/remotes/origin/*']],
       ['git', ['rev-parse', 'refs/remotes/origin/main']],
@@ -124,6 +152,41 @@ test('capture removes credentials from runner failures', async () => {
   )
 })
 
+test('capture removes remote credentials and absolute argv paths from wrapped errors', async () => {
+  const remote = 'https://operator:supersecret@example.test/repo'
+  const externalPath = 'C:\\private\\integration-xlsx-on-prereq'
+  await assert.rejects(
+    captureMainConsolidationInventory(baseArguments({
+      jsonPath: 'C:/safe/inventory.json',
+      markdownPath: 'C:/safe/inventory.md',
+      externalPath,
+      artifactPath: 'C:/safe/artifact.vsix',
+      remote
+    }), {
+      readFile: async () => JSON.stringify(map),
+      lstat: async () => ({ isSymbolicLink: () => false, isDirectory: () => true, isFile: () => true, size: 8 }),
+      run: () => ({ status: 1, stderr: 'fatal: fetch failed' })
+    }),
+    (error) => error instanceof Error && !error.message.includes('supersecret') && !error.message.includes(remote)
+  )
+  await assert.rejects(
+    captureMainConsolidationInventory(baseArguments({
+      jsonPath: 'C:/safe/inventory.json',
+      markdownPath: 'C:/safe/inventory.md',
+      externalPath,
+      artifactPath: 'C:/safe/artifact.vsix'
+    }), {
+      readFile: async (filePath) => filePath === mapUrl.pathname ? JSON.stringify(map) : Buffer.from('artifact'),
+      lstat: async (filePath) => ({ isSymbolicLink: () => false, isDirectory: () => filePath === externalPath, isFile: () => filePath !== externalPath, size: 8 }),
+      run(command, args) {
+        if (command === 'git' && args[0] === '-c') return { status: 1, stderr: `fatal: cannot access '${externalPath}'` }
+        return observationFor(command, args)
+      }
+    }),
+    (error) => error instanceof Error && !error.message.includes(externalPath) && !error.message.includes('C:\\private')
+  )
+})
+
 test('capture removes credentials when the injected runner throws', async () => {
   await assert.rejects(
     captureMainConsolidationInventory(baseArguments({
@@ -166,10 +229,10 @@ test('capture rejects an external repository symlink before running Git inside i
   }
 })
 
-function baseArguments({ jsonPath, markdownPath, externalPath, artifactPath }) {
+function baseArguments({ jsonPath, markdownPath, externalPath, artifactPath, remote = 'origin' }) {
   return [
     '--repository', 'katamor1/bob_builtin_analyze',
-    '--remote', 'origin',
+    '--remote', remote,
     '--map', mapUrl.pathname,
     '--external-repository', `integration-xlsx-on-prereq=${externalPath}`,
     '--artifact', `old-vsix=${artifactPath}`,
@@ -186,6 +249,8 @@ function observationFor(command, args, { unexpectedRemote = false } = {}) {
   if (command === 'git' && args[0] === 'for-each-ref') return { status: 0, stdout: `main\t${mainSha}\ncodex/main-consolidation-control-plane\t${processSha}\n` }
   if (command === 'git' && args[0] === 'worktree') return { status: 0, stdout: `worktree C:/repo\nHEAD ${mainSha}\nbranch refs/heads/main\n\n` }
   if (command === 'git' && (args[0] === 'status' || args[0] === '-C')) return { status: 0, stdout: args[0] === '-C' ? '?? .integration-xlsx-on-prereq/\n' : '' }
+  if (command === 'git' && args[0] === '-c' && args.includes('rev-parse')) return { status: 0, stdout: `${externalSha}\n` }
+  if (command === 'git' && args[0] === '-c' && args.includes('symbolic-ref')) return { status: 0, stdout: 'codex/fix-bazaar-minimal-xlsx-final\n' }
   if (command === 'git' && args[0] === '-c') return { status: 0, stdout: '' }
   if (command === 'gh' && args[0] === 'api') return { status: 0, stdout: 'main\n' }
   if (command === 'gh' && args[0] === 'pr') return { status: 0, stdout: `${JSON.stringify(openPullRequests())}\n` }
@@ -213,4 +278,16 @@ function openPullRequests() {
       url: `https://example.test/pull/${entry.pullRequest}`,
       title: `PR ${entry.pullRequest}`
     })))
+}
+
+function validTopology() {
+  return { readyForArchive: true, mainSha, legacyHeadCount: 30, processHeadCount: 1, openPullRequestCount: 20 }
+}
+
+function expectedRemoteHeads() {
+  return [
+    { branch: 'codex/main-consolidation-control-plane', sha: processSha, owner: 'process' },
+    ...flattenLegacyHeads(map).map(({ branch, expectedSha, owner }) => ({ branch, sha: expectedSha, owner })),
+    { branch: 'main', sha: mainSha, owner: 'main' }
+  ].sort((left, right) => left.branch.localeCompare(right.branch))
 }

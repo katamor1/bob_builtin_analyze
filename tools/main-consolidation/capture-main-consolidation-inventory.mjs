@@ -31,7 +31,7 @@ export function parseWorktreePorcelain(text) {
     if (typeof record.path !== 'string' || !SHA.test(record.head ?? '') || (record.branch !== null && !/^refs\/heads\/[^\s]+$/u.test(record.branch ?? ''))) {
       throw new Error('invalid worktree record')
     }
-    records.push({ path: record.path, head: record.head, branch: record.branch, status: [] })
+    records.push({ path: record.path, head: record.head, branch: record.branch, detached: record.detached, status: [] })
     record = undefined
   }
   for (const line of String(text).split(/\r?\n/u)) {
@@ -41,7 +41,7 @@ export function parseWorktreePorcelain(text) {
     }
     if (line.startsWith('worktree ')) {
       flush()
-      record = { path: line.slice('worktree '.length), branch: null }
+      record = { path: line.slice('worktree '.length), branch: null, detached: false }
       continue
     }
     if (!record) throw new Error('invalid worktree record')
@@ -49,7 +49,9 @@ export function parseWorktreePorcelain(text) {
       record.head = line.slice('HEAD '.length)
     } else if (line.startsWith('branch ')) {
       record.branch = line.slice('branch '.length)
-    } else if (line === 'detached' || line === 'bare' || line === 'locked' || line === 'prunable' || line.startsWith('locked ') || line.startsWith('prunable ')) {
+    } else if (line === 'detached') {
+      record.detached = true
+    } else if (line === 'bare' || line === 'locked' || line === 'prunable' || line.startsWith('locked ') || line.startsWith('prunable ')) {
       continue
     } else {
       throw new Error('invalid worktree record')
@@ -67,36 +69,36 @@ export function inventoryFromObservations({
   worktrees,
   externalRepositories,
   artifacts,
-  processRefs = [],
+  remoteHeads = [],
+  openPullRequests = [],
+  localBranches = [],
+  repository = undefined,
   generatedAt = new Date().toISOString()
 }) {
   if (topology?.readyForArchive !== true) throw new Error('topology is not ready for archive')
   const normalizedPrimaryStatus = normalizeStatus(primaryStatus)
   const normalizedCurrentStatus = normalizeStatus(currentWorktreeStatus)
-  const normalizedWorktrees = normalizeRepositories(worktrees, 'worktree')
-  const normalizedExternalRepositories = normalizeRepositories(externalRepositories, 'external repository', true)
+  const normalizedWorktrees = normalizeWorktrees(worktrees)
+  const normalizedExternalRepositories = normalizeExternalRepositories(externalRepositories)
   const normalizedArtifacts = normalizeArtifacts(artifacts)
-  const primaryDirty = !isAllowedPrimaryStatus(normalizedPrimaryStatus)
-  const dirtyWorktrees = normalizedWorktrees.some((worktree) => worktree.status.length > 0)
-  const dirtyExternalRepositories = normalizedExternalRepositories.some((repository) => repository.status.length > 0)
-  const currentWorktreeDirty = !isAllowedPrimaryStatus(normalizedCurrentStatus)
+  const blockers = []
+  if (!isAllowedPrimaryStatus(normalizedPrimaryStatus)) blockers.push('primary root is dirty')
+  if (normalizedCurrentStatus.length !== 0) blockers.push('invoking worktree is dirty')
+  for (const worktree of normalizedWorktrees) if (worktree.status.length > 0) blockers.push(`registered worktree is dirty: ${worktree.branch ?? 'detached'}`)
+  for (const external of normalizedExternalRepositories) if (external.status.length > 0) blockers.push(`external repository is dirty: ${external.label}`)
   return {
     schemaVersion: INVENTORY_SCHEMA,
-    repository: topology.repository,
     generatedAt,
-    auditedMainSha: topology.mainSha,
-    readyForArchive: !(primaryDirty || currentWorktreeDirty || dirtyWorktrees || dirtyExternalRepositories),
-    topology: {
-      legacyHeadCount: topology.legacyHeadCount,
-      processHeadCount: topology.processHeadCount,
-      openPullRequestCount: topology.openPullRequestCount
-    },
-    processRefs: normalizeProcessRefs(processRefs),
-    primaryStatus: normalizedPrimaryStatus,
-    currentWorktreeStatus: normalizedCurrentStatus,
+    repository,
+    readyForArchive: blockers.length === 0,
+    topology: normalizeTopology(topology),
+    remoteHeads: normalizeRemoteHeads(remoteHeads),
+    openPullRequests: normalizeOpenPullRequests(openPullRequests),
+    localBranches: normalizeLocalBranches(localBranches),
     worktrees: normalizedWorktrees,
     externalRepositories: normalizedExternalRepositories,
-    artifacts: normalizedArtifacts
+    artifacts: normalizedArtifacts,
+    blockers: blockers.sort(compareText)
   }
 }
 
@@ -106,15 +108,10 @@ export function renderInventoryMarkdown(evidence) {
     '',
     `- Repository: \`${escapeMarkdown(evidence.repository)}\``,
     `- Generated: \`${escapeMarkdown(evidence.generatedAt)}\``,
-    `- Audited main: \`${escapeMarkdown(evidence.auditedMainSha)}\``,
+    `- Audited main: \`${escapeMarkdown(evidence.topology.mainSha)}\``,
     `- Ready for archive: **${evidence.readyForArchive ? 'yes' : 'no'}**`,
     `- Legacy heads: ${evidence.topology.legacyHeadCount}`,
     `- Open pull requests: ${evidence.topology.openPullRequestCount}`,
-    '',
-    '## Repository state',
-    '',
-    `- Primary root: ${isAllowedPrimaryStatus(evidence.primaryStatus) ? 'allowed untracked integration clone' : evidence.primaryStatus.length === 0 ? 'clean' : 'dirty'}`,
-    `- Invoking worktree: ${evidence.currentWorktreeStatus.length === 0 ? 'clean' : 'dirty'}`,
     '',
     '## Registered worktrees',
     '',
@@ -128,14 +125,11 @@ export function renderInventoryMarkdown(evidence) {
   for (const repository of evidence.externalRepositories) {
     lines.push(`| \`${escapeMarkdown(repository.label)}\` | ${repository.status.length === 0 ? 'clean' : 'dirty'} |`)
   }
-  lines.push('', '## Process branches', '', '| Branch | Remote HEAD | Local HEAD |', '| --- | --- | --- |')
-  for (const processRef of evidence.processRefs) {
-    lines.push(`| \`${escapeMarkdown(processRef.branch)}\` | \`${escapeMarkdown(processRef.remoteSha)}\` | \`${escapeMarkdown(processRef.localSha ?? 'absent')}\` |`)
-  }
   lines.push('', '## Artifacts', '', '| Label | File | Bytes | SHA-256 |', '| --- | --- | ---: | --- |')
   for (const artifact of evidence.artifacts) {
-    lines.push(`| \`${escapeMarkdown(artifact.label)}\` | \`${escapeMarkdown(artifact.fileName)}\` | ${artifact.size} | \`${escapeMarkdown(artifact.sha256)}\` |`)
+    lines.push(`| \`${escapeMarkdown(artifact.label)}\` | \`${escapeMarkdown(path.basename(artifact.sourcePath))}\` | ${artifact.byteSize} | \`${escapeMarkdown(artifact.sha256)}\` |`)
   }
+  if (evidence.blockers.length > 0) lines.push('', '## Blockers', '', ...evidence.blockers.map((blocker) => `- ${escapeMarkdown(blocker)}`))
   lines.push('')
   return `${lines.join('\n')}\n`
 }
@@ -173,7 +167,9 @@ export async function captureMainConsolidationInventory(argv = process.argv.slic
     const externalStats = await stat(external.path)
     if (externalStats.isSymbolicLink() || !externalStats.isDirectory()) throw new Error(`external repository is not a directory: ${external.label}`)
     const status = statusLines(runChecked(run, 'git', ['-c', `safe.directory=${external.path}`, '-C', external.path, 'status', '--porcelain=v1']))
-    externalRepositories.push({ label: external.label, path: external.path, status })
+    const head = runChecked(run, 'git', ['-c', `safe.directory=${external.path}`, '-C', external.path, 'rev-parse', 'HEAD']).trim()
+    const branch = runOptional(run, 'git', ['-c', `safe.directory=${external.path}`, '-C', external.path, 'symbolic-ref', '--quiet', '--short', 'HEAD'])
+    externalRepositories.push({ label: external.label, path: external.path, head, branch, status })
   }
   const artifacts = []
   for (const artifact of args.artifacts) artifacts.push(await inspectArtifact(artifact, { read, stat }))
@@ -183,7 +179,6 @@ export async function captureMainConsolidationInventory(argv = process.argv.slic
     if (remoteRefs.has(branch)) processRefs.set(branch, remoteRefs.get(branch))
   }
   const topology = assessTopology({ map, mainSha, baselineIsAncestor, remoteRefs, openPullRequests, processRefs })
-  topology.repository = map.repository
   const evidence = inventoryFromObservations({
     topology,
     primaryStatus: primary.status,
@@ -191,12 +186,15 @@ export async function captureMainConsolidationInventory(argv = process.argv.slic
     worktrees: worktrees.map((worktree) => worktree === primary ? { ...worktree, status: [] } : worktree),
     externalRepositories,
     artifacts,
-    processRefs: [...processRefs].map(([branch, remoteSha]) => ({ branch, remoteSha, localSha: localRefs.get(branch) ?? null })),
+    remoteHeads: buildRemoteHeads(map, remoteRefs),
+    openPullRequests,
+    localBranches: [...localRefs].map(([branch, sha]) => ({ branch, sha })),
+    repository: map.repository,
     generatedAt
   })
   await write(args.json, `${JSON.stringify(evidence, null, 2)}\n`)
   await write(args.markdown, renderInventoryMarkdown(evidence))
-  return { exitCode: evidence.readyForArchive ? 0 : 2, evidence, localRefs }
+  return { exitCode: evidence.readyForArchive ? 0 : 2, evidence }
 }
 
 function parseArgs(argv) {
@@ -270,6 +268,17 @@ function parseOpenPullRequests(text) {
   return pullRequests
 }
 
+function buildRemoteHeads(map, remoteRefs) {
+  const owners = new Map()
+  for (const carrier of map.carriers) {
+    for (const entry of carrier.branches) owners.set(entry.branch, carrier.id)
+  }
+  for (const entry of [...map.checkpoints, ...map.independentTriage, ...map.mergedXlsx]) owners.set(entry.branch, entry.owner)
+  for (const branch of map.processBranches) owners.set(branch, 'process')
+  owners.set('main', 'main')
+  return [...remoteRefs].map(([branch, sha]) => ({ branch, sha, owner: owners.get(branch) ?? 'unexpected' }))
+}
+
 async function inspectArtifact(artifact, { read, stat }) {
   const before = await stat(artifact.path)
   if (before.isSymbolicLink() || !before.isFile()) throw new Error(`artifact is not a regular file: ${artifact.label}`)
@@ -281,40 +290,86 @@ async function inspectArtifact(artifact, { read, stat }) {
   return {
     label: artifact.label,
     sourcePath: artifact.path,
-    fileName: path.basename(artifact.path),
-    size: before.size,
+    byteSize: before.size,
     sha256: createHash('sha256').update(contents).digest('hex')
   }
 }
 
-function normalizeRepositories(entries, kind, labeled = false) {
-  if (!Array.isArray(entries)) throw new Error(`invalid ${kind} observations`)
-  return entries.map((entry) => {
-    if ((!labeled && typeof entry?.path !== 'string') || typeof entry?.path !== 'undefined' && typeof entry.path !== 'string' || typeof entry?.head !== 'string' && entry?.head !== undefined) throw new Error(`invalid ${kind} observation`)
-    if (entry.head !== undefined && !SHA.test(entry.head)) throw new Error(`invalid ${kind} head`)
-    if (labeled && (!LABEL.test(entry.label ?? '') || entry.path !== undefined && !path.isAbsolute(entry.path))) throw new Error(`invalid ${kind} observation`)
-    return { ...entry, status: normalizeStatus(entry.status) }
-  })
+function normalizeTopology(topology) {
+  if (!SHA.test(topology?.mainSha ?? '') || topology.legacyHeadCount !== 30 || !Number.isInteger(topology.processHeadCount) || !Number.isInteger(topology.openPullRequestCount)) {
+    throw new Error('invalid topology assessment')
+  }
+  return {
+    readyForArchive: true,
+    mainSha: topology.mainSha,
+    legacyHeadCount: topology.legacyHeadCount,
+    processHeadCount: topology.processHeadCount,
+    openPullRequestCount: topology.openPullRequestCount
+  }
+}
+
+function normalizeRemoteHeads(remoteHeads) {
+  if (!Array.isArray(remoteHeads)) throw new Error('invalid remote heads')
+  return remoteHeads.map((head) => {
+    if (typeof head?.branch !== 'string' || head.branch.length === 0 || !SHA.test(head.sha ?? '') || typeof head.owner !== 'string' || head.owner.length === 0) {
+      throw new Error('invalid remote head observation')
+    }
+    return { branch: head.branch, sha: head.sha, owner: head.owner }
+  }).sort((left, right) => compareText(left.branch, right.branch))
+}
+
+function normalizeOpenPullRequests(pullRequests) {
+  if (!Array.isArray(pullRequests)) throw new Error('invalid open pull requests')
+  return pullRequests.map((pullRequest) => {
+    if (!Number.isInteger(pullRequest?.number) || typeof pullRequest.headRefName !== 'string' || !SHA.test(pullRequest.headRefOid ?? '') || typeof pullRequest.baseRefName !== 'string' || typeof pullRequest.url !== 'string') {
+      throw new Error('invalid open pull request observation')
+    }
+    return {
+      number: pullRequest.number,
+      headRefName: pullRequest.headRefName,
+      headRefOid: pullRequest.headRefOid,
+      baseRefName: pullRequest.baseRefName,
+      url: pullRequest.url
+    }
+  }).sort((left, right) => left.number - right.number)
+}
+
+function normalizeLocalBranches(localBranches) {
+  if (!Array.isArray(localBranches)) throw new Error('invalid local branches')
+  return localBranches.map((branch) => {
+    if (typeof branch?.branch !== 'string' || branch.branch.length === 0 || !SHA.test(branch.sha ?? '')) throw new Error('invalid local branch observation')
+    return { branch: branch.branch, sha: branch.sha }
+  }).sort((left, right) => compareText(left.branch, right.branch))
+}
+
+function normalizeWorktrees(worktrees) {
+  if (!Array.isArray(worktrees)) throw new Error('invalid worktree observations')
+  return worktrees.map((worktree) => {
+    if (typeof worktree?.path !== 'string' || !SHA.test(worktree.head ?? '') || (worktree.branch !== null && typeof worktree.branch !== 'string') || typeof worktree.detached !== 'boolean') {
+      throw new Error('invalid worktree observation')
+    }
+    return { path: worktree.path, head: worktree.head, branch: worktree.branch, detached: worktree.detached, status: normalizeStatus(worktree.status) }
+  }).sort((left, right) => compareText(left.path, right.path))
+}
+
+function normalizeExternalRepositories(repositories) {
+  if (!Array.isArray(repositories)) throw new Error('invalid external repository observations')
+  return repositories.map((repository) => {
+    if (!LABEL.test(repository?.label ?? '') || !path.isAbsolute(repository.path ?? '') || !SHA.test(repository.head ?? '') || (repository.branch !== null && typeof repository.branch !== 'string')) {
+      throw new Error('invalid external repository observation')
+    }
+    return { label: repository.label, path: repository.path, head: repository.head, branch: repository.branch, status: normalizeStatus(repository.status) }
+  }).sort((left, right) => compareText(left.label, right.label))
 }
 
 function normalizeArtifacts(artifacts) {
   if (!Array.isArray(artifacts)) throw new Error('invalid artifacts')
   return artifacts.map((artifact) => {
-    if (!LABEL.test(artifact?.label ?? '') || !path.isAbsolute(artifact.sourcePath ?? '') || typeof artifact.fileName !== 'string' || !Number.isSafeInteger(artifact.size) || artifact.size < 0 || !/^[0-9a-f]{64}$/u.test(artifact.sha256 ?? '')) {
+    if (!LABEL.test(artifact?.label ?? '') || !path.isAbsolute(artifact.sourcePath ?? '') || !Number.isSafeInteger(artifact.byteSize) || artifact.byteSize < 0 || !/^[0-9a-f]{64}$/u.test(artifact.sha256 ?? '')) {
       throw new Error('invalid artifact observation')
     }
-    return { ...artifact }
-  })
-}
-
-function normalizeProcessRefs(processRefs) {
-  if (!Array.isArray(processRefs)) throw new Error('invalid process refs')
-  return processRefs.map((processRef) => {
-    if (typeof processRef?.branch !== 'string' || !SHA.test(processRef.remoteSha ?? '') || processRef.localSha !== null && processRef.localSha !== undefined && !SHA.test(processRef.localSha)) {
-      throw new Error('invalid process ref observation')
-    }
-    return { ...processRef, localSha: processRef.localSha ?? null }
-  }).sort((left, right) => left.branch.localeCompare(right.branch))
+    return { label: artifact.label, sourcePath: artifact.sourcePath, byteSize: artifact.byteSize, sha256: artifact.sha256 }
+  }).sort((left, right) => compareText(left.label, right.label))
 }
 
 function normalizeStatus(status) {
@@ -332,7 +387,7 @@ function statusLines(text) {
 
 function runChecked(run, command, args) {
   const result = invokeRunner(run, command, args)
-  if (result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed: ${sanitize(result.stderr || result.stdout)}`)
+  if (result.status !== 0) throw new Error(`${formatCommand(command, args)} failed: ${sanitize(result.stderr || result.stdout)}`)
   return result.stdout
 }
 
@@ -340,12 +395,19 @@ function runStatus(run, command, args) {
   return invokeRunner(run, command, args).status
 }
 
+function runOptional(run, command, args) {
+  const result = invokeRunner(run, command, args)
+  if (result.status === 0) return result.stdout.trim()
+  if (result.status === 1) return null
+  throw new Error(`${formatCommand(command, args)} failed: ${sanitize(result.stderr || result.stdout)}`)
+}
+
 function invokeRunner(run, command, args) {
   try {
     return normalizeRunResult(run(command, args))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    throw new Error(`${command} ${args.join(' ')} failed: ${sanitize(message)}`)
+    throw new Error(`${formatCommand(command, args)} failed: ${sanitize(message)}`)
   }
 }
 
@@ -367,8 +429,26 @@ function nonEmptyLines(value) {
 function sanitize(value) {
   return String(value)
     .replace(/https?:\/\/[^/\s:@]+:[^@\s/]+@/gu, (match) => `${match.startsWith('https://') ? 'https' : 'http'}://***@`)
+    .replace(/(^|[\s'"(])[A-Za-z]:[\\/][^\s'"\)]*/gu, '$1[path]')
+    .replace(/(^|[\s'"(])\/(?!\/)[^\s'"\)]*/gu, '$1[path]')
     .replace(/(?:gh[opsu]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)/gu, '***')
     .trim()
+}
+
+function formatCommand(command, args) {
+  return [command, ...args.map((arg) => sanitizeArgument(arg))].join(' ')
+}
+
+function sanitizeArgument(arg) {
+  const value = String(arg)
+  if (/^https?:\/\//u.test(value)) return '[remote]'
+  if (value.startsWith('safe.directory=')) return 'safe.directory=[path]'
+  if (path.isAbsolute(value) || path.win32.isAbsolute(value) || path.posix.isAbsolute(value)) return '[path]'
+  return sanitize(value)
+}
+
+function compareText(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0
 }
 
 function escapeMarkdown(value) {
