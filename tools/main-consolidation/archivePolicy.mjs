@@ -37,12 +37,19 @@ export async function hashFile(filePath) {
 
 export function buildArchiveManifest(entries, { generatedAt = new Date().toISOString() } = {}) {
   if (!Array.isArray(entries)) throw new Error('archive manifest entries must be an array')
+  if (!isCanonicalUtcTimestamp(generatedAt)) throw new Error('archive manifest generatedAt is not a canonical UTC timestamp')
   const normalized = entries.map((entry) => normalizeManifestEntry(entry))
   normalized.sort((left, right) => compareText(left.path, right.path))
   for (let index = 1; index < normalized.length; index += 1) {
     if (normalized[index - 1].path === normalized[index].path) throw new Error(`duplicate archive manifest path: ${normalized[index].path}`)
   }
   return { schemaVersion: MANIFEST_SCHEMA, generatedAt, entries: normalized }
+}
+
+function isCanonicalUtcTimestamp(value) {
+  if (typeof value !== 'string') return false
+  const timestamp = new Date(value)
+  return !Number.isNaN(timestamp.valueOf()) && timestamp.toISOString() === value
 }
 
 export async function copyVerifiedFile({ sourcePath, destinationPath, expected }, dependencies = {}) {

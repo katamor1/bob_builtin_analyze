@@ -292,9 +292,10 @@ async function verifyPublishedArchive({ args, inventory, inventoryText, map, dep
     bundleHeads: verified.bundleHeads,
     carrierPatchCount
   })
+  const summaryGeneratedAt = priorSummary?.generatedAt ?? manifest.generatedAt
   const summary = {
     ...verified,
-    generatedAt: manifest.generatedAt,
+    generatedAt: summaryGeneratedAt,
     inventoryGeneratedAt: inventory.generatedAt,
     inventorySha256: inventoryHash,
     manifestSha256: manifestHash,
@@ -935,14 +936,24 @@ async function readExistingSummary(summaryPath, dependencies) {
 }
 
 function validatePriorSummary(summary, expected) {
+  if (!isCanonicalUtcTimestamp(expected.generatedAt)) throw new Error('archive manifest generatedAt is not a canonical UTC timestamp')
+  if (!isCanonicalUtcTimestamp(summary?.generatedAt) || Date.parse(summary.generatedAt) < Date.parse(expected.generatedAt)) {
+    throw new Error('existing archive summary generatedAt is invalid or predates the archive manifest')
+  }
   if (summary?.schemaVersion !== ARCHIVE_SCHEMA || !samePath(summary.archiveRoot, expected.archiveRoot) || summary.verified !== true ||
-      summary.generatedAt !== expected.generatedAt || summary.inventoryGeneratedAt !== expected.inventoryGeneratedAt ||
+      summary.inventoryGeneratedAt !== expected.inventoryGeneratedAt ||
       summary.inventorySha256 !== expected.inventoryHash || summary.manifestSha256 !== expected.manifestHash ||
       summary.entryCount !== expected.entryCount || summary.bundleCount !== expected.bundleHeads.length) {
     throw new Error('existing archive summary identity, inventory, or manifest does not match')
   }
   if (JSON.stringify(summary.bundleHeads) !== JSON.stringify(expected.bundleHeads)) throw new Error('existing archive summary bundle heads do not match')
   if (summary.carrierPatchCount !== expected.carrierPatchCount) throw new Error('existing archive summary carrier patch count does not match verified evidence')
+}
+
+function isCanonicalUtcTimestamp(value) {
+  if (typeof value !== 'string') return false
+  const timestamp = new Date(value)
+  return !Number.isNaN(timestamp.valueOf()) && timestamp.toISOString() === value
 }
 
 async function verifyArchivedCarrierEvidence({ archiveRoot, repoRoot, manifest, map, dependencies }) {

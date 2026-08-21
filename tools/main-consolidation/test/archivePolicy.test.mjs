@@ -302,3 +302,30 @@ test('verifyExistingArchive binds canonical manifest bytes and the exact detache
     })
   }
 })
+
+test('verifyExistingArchive rejects invalid and non-canonical manifest generatedAt values', async (t) => {
+  for (const [name, generatedAt] of [
+    ['invalid', 'not-a-timestamp'],
+    ['non-canonical', '2026-08-21T17:00:58.750+00:00']
+  ]) {
+    await t.test(name, async () => {
+      const temporary = await mkdtemp(path.join(os.tmpdir(), 'archive-policy-manifest-time-'))
+      try {
+        await mkdir(path.join(temporary, 'artifacts'))
+        const entryPath = path.join(temporary, 'artifacts', 'evidence.bin')
+        await writeFile(entryPath, 'evidence')
+        const manifest = buildArchiveManifest([
+          { path: 'artifacts/evidence.bin', ...(await hashFile(entryPath)) }
+        ], { generatedAt: '2026-08-21T17:00:58.750Z' })
+        manifest.generatedAt = generatedAt
+        await writeArchiveControls(temporary, manifest)
+        await assert.rejects(
+          verifyExistingArchive({ archiveRoot: temporary, manifest }),
+          /manifest generatedAt.*canonical UTC timestamp/u
+        )
+      } finally {
+        await rm(temporary, { recursive: true, force: true })
+      }
+    })
+  }
+})

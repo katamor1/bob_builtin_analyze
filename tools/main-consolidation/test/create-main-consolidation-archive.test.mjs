@@ -282,6 +282,142 @@ test('verify-existing rejects a prior summary carrier patch count that differs f
   }
 })
 
+test('verify-existing accepts and byte-preserves a canonical later prior-summary timestamp', async () => {
+  const fixture = await createFixture()
+  const manifestGeneratedAt = '2026-08-21T17:00:58.750Z'
+  const priorGeneratedAt = '2026-08-21T17:02:55.958Z'
+  try {
+    await createMainConsolidationArchive(fixture.args, {
+      now: () => new Date(manifestGeneratedAt),
+      randomUUID: () => 'prior-summary-later'
+    })
+    const createdSummary = JSON.parse(await readFile(fixture.summaryJson, 'utf8'))
+    const priorSummary = {
+      schemaVersion: createdSummary.schemaVersion,
+      generatedAt: priorGeneratedAt,
+      archiveRoot: createdSummary.archiveRoot,
+      verified: createdSummary.verified,
+      entryCount: createdSummary.entryCount,
+      bundleCount: createdSummary.bundleCount,
+      bundleHeads: createdSummary.bundleHeads,
+      inventoryGeneratedAt: createdSummary.inventoryGeneratedAt,
+      inventorySha256: createdSummary.inventorySha256,
+      manifestSha256: createdSummary.manifestSha256,
+      carrierPatchCount: createdSummary.carrierPatchCount
+    }
+    const priorJsonBytes = `${JSON.stringify(priorSummary, null, 2)}\n`
+    const priorMarkdownBytes = (await readFile(fixture.summaryMarkdown, 'utf8')).replace(manifestGeneratedAt, priorGeneratedAt)
+    await writeFile(fixture.summaryJson, priorJsonBytes)
+    await writeFile(fixture.summaryMarkdown, priorMarkdownBytes)
+    const beforeJsonHash = createHash('sha256').update(priorJsonBytes).digest('hex')
+    const beforeMarkdownHash = createHash('sha256').update(priorMarkdownBytes).digest('hex')
+
+    const result = await createMainConsolidationArchive([...fixture.args, '--verify-existing'], {
+      now: () => new Date('2026-08-22T00:00:00.000Z')
+    })
+
+    assert.equal(result.summary.generatedAt, priorGeneratedAt)
+    assert.equal(await readFile(fixture.summaryJson, 'utf8'), priorJsonBytes)
+    assert.equal(await readFile(fixture.summaryMarkdown, 'utf8'), priorMarkdownBytes)
+    assert.equal(createHash('sha256').update(await readFile(fixture.summaryJson)).digest('hex'), beforeJsonHash)
+    assert.equal(createHash('sha256').update(await readFile(fixture.summaryMarkdown)).digest('hex'), beforeMarkdownHash)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('verify-existing rejects older, invalid, and non-canonical prior-summary timestamps', async (t) => {
+  for (const [name, priorGeneratedAt] of [
+    ['older than manifest', '2026-08-21T17:00:58.749Z'],
+    ['invalid', 'not-a-timestamp'],
+    ['non-canonical UTC spelling', '2026-08-21T17:02:55.958+00:00']
+  ]) {
+    await t.test(name, async () => {
+      const fixture = await createFixture()
+      const manifestGeneratedAt = '2026-08-21T17:00:58.750Z'
+      try {
+        await createMainConsolidationArchive(fixture.args, {
+          now: () => new Date(manifestGeneratedAt),
+          randomUUID: () => `prior-summary-${name.replaceAll(' ', '-')}`
+        })
+        const priorSummary = JSON.parse(await readFile(fixture.summaryJson, 'utf8'))
+        priorSummary.generatedAt = priorGeneratedAt
+        await writeFile(fixture.summaryJson, `${JSON.stringify(priorSummary, null, 2)}\n`)
+        await assert.rejects(
+          createMainConsolidationArchive([...fixture.args, '--verify-existing']),
+          /existing archive summary.*(?:generated|timestamp|identity)/u
+        )
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    })
+  }
+})
+
+test('verify-existing recovery without a prior summary uses the manifest timestamp', async () => {
+  const fixture = await createFixture()
+  const manifestGeneratedAt = '2026-08-21T17:00:58.750Z'
+  try {
+    await createMainConsolidationArchive(fixture.args, {
+      now: () => new Date(manifestGeneratedAt),
+      randomUUID: () => 'prior-summary-absent'
+    })
+    const verifyArgs = verifyArguments(fixture)
+    const recoveryJson = verifyArgs[verifyArgs.indexOf('--summary-json') + 1]
+    const recoveryMarkdown = verifyArgs[verifyArgs.indexOf('--summary-markdown') + 1]
+
+    const result = await createMainConsolidationArchive(verifyArgs, {
+      now: () => new Date('2026-08-22T00:00:00.000Z')
+    })
+
+    assert.equal(result.summary.generatedAt, manifestGeneratedAt)
+    assert.equal(JSON.parse(await readFile(recoveryJson, 'utf8')).generatedAt, manifestGeneratedAt)
+    assert.match(await readFile(recoveryMarkdown, 'utf8'), /Generated: `2026-08-21T17:00:58\.750Z`/u)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('verify-existing rejects invalid or non-canonical manifest timestamps with or without a prior summary', async (t) => {
+  for (const [timestampName, manifestGeneratedAt] of [
+    ['invalid', 'not-a-timestamp'],
+    ['non-canonical', '2026-08-21T17:00:58.750+00:00']
+  ]) {
+    for (const priorSummaryPresent of [true, false]) {
+      await t.test(`${timestampName}, prior summary ${priorSummaryPresent ? 'present' : 'absent'}`, async () => {
+        const fixture = await createFixture()
+        try {
+          await createMainConsolidationArchive(fixture.args, {
+            now: () => new Date('2026-08-21T17:00:58.750Z'),
+            randomUUID: () => `manifest-time-${timestampName}-${priorSummaryPresent ? 'prior' : 'recovery'}`
+          })
+          const manifestPath = path.join(fixture.archiveRoot, 'archive-manifest.json')
+          const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+          manifest.generatedAt = manifestGeneratedAt
+          const manifestText = `${JSON.stringify(manifest, null, 2)}\n`
+          const manifestHash = createHash('sha256').update(manifestText).digest('hex')
+          await writeFile(manifestPath, manifestText)
+          await writeFile(path.join(fixture.archiveRoot, 'archive-manifest.sha256'), `${manifestHash}\n`)
+
+          const verifyArgs = priorSummaryPresent ? [...fixture.args, '--verify-existing'] : verifyArguments(fixture)
+          if (priorSummaryPresent) {
+            const summary = JSON.parse(await readFile(fixture.summaryJson, 'utf8'))
+            summary.generatedAt = '2026-08-21T17:02:55.958Z'
+            summary.manifestSha256 = manifestHash
+            await writeFile(fixture.summaryJson, `${JSON.stringify(summary, null, 2)}\n`)
+          }
+          await assert.rejects(
+            createMainConsolidationArchive(verifyArgs),
+            /archive manifest.*(?:generated|timestamp)/u
+          )
+        } finally {
+          await rm(fixture.root, { recursive: true, force: true })
+        }
+      })
+    }
+  }
+})
+
 test('verify-existing binds verification to the inventory map hash before reading the archive', async () => {
   const fixture = await createFixture()
   try {
