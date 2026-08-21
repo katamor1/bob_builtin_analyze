@@ -171,7 +171,7 @@ test('topology assessment rejects a process ref outside the frozen allowlist', (
 
 test('archive inventory freezes all 20 pull request identities from the approved map', async (t) => {
   assert.equal(typeof consolidationPolicy.validateArchiveInventory, 'function')
-  assert.doesNotThrow(() => consolidationPolicy.validateArchiveInventory(validArchiveInventory(), map))
+  assert.doesNotThrow(() => consolidationPolicy.validateArchiveInventory(validArchiveInventory(), map, { baselineIsAncestor: true }))
 
   const mutations = {
     '19 pull requests': (inventory) => { inventory.openPullRequests.pop() },
@@ -184,9 +184,16 @@ test('archive inventory freezes all 20 pull request identities from the approved
       const inventory = validArchiveInventory()
       mutate(inventory)
       assert.throws(
-        () => consolidationPolicy.validateArchiveInventory(inventory, map),
+        () => consolidationPolicy.validateArchiveInventory(inventory, map, { baselineIsAncestor: true }),
         /open pull request.*approved map/u
       )
     })
   }
+})
+
+test('archive inventory uses the observed baseline ancestry result', () => {
+  assert.throws(
+    () => consolidationPolicy.validateArchiveInventory(validArchiveInventory(), map, { baselineIsAncestor: false }),
+    /main does not contain the approved baseline/u
+  )
 })

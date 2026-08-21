@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import {
   assertArchivePathComponents,
   assertArchiveDestinationAvailable,
+  assertExactArchiveTree,
   buildArchiveManifest,
   copyVerifiedFile,
   hashFile,
@@ -53,8 +54,16 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
   const validateMap = dependencies.validateConsolidationMap ?? validateConsolidationMap
   validateMap(map)
   validateInventoryMapBinding(inventory, mapBytes)
+  const run = dependencies.run ?? defaultRun
+  const observeAncestry = dependencies.observeBaselineAncestry ?? observeBaselineAncestry
+  const baselineIsAncestor = observeAncestry({
+    repositoryRoot: args.repositoryRoot,
+    baselineMain: map.baselineMain,
+    mainSha: inventory?.topology?.mainSha,
+    run
+  })
   const validateInventory = dependencies.validateArchiveInventory ?? validateArchiveInventory
-  validateInventory(inventory, map)
+  validateInventory(inventory, map, { baselineIsAncestor })
   validateArchiveRequest({
     repoRoot: args.repositoryRoot,
     archiveRoot: args.archiveRoot,
@@ -80,7 +89,6 @@ export async function createMainConsolidationArchive(argv = process.argv.slice(2
   await writeExclusive(markerPath, `${generatedAt}\n`, dependencies)
 
   const manifestEntries = []
-  const run = dependencies.run ?? defaultRun
   const repositories = [
     { label: 'repository', sourcePath: args.repositoryRoot, expectedHead: inventory.topology?.mainSha, safeDirectory: false },
     ...args.bundleRepositories.map((repository) => ({
@@ -253,16 +261,15 @@ async function verifyPublishedArchive({ args, inventory, inventoryText, map, dep
   const manifestText = String(await (dependencies.readFile ?? readFile)(manifestPath, 'utf8'))
   const manifest = parseJson(manifestText, 'archive manifest')
   assertRequiredArchiveContract(manifest, inventory, map)
-  const expectedManifestHash = String(await (dependencies.readFile ?? readFile)(path.join(args.archiveRoot, 'archive-manifest.sha256'), 'utf8')).trim()
   const manifestHash = createHash('sha256').update(manifestText).digest('hex')
-  if (manifestHash !== expectedManifestHash) throw new Error('archive manifest detached hash mismatch')
   const inventoryHash = createHash('sha256').update(inventoryText).digest('hex')
   const priorSummary = await readExistingSummary(args.summaryJson, dependencies)
   const verified = await verifyExistingArchive({ archiveRoot: args.archiveRoot, manifest }, {
     run: dependencies.run,
     now: dependencies.now,
     lstat: dependencies.lstat,
-    readdir: dependencies.readdir
+    readdir: dependencies.readdir,
+    readFile: dependencies.readFile
   })
   validateVerifiedBundleHeads(verified.bundleHeads, inventory)
   const carrierPatchCount = await verifyArchivedCarrierEvidence({
@@ -346,6 +353,10 @@ async function publishArchiveExclusively({ stagingRoot, archiveRoot, markerPath,
       throw error
     }
     await dependencies.afterArchiveRootClaim?.()
+    await assertExactArchiveTree({ archiveRoot: stagingRoot, manifest, requireIncompleteMarker: true }, {
+      lstat: dependencies.lstat,
+      readdir: dependencies.readdir
+    })
     const children = (await list(stagingRoot)).filter((name) => name !== path.basename(markerPath)).sort(compareText)
     for (const name of children) {
       await transferArchiveEntryNoReplace({
@@ -356,6 +367,10 @@ async function publishArchiveExclusively({ stagingRoot, archiveRoot, markerPath,
       })
     }
     await verifyTransferredArchive({ archiveRoot, manifest, dependencies })
+    await assertExactArchiveTree({ archiveRoot, manifest, requireIncompleteMarker: true }, {
+      lstat: dependencies.lstat,
+      readdir: dependencies.readdir
+    })
     const remaining = (await list(stagingRoot)).sort(compareText)
     if (JSON.stringify(remaining) !== JSON.stringify([path.basename(markerPath)])) throw new Error('archive staging is not empty after publication transfer')
     await remove(markerPath)
@@ -372,6 +387,19 @@ async function publishArchiveExclusively({ stagingRoot, archiveRoot, markerPath,
     }
     throw error
   }
+}
+
+function observeBaselineAncestry({ repositoryRoot, baselineMain, mainSha, run }) {
+  if (!path.isAbsolute(repositoryRoot ?? '') || !SHA1.test(baselineMain ?? '') || !SHA1.test(mainSha ?? '')) {
+    throw new Error('invalid baseline ancestry observation request')
+  }
+  const result = normalizeRunResult(run('git', [
+    '-C', repositoryRoot,
+    'merge-base', '--is-ancestor', baselineMain, mainSha
+  ]))
+  if (result.status === 0) return true
+  if (result.status === 1) return false
+  throw new Error(`baseline ancestry observation failed: ${sanitize(result.stderr || result.stdout)}`)
 }
 
 async function transferArchiveEntryNoReplace({ source, destination, relativePath, dependencies }) {

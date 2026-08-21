@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -13,6 +14,12 @@ import {
 } from '../archivePolicy.mjs'
 
 const EXPECTED_LEAF = '2026-08-21-main-consolidation'
+
+async function writeArchiveControls(archiveRoot, manifest) {
+  const manifestText = `${JSON.stringify(manifest, null, 2)}\n`
+  await writeFile(path.join(archiveRoot, 'archive-manifest.json'), manifestText)
+  await writeFile(path.join(archiveRoot, 'archive-manifest.sha256'), `${createHash('sha256').update(manifestText).digest('hex')}\n`)
+}
 
 test('archive root must be outside the repository and use the exact leaf', () => {
   const repoRoot = path.resolve('repo')
@@ -115,8 +122,6 @@ test('verifyExistingArchive rejects path traversal and changed bytes', async () 
     await mkdir(path.join(temporary, 'artifacts'), { recursive: true })
     const archived = path.join(temporary, 'artifacts', 'evidence.bin')
     await writeFile(archived, 'evidence')
-    await writeFile(path.join(temporary, 'archive-manifest.json'), '{}\n')
-    await writeFile(path.join(temporary, 'archive-manifest.sha256'), `${'a'.repeat(64)}\n`)
     const hashed = await hashFile(archived)
     await assert.rejects(verifyExistingArchive({
       archiveRoot: temporary,
@@ -126,10 +131,12 @@ test('verifyExistingArchive rejects path traversal and changed bytes', async () 
         entries: [{ path: '../escape.bin', ...hashed }]
       }
     }), /unsafe manifest path/)
+    const changedManifest = buildArchiveManifest([{ path: 'artifacts/evidence.bin', ...hashed }], { generatedAt: '2026-08-21T00:00:00.000Z' })
+    await writeArchiveControls(temporary, changedManifest)
     await writeFile(archived, 'changed!')
     await assert.rejects(verifyExistingArchive({
       archiveRoot: temporary,
-      manifest: buildArchiveManifest([{ path: 'artifacts/evidence.bin', ...hashed }], { generatedAt: '2026-08-21T00:00:00.000Z' })
+      manifest: changedManifest
     }), /hash mismatch/)
   } finally {
     await rm(temporary, { recursive: true, force: true })
@@ -180,11 +187,10 @@ test('archive tree validation requires only manifest files and its two control f
     await mkdir(path.join(temporary, 'artifacts'))
     const entryPath = path.join(temporary, 'artifacts', 'evidence.bin')
     await writeFile(entryPath, 'evidence')
-    await writeFile(path.join(temporary, 'archive-manifest.json'), '{}\n')
-    await writeFile(path.join(temporary, 'archive-manifest.sha256'), `${'a'.repeat(64)}\n`)
     const manifest = buildArchiveManifest([
       { path: 'artifacts/evidence.bin', ...(await hashFile(entryPath)) }
     ], { generatedAt: '2026-08-21T00:00:00.000Z' })
+    await writeArchiveControls(temporary, manifest)
     return { temporary, manifest }
   }
 
@@ -233,4 +239,66 @@ test('archive tree validation requires only manifest files and its two control f
       await rm(fixture.temporary, { recursive: true, force: true })
     }
   })
+})
+
+test('verifyExistingArchive detects an entry injected after either root listing', async (t) => {
+  for (const [name, injectAfterListing] of [['first scan', 0], ['final scan', 1]]) {
+    await t.test(name, async () => {
+      const temporary = await mkdtemp(path.join(os.tmpdir(), 'archive-policy-second-scan-'))
+      const unexpected = path.join(temporary, 'late-unexpected.txt')
+      let rootListings = 0
+      try {
+        await mkdir(path.join(temporary, 'artifacts'))
+        const entryPath = path.join(temporary, 'artifacts', 'evidence.bin')
+        await writeFile(entryPath, 'evidence')
+        const manifest = buildArchiveManifest([
+          { path: 'artifacts/evidence.bin', ...(await hashFile(entryPath)) }
+        ], { generatedAt: '2026-08-21T00:00:00.000Z' })
+        await writeArchiveControls(temporary, manifest)
+        await assert.rejects(verifyExistingArchive({ archiveRoot: temporary, manifest }, {
+          readdir: async (directory) => {
+            const names = await readdir(directory)
+            if (path.resolve(directory) === path.resolve(temporary) && rootListings++ === injectAfterListing) {
+              await writeFile(unexpected, 'keep-late-unexpected')
+            }
+            return names
+          }
+        }), /archive tree does not match the manifest|archive tree changed/u)
+        assert.equal(await readFile(unexpected, 'utf8'), 'keep-late-unexpected')
+      } finally {
+        await rm(temporary, { recursive: true, force: true })
+      }
+    })
+  }
+})
+
+test('verifyExistingArchive binds canonical manifest bytes and the exact detached hash', async (t) => {
+  for (const [name, mutateControl] of [
+    ['semantically equivalent non-canonical manifest bytes', async (root, manifest) => {
+      await writeFile(path.join(root, 'archive-manifest.json'), `${JSON.stringify(manifest)}\n`)
+    }],
+    ['wrong detached hash bytes', async (root) => {
+      await writeFile(path.join(root, 'archive-manifest.sha256'), `${'b'.repeat(64)}\n`)
+    }]
+  ]) {
+    await t.test(name, async () => {
+      const temporary = await mkdtemp(path.join(os.tmpdir(), 'archive-policy-control-binding-'))
+      try {
+        await mkdir(path.join(temporary, 'artifacts'))
+        const entryPath = path.join(temporary, 'artifacts', 'evidence.bin')
+        await writeFile(entryPath, 'evidence')
+        const manifest = buildArchiveManifest([
+          { path: 'artifacts/evidence.bin', ...(await hashFile(entryPath)) }
+        ], { generatedAt: '2026-08-21T00:00:00.000Z' })
+        await writeArchiveControls(temporary, manifest)
+        await mutateControl(temporary, manifest)
+        await assert.rejects(
+          verifyExistingArchive({ archiveRoot: temporary, manifest }),
+          /physical archive manifest|detached hash/u
+        )
+      } finally {
+        await rm(temporary, { recursive: true, force: true })
+      }
+    })
+  }
 })

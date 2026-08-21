@@ -85,7 +85,7 @@ export function validateConsolidationMap(map) {
   return map
 }
 
-export function validateArchiveInventory(inventory, map) {
+export function validateArchiveInventory(inventory, map, { baselineIsAncestor } = {}) {
   validateConsolidationMap(map)
   if (inventory?.readyForArchive !== true || !Array.isArray(inventory.remoteHeads) || !Array.isArray(inventory.openPullRequests) ||
       !SHA.test(inventory?.topology?.mainSha ?? '')) {
@@ -118,7 +118,7 @@ export function validateArchiveInventory(inventory, map) {
     recomputed = assessTopology({
       map,
       mainSha: inventory.topology.mainSha,
-      baselineIsAncestor: true,
+      baselineIsAncestor,
       remoteRefs,
       openPullRequests: inventory.openPullRequests,
       processRefs

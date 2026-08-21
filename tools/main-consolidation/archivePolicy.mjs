@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { lstatSync } from 'node:fs'
-import { lstat, open, readdir } from 'node:fs/promises'
+import { lstat, open, readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 
 const MANIFEST_SCHEMA = 'bob-builtin-analyze/main-consolidation-archive-manifest/v1'
@@ -80,7 +80,17 @@ export async function verifyExistingArchive({ archiveRoot, manifest }, dependenc
   if (manifest?.schemaVersion !== MANIFEST_SCHEMA || !Array.isArray(manifest.entries)) throw new Error('unsupported archive manifest schema')
   const canonical = buildArchiveManifest(manifest.entries, { generatedAt: manifest.generatedAt })
   if (JSON.stringify(canonical) !== JSON.stringify(manifest)) throw new Error('archive manifest is not canonical')
-  await assertExactArchiveTree({ archiveRoot: root, manifest: canonical }, dependencies)
+  const initialTree = await assertExactArchiveTree({ archiveRoot: root, manifest: canonical }, dependencies)
+  const canonicalManifestText = `${JSON.stringify(canonical, null, 2)}\n`
+  const physicalManifest = await (dependencies.readFile ?? readFile)(path.join(root, 'archive-manifest.json'))
+  if (!Buffer.from(physicalManifest).equals(Buffer.from(canonicalManifestText, 'utf8'))) {
+    throw new Error('physical archive manifest does not match the supplied canonical manifest')
+  }
+  const detachedHash = `${createHash('sha256').update(canonicalManifestText).digest('hex')}\n`
+  const physicalDetachedHash = await (dependencies.readFile ?? readFile)(path.join(root, 'archive-manifest.sha256'))
+  if (!Buffer.from(physicalDetachedHash).equals(Buffer.from(detachedHash, 'utf8'))) {
+    throw new Error('archive manifest detached hash does not match the physical manifest')
+  }
 
   const verifiedEntries = []
   const bundleHeads = []
@@ -96,6 +106,8 @@ export async function verifyExistingArchive({ archiveRoot, manifest }, dependenc
       bundleHeads.push({ path: entry.path, heads: nonEmptyLines(heads) })
     }
   }
+  const finalTree = await assertExactArchiveTree({ archiveRoot: root, manifest: canonical }, dependencies)
+  if (initialTree.identity !== finalTree.identity) throw new Error('archive tree changed during verification')
   return {
     schemaVersion: SUMMARY_SCHEMA,
     generatedAt: dependencies.now ? dependencies.now().toISOString() : new Date().toISOString(),
@@ -107,20 +119,21 @@ export async function verifyExistingArchive({ archiveRoot, manifest }, dependenc
   }
 }
 
-async function assertExactArchiveTree({ archiveRoot, manifest }, dependencies = {}) {
+export async function assertExactArchiveTree({ archiveRoot, manifest, requireIncompleteMarker = false }, dependencies = {}) {
   const root = path.resolve(archiveRoot)
   const inspect = dependencies.lstat ?? lstat
   const list = dependencies.readdir ?? readdir
-  const rootMetadata = await inspect(root)
+  const rootMetadata = await inspect(root, { bigint: true })
   if (rootMetadata.isSymbolicLink() || !rootMetadata.isDirectory()) throw new Error('archive root is not a regular directory')
   if (!Array.isArray(manifest?.entries)) throw new Error('archive tree does not match the manifest')
 
   const expectedFiles = new Set([
     ...manifest.entries.map((entry) => normalizeArchivePath(entry?.path)),
     'archive-manifest.json',
-    'archive-manifest.sha256'
+    'archive-manifest.sha256',
+    ...(requireIncompleteMarker ? ['.archive-incomplete'] : [])
   ])
-  if (expectedFiles.size !== manifest.entries.length + 2) throw new Error('archive tree does not match the manifest')
+  if (expectedFiles.size !== manifest.entries.length + 2 + Number(requireIncompleteMarker)) throw new Error('archive tree does not match the manifest')
   const expectedDirectories = new Set()
   for (const file of expectedFiles) {
     const segments = file.split('/')
@@ -129,17 +142,20 @@ async function assertExactArchiveTree({ archiveRoot, manifest }, dependencies = 
 
   const observedFiles = new Set()
   const observedDirectories = new Set()
+  const identities = new Map([['.', metadataIdentity(rootMetadata, 'directory')]])
   async function visit(directory, relativeDirectory = '') {
     const names = (await list(directory)).sort(compareText)
     for (const name of names) {
       const relativePath = relativeDirectory === '' ? name : `${relativeDirectory}/${name}`
-      const metadata = await inspect(path.join(directory, name))
+      const metadata = await inspect(path.join(directory, name), { bigint: true })
       if (metadata.isSymbolicLink()) throw new Error(`archive path contains a symbolic link or reparse point: ${relativePath}`)
       if (metadata.isDirectory()) {
         observedDirectories.add(relativePath)
+        identities.set(relativePath, metadataIdentity(metadata, 'directory'))
         await visit(path.join(directory, name), relativePath)
       } else if (metadata.isFile()) {
         observedFiles.add(relativePath)
+        identities.set(relativePath, metadataIdentity(metadata, 'file'))
       } else {
         throw new Error(`archive path is not a regular file or directory: ${relativePath}`)
       }
@@ -149,7 +165,19 @@ async function assertExactArchiveTree({ archiveRoot, manifest }, dependencies = 
   if (!equalSets(observedFiles, expectedFiles) || !equalSets(observedDirectories, expectedDirectories)) {
     throw new Error('archive tree does not match the manifest')
   }
-  return true
+  for (const [relativePath, beforeIdentity] of identities) {
+    const currentPath = relativePath === '.' ? root : path.join(root, ...relativePath.split('/'))
+    const metadata = await inspect(currentPath, { bigint: true })
+    const kind = metadata.isDirectory() ? 'directory' : metadata.isFile() ? 'file' : null
+    if (metadata.isSymbolicLink() || kind === null || JSON.stringify(metadataIdentity(metadata, kind)) !== JSON.stringify(beforeIdentity)) {
+      throw new Error('archive tree changed during exact scan')
+    }
+  }
+  return { identity: JSON.stringify([...identities].sort(([left], [right]) => compareText(left, right))) }
+}
+
+function metadataIdentity(metadata, kind) {
+  return [kind, ...['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs'].map((key) => String(metadata[key] ?? ''))]
 }
 
 export async function assertArchivePathComponents({ archiveRoot, relativePath }, dependencies = {}) {

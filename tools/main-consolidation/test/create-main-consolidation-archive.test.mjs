@@ -22,6 +22,7 @@ function createMainConsolidationArchive(argv, dependencies = {}) {
       assert.deepEqual(normalized, sourceMap, 'test fixture map SHA-256 mismatch')
     },
     validateArchiveInventory: () => {},
+    observeBaselineAncestry: () => true,
     ...dependencies
   })
 }
@@ -291,6 +292,112 @@ test('verify-existing binds verification to the inventory map hash before readin
     await assert.rejects(createMainConsolidationArchive(verifyArguments(fixture)), /map.*SHA-256|SHA-256.*map/u)
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('normal creation and verify-existing observe baseline ancestry in the repository object database before staging', async (t) => {
+  const scenarios = [
+    {
+      id: 'nonancestor',
+      name: 'main and remote main changed together to a non-ancestor',
+      mutate: async (fixture, inventory) => {
+        const tree = git(['-C', fixture.repositoryRoot, 'rev-parse', `${fixture.mainSha}^{tree}`]).trim()
+        const unrelated = execFileSync('git', ['-C', fixture.repositoryRoot, 'commit-tree', tree], {
+          encoding: 'utf8',
+          input: 'unrelated history\n',
+          stdio: ['pipe', 'pipe', 'pipe']
+        }).trim()
+        inventory.topology.mainSha = unrelated
+        inventory.remoteHeads.find((entry) => entry.branch === 'main').sha = unrelated
+      },
+      expected: /main does not contain the approved baseline|baseline ancestry/u
+    },
+    {
+      id: 'missing-object',
+      name: 'inventory main object is missing',
+      mutate: async (_fixture, inventory) => {
+        inventory.topology.mainSha = 'f'.repeat(40)
+        inventory.remoteHeads.find((entry) => entry.branch === 'main').sha = 'f'.repeat(40)
+      },
+      expected: /baseline ancestry|merge-base/u
+    },
+    {
+      id: 'command-failure',
+      name: 'merge-base command fails',
+      mutate: async () => {},
+      expected: /baseline ancestry|merge-base/u,
+      run: (fixture) => (command, args, options = {}) => {
+        if (command === 'git' && args[0] === '-C' && args[1] === fixture.repositoryRoot && args[2] === 'merge-base') {
+          return { status: 2, stdout: '', stderr: `fatal: https://user:secret@example.invalid ${fixture.repositoryRoot}` }
+        }
+        const result = spawnSync(command, args, {
+          cwd: options.cwd,
+          env: options.env,
+          encoding: options.encoding === 'buffer' ? 'buffer' : 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe']
+        })
+        return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
+      }
+    }
+  ]
+
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, async (scenarioTest) => {
+      const fixture = await createFixture()
+      try {
+        const map = JSON.parse(await readFile(fixture.mapPath, 'utf8'))
+        map.baselineMain = fixture.mainSha
+        const mapText = `${JSON.stringify(map, null, 2)}\n`
+        await writeFile(fixture.mapPath, mapText)
+        const inventory = JSON.parse(await readFile(fixture.inventoryPath, 'utf8'))
+        inventory.consolidationMapSha256 = createHash('sha256').update(mapText).digest('hex')
+        await writeFile(fixture.inventoryPath, `${JSON.stringify(inventory, null, 2)}\n`)
+        const productionBaselineDependencies = {
+          observeBaselineAncestry: undefined,
+          validateConsolidationMap: () => {},
+          validateArchiveInventory: (_inventory, _map, { baselineIsAncestor } = {}) => {
+            if (baselineIsAncestor !== true) throw new Error('main does not contain the approved baseline')
+          }
+        }
+        await createMainConsolidationArchive(fixture.args, {
+          ...productionBaselineDependencies,
+          randomUUID: () => `baseline-valid-${scenario.id}`
+        })
+
+        await scenario.mutate(fixture, inventory)
+        await writeFile(fixture.inventoryPath, `${JSON.stringify(inventory, null, 2)}\n`)
+        const run = scenario.run?.(fixture)
+        const normalRoot = path.join(fixture.root, `normal-${scenario.id}`, EXPECTED_LEAF)
+        const normalArgs = replaceArgument(fixture.args, '--archive-root', normalRoot)
+        const failureDependencies = {
+          ...productionBaselineDependencies,
+          randomUUID: () => `baseline-failure-${scenario.id}`,
+          ...(run ? { run } : {})
+        }
+        const assertBaselineRejection = async (operation) => {
+          if (scenario.id !== 'command-failure') return assert.rejects(operation, scenario.expected)
+          return assert.rejects(operation, (error) => {
+            assert.match(error.message, scenario.expected)
+            assert.doesNotMatch(error.message, /user:secret/u)
+            assert.equal(error.message.includes(fixture.repositoryRoot), false)
+            return true
+          })
+        }
+        await scenarioTest.test('normal creation', async () => {
+          await assertBaselineRejection(createMainConsolidationArchive(normalArgs, failureDependencies))
+          assert.equal(existsSync(normalRoot), false)
+          assert.equal(existsSync(path.join(path.dirname(normalRoot), `.${EXPECTED_LEAF}.staging-${process.pid}-baseline-failure-${scenario.id}`)), false)
+        })
+
+        await scenarioTest.test('verify-existing', async () => {
+          const before = await treeSnapshot(fixture.archiveRoot)
+          await assertBaselineRejection(createMainConsolidationArchive(verifyArguments(fixture), failureDependencies))
+          assert.deepEqual(await treeSnapshot(fixture.archiveRoot), before)
+        })
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    })
   }
 })
 
@@ -729,6 +836,65 @@ test('exclusive publication refuses raced final roots and top-level children wit
       await rm(fixture.root, { recursive: true, force: true })
     }
   })
+})
+
+test('publication rejects unmanifested staging entries before and during transfer without removing evidence', async (t) => {
+  const cases = [
+    {
+      name: 'top-level file after archive-root claim',
+      id: 'staging-extra-file',
+      dependencies: (fixture) => ({
+        afterArchiveRootClaim: async () => writeFile(path.join(fixture.stagingRootFor('staging-extra-file'), 'unexpected.txt'), 'keep-extra-file')
+      }),
+      extraPath: (fixture) => path.join(fixture.stagingRootFor('staging-extra-file'), 'unexpected.txt'),
+      expected: 'keep-extra-file'
+    },
+    {
+      name: 'top-level directory after archive-root claim',
+      id: 'staging-extra-directory',
+      dependencies: (fixture) => ({
+        afterArchiveRootClaim: async () => {
+          const extra = path.join(fixture.stagingRootFor('staging-extra-directory'), 'unexpected-directory')
+          await mkdir(extra)
+          await writeFile(path.join(extra, 'sentinel.txt'), 'keep-extra-directory')
+        }
+      }),
+      extraPath: (fixture) => path.join(fixture.stagingRootFor('staging-extra-directory'), 'unexpected-directory', 'sentinel.txt'),
+      expected: 'keep-extra-directory'
+    },
+    {
+      name: 'nested directory injected after the initial staging scan',
+      id: 'staging-late-nested',
+      dependencies: () => ({
+        beforeArchiveEntryTransfer: async ({ relativePath, kind, source }) => {
+          if (relativePath === 'bundles' && kind === 'directory') {
+            const extra = path.join(source, 'unexpected-late')
+            await mkdir(extra)
+            await writeFile(path.join(extra, 'sentinel.txt'), 'keep-late-nested')
+          }
+        }
+      }),
+      extraPath: (fixture) => path.join(fixture.archiveRoot, 'bundles', 'unexpected-late', 'sentinel.txt'),
+      expected: 'keep-late-nested'
+    }
+  ]
+
+  for (const scenario of cases) {
+    await t.test(scenario.name, async () => {
+      const fixture = await createFixture()
+      try {
+        await assert.rejects(createMainConsolidationArchive(fixture.args, {
+          randomUUID: () => scenario.id,
+          ...scenario.dependencies(fixture)
+        }), /archive.*tree|staging.*manifest/u)
+        assert.equal(await readFile(scenario.extraPath(fixture), 'utf8'), scenario.expected)
+        assert.equal(existsSync(path.join(fixture.archiveRoot, '.archive-incomplete')), true)
+        assert.equal(existsSync(path.join(fixture.stagingRootFor(scenario.id), '.archive-incomplete')), true)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    })
+  }
 })
 
 test('exclusive publication preserves incomplete markers when claim marking or entry transfer fails', async (t) => {
