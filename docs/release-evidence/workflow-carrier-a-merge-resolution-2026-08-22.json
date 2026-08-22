@@ -169,11 +169,15 @@
     }
   },
   "productPathFidelity": {
-    "comparison": "5280723da6f0660322435255acdaf0ccbd02506f..54d0b6c99da5884532125d224b9a760e8c333a37",
+    "comparison": "5280723da6f0660322435255acdaf0ccbd02506f..b543b38e17a1461cd53c75fb72acb38f38e636ac",
+    "comparisonCommand": "git diff --name-only 5280723da6f0660322435255acdaf0ccbd02506f b543b38e17a1461cd53c75fb72acb38f38e636ac -- . ':(exclude)docs/release-evidence/workflow-carrier-a-merge-resolution-2026-08-22.json' ':(exclude)docs/release-evidence/workflow-carrier-a-merge-resolution-2026-08-22.md'",
     "frozenPathCount": 105,
-    "expectedPathCount": 106,
-    "actualPathCount": 106,
-    "addedContractPaths": [".gitattributes"],
+    "expectedPathCount": 107,
+    "actualPathCount": 107,
+    "addedContractPaths": [
+      ".gitattributes",
+      "extensions/workflow-register/test/workflowCompilerParity.test.js"
+    ],
     "actualPaths": [
       ".gitattributes",
       "docs/release-evidence/workflow-contract-v2-foundation-doc-sync.patch",
@@ -244,6 +248,7 @@
       "extensions/workflow-register/test/fixtures/workflow-contract-v2/yaml/invalid-cases.json",
       "extensions/workflow-register/test/fixtures/workflow-contract-v2/yaml/valid-minimal.yaml",
       "extensions/workflow-register/test/registrationWiring.test.js",
+      "extensions/workflow-register/test/workflowCompilerParity.test.js",
       "extensions/workflow-register/test/workflowContractV2BobCapabilitySelectionCases.js",
       "extensions/workflow-register/test/workflowContractV2BobLoaderBindingCases.js",
       "extensions/workflow-register/test/workflowContractV2BobProfile.test.js",
@@ -287,9 +292,10 @@
     "intentionallyOmittedPaths": []
   },
   "branchPathFidelity": {
+    "comparison": "5280723da6f0660322435255acdaf0ccbd02506f..b543b38e17a1461cd53c75fb72acb38f38e636ac",
     "derivation": "productPathFidelity.actualPaths plus evidenceOnlyPaths",
-    "expectedPathCount": 108,
-    "actualPathCount": 108,
+    "expectedPathCount": 109,
+    "actualPathCount": 109,
     "evidenceOnlyPaths": [
       "docs/release-evidence/workflow-carrier-a-merge-resolution-2026-08-22.json",
       "docs/release-evidence/workflow-carrier-a-merge-resolution-2026-08-22.md"
@@ -365,7 +371,25 @@
       "path": ".gitattributes",
       "finalBlob": "7b7d9a12b2c975a5e0c96e0f94f292e850851b8c",
       "rule": "extensions/workflow-register/test/fixtures/workflow-contract-v2/** text eol=lf",
-      "reason": "Sole added product path; makes exact-byte Contract v2 fixture checkout reproducible on Windows."
+      "reason": "Added repository checkout-contract path; makes exact-byte Contract v2 fixture checkout reproducible on Windows."
+    }
+  ],
+  "reviewedAddedProductDepartures": [
+    {
+      "path": "extensions/workflow-register/test/workflowCompilerParity.test.js",
+      "commit": "b543b38e17a1461cd53c75fb72acb38f38e636ac",
+      "parentSha": "774deb7fa8f0d8718d71d87e4ed192b71c069ecd",
+      "finalBlob": "b81b20eb562f31630eb7617928b395602d2cce98",
+      "baseBlob": "8ef407de08f8e3b1a1c7939b7bb8c0b53dd23018",
+      "frozenBlob": null,
+      "authority": "Reviewed Task 5 remediation amendment and independent review; this path is outside the frozen 105-path carrier.",
+      "addedMockMembers": [
+        "extension.id = IBM.bob-code",
+        "extension.packageJSON.version = 2.0.1",
+        "runtime.source.deactivate",
+        "runtime.source.log"
+      ],
+      "reason": "Align the existing parity fixture with the already enforced audited Bob 2.0.1 extension/source contract without weakening production validation."
     }
   ],
   "historicalPatchWhitespaceException": {
@@ -448,15 +472,129 @@
       "task2AuditedBobCasesAllGreen": true
     },
     "fullLocalGates": {
-      "status": "pending_task_5"
+      "status": "passed",
+      "exactHead": "b543b38e17a1461cd53c75fb72acb38f38e636ac",
+      "initialStop": {
+        "head": "774deb7fa8f0d8718d71d87e4ed192b71c069ecd",
+        "firstRun": {
+          "tests": 1878,
+          "pass": 1876,
+          "fail": 1,
+          "skipped": 1,
+          "exitCode": 1
+        },
+        "diagnosticRepeat": {
+          "tests": 1878,
+          "pass": 1875,
+          "fail": 2,
+          "skipped": 1,
+          "exitCode": 1
+        },
+        "stableDefect": "workflowCompilerParity.test.js used a stale Bob mock lacking the audited extension identity/version and source deactivate/log members.",
+        "loadSensitiveObservation": "The held-state lifecycle observer passed in the first run and failed at its 10000 ms bound in the diagnostic repeat; isolated lifecycle checks passed and no lifecycle or concurrency change was authorized.",
+        "packagingStarted": false,
+        "reportSha256": "684e007e1664f48af9e4a1a0af084f7fee274b8e166e57ea61d5961492bcfeab"
+      },
+      "remediation": {
+        "commit": "b543b38e17a1461cd53c75fb72acb38f38e636ac",
+        "parentSha": "774deb7fa8f0d8718d71d87e4ed192b71c069ecd",
+        "message": "test: align compiler parity Bob mock with audited contract",
+        "path": "extensions/workflow-register/test/workflowCompilerParity.test.js",
+        "insertions": 4,
+        "deletions": 0,
+        "focusedChecks": [
+          {
+            "command": "node --test --test-name-pattern=\"mixed registration adapts and registers only valid workflow documents\" test/workflowCompilerParity.test.js",
+            "exitCode": 0,
+            "tests": 1,
+            "pass": 1,
+            "fail": 0
+          },
+          {
+            "command": "node --test test/workflowCompilerParity.test.js",
+            "exitCode": 0,
+            "tests": 14,
+            "pass": 14,
+            "fail": 0
+          },
+          {
+            "command": "npm.cmd run compile",
+            "exitCode": 0
+          }
+        ]
+      },
+      "formalSequence": [
+        {
+          "order": 1,
+          "command": "npm.cmd ci",
+          "exitCode": 0,
+          "capture": "independently reviewed immutable npm debug log",
+          "logPath": "C:/Users/stell/AppData/Local/npm-cache/_logs/2026-08-22T02_25_28_172Z-debug-0.log",
+          "logByteSize": 135899,
+          "logSha256": "47ae6ded4fefd1b37d715d978add5fcbc628f2f7e1cce07c573a0e82b7cd11d6",
+          "retentionStatus": "Rotated from the npm cache after the fresh independent capture review; the reviewed hash and metadata remain preserved in the gate-capture evidence."
+        },
+        {"order": 2, "command": "npm.cmd run compile", "exitCode": 0},
+        {"order": 3, "command": "npm.cmd run dependency:policy", "exitCode": 0, "tests": 3, "pass": 3, "fail": 0},
+        {"order": 4, "command": "npm.cmd run architecture:policy", "exitCode": 0, "typescriptFiles": 257},
+        {"order": 5, "command": "npm.cmd run source:policy", "exitCode": 0, "typescriptFiles": 257},
+        {"order": 6, "command": "npm.cmd run schema:policy", "exitCode": 0, "tests": 5, "pass": 5, "fail": 0},
+        {"order": 7, "command": "npm.cmd run unused:report", "exitCode": 0, "depcheckIssues": 0},
+        {"order": 8, "command": "npm.cmd run audit:prod", "exitCode": 0, "productionVulnerabilities": 0},
+        {"order": 9, "command": "npm.cmd test", "exitCode": 0, "tests": 1878, "suites": 4, "pass": 1877, "fail": 0, "skipped": 1, "durationMs": 172647.8639},
+        {"order": 10, "command": "npm.cmd run package", "exitCode": 0, "packagedFiles": 851},
+        {"order": 11, "command": "npm.cmd run package:policy", "exitCode": 0, "byteSize": 1150213, "entries": 851, "byteLimit": 1200000}
+      ],
+      "artifact": {
+        "path": "extensions/workflow-register/workflow-register-0.1.0.vsix",
+        "byteSize": 1150213,
+        "entries": 851,
+        "sha256": "06910a7c7f348064ab1ad548adf75b821dd8a7e429e9810307d70d10b29a307f"
+      },
+      "documents": {
+        "initialStopReportSha256": "684e007e1664f48af9e4a1a0af084f7fee274b8e166e57ea61d5961492bcfeab",
+        "remediationAmendmentSha256": "ea7895d3e43ca7206000eca52e950afccf462563316aa230d1ca12907db20556",
+        "remediationAmendmentReviewSha256": "20d0662d7ebf4b916e3952677d7ffc0a8172530b463b8236b4bc5d2dc93328e6",
+        "gateCaptureRecoverySha256": "739f73fa1809d81d5acf2b3b1ac64518b4ab08247896d063fd8ebeb9c4ff1b6e",
+        "gateCaptureReviewSha256": "03480b08a56254ff57f924c4a9ce44289c9302ace8ebb04557db2a2f72e4526b",
+        "remediationReportSha256": "593cfa8ddd9a65c9bd072fa345e7b73262c50256516d976c14266c6e9fb4ff1e",
+        "reviewPatchSha256": "066764b439858b1e0f7c609ebdfdda6b5c6e68d70fa7307472657547d3d60dc7",
+        "reviewPackageSha256": "1a800ea08aac1cb7d561bafaf1a197154cb395a1adbd8f547e5bb1121a89f2f3",
+        "finalIndependentReviewSha256": "894f06b18a861a337e511d19ed1575bafc434241d8cb50213028ccf2667d27f0"
+      },
+      "retainedNpmLogs": {
+        "fullTestSha256": "eb076918fa474688c8e922eb3fb7f76b1779211b1b8e40ce3e2f0d33387c1462",
+        "packageSha256": "17170ebc27ecd517f696eba12172c855028032f4d5626e35cd1e0f7a3b29275f",
+        "packagePolicySha256": "501ff68f1426ce9adbab6efada20d1a5c4a07d1bd03b08a027c328ef8360adbb"
+      },
+      "finalIndependentReview": {
+        "decision": "APPROVED",
+        "criticalFindings": 0,
+        "importantFindings": 0,
+        "minorFindings": 0
+      },
+      "finalInvariants": {
+        "worktreeClean": true,
+        "pushed": false,
+        "historicalPatchBlob": "e0946c6a29f7aa17538b1bc89e8160892845fb44",
+        "lifecycleLegacyBlob": "b12c7ffb12015f3be17bb0b3e63af627741f2a01",
+        "packageLockBlob": "243bfe66b9e441e0c8c002f0ff2324ebfc8d9dc0",
+        "packageLockSha256": "3e80a76ffb318c969e40e81ddf28ca44c3f53b7252cc392ee159d135e015c985",
+        "productExpected": 107,
+        "productActual": 107,
+        "branchExpected": 109,
+        "branchActual": 109,
+        "missingPaths": [],
+        "extraPaths": []
+      }
     },
     "exactHeadCi": {
       "status": "pending_task_6"
     }
   },
   "gitDiffStat": {
-    "command": "git diff --stat 5280723da6f0660322435255acdaf0ccbd02506f 54d0b6c99da5884532125d224b9a760e8c333a37",
-    "summary": "106 files changed, 24740 insertions(+), 1866 deletions(-)"
+    "command": "git diff --stat 5280723da6f0660322435255acdaf0ccbd02506f b543b38e17a1461cd53c75fb72acb38f38e636ac",
+    "summary": "109 files changed, 25468 insertions(+), 1866 deletions(-)"
   },
   "carrierPullRequest": {
     "status": "pending_task_6",
