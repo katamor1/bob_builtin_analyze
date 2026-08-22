@@ -8,7 +8,7 @@
 
 ## 1. Purpose and decision record
 
-Workflow validation, registration, Bob integration, Operation Hub, and runtime currently have enough independent parsing and validation paths that the same source can be accepted differently. Contract v2 replaces those paths with one fail-closed compiler. Every executable workflow is a generation-addressed package, and every consumer receives the same immutable compiled plan.
+Workflow validation, registration, Bob integration, the `workflowRegister.openOperationHub` route (`Bob 操作ハブ`), and runtime currently have enough independent parsing and validation paths that the same source can be accepted differently. Contract v2 replaces those paths with one fail-closed compiler. Every executable workflow is a generation-addressed package, and every consumer receives the same immutable compiled plan.
 
 The approved decisions are:
 
@@ -26,7 +26,7 @@ The approved decisions are:
 The implementation must provide all of the following as one contract boundary:
 
 - deterministic package, lockfile, and plan evidence;
-- one compiler used by validation, registration, runtime, Bob, Operation Hub, samples, and CI;
+- one compiler used by validation, registration, runtime, Bob, the `workflowRegister.openOperationHub` route (`Bob 操作ハブ`), samples, and CI;
 - immutable plans and run-scoped plan leases;
 - local-only JSON Schema documents compiled in strict mode;
 - exact provider and Bob bindings;
@@ -381,7 +381,7 @@ raw package -> layout/bytes -> strict YAML -> package schema
 
 Every call to the deterministic audited constructor creates a new branded `WorkflowCompilerEnvironment` object and a new opaque private environment identity stored in a module-private `WeakMap`. That private state binds the exact provider snapshot/dispatch generation, Bob profile instance, `purpose`, and leaseability; it is never reconstructed from public evidence. The public `environmentDigest` remains the section-15 evidence-only digest, so two environment objects may have equal public digests without sharing private identity or executable handles. Runtime environments use ordinary F6 handles backed by registered dispatches. Authoring-validation and evidence environments also use ordinary F6 handles, but their provider catalogs are populated with compile-only dispatches that deterministically throw if called; their private environment identities are non-leasable. There is no second handle/binding type, no dispatch function exposure through P4, and `purpose` remains excluded from public plan/digests.
 
-Parsers, AJV, semantic validators, provider binders, predicate compilation, and policy checks are compiler-private. `workflowValidator`, registration, runtime, Bob adapter, Operation Hub, authoring preview, CLI scripts, and CI may call the compiler facade but may not import those internals.
+Parsers, AJV, semantic validators, provider binders, predicate compilation, and policy checks are compiler-private. `workflowValidator`, registration, runtime, Bob adapter, the `workflowRegister.openOperationHub` route (`Bob 操作ハブ`), authoring preview, CLI scripts, and CI may call the compiler facade but may not import those internals.
 
 ## 17. Plan store, cache invalidation, and leases
 
@@ -448,7 +448,7 @@ The `workflow-contracts` workflow runs on Ubuntu and Windows. Each job performs 
 
 Final acceptance consists of exactly these 20 automated proofs:
 
-1. **A01:** validation, registration, runtime, Bob, and Operation Hub receive the same plan digest for one generation.
+1. **A01:** validation, registration, runtime, Bob, and the `workflowRegister.openOperationHub` route (`Bob 操作ハブ`) receive the same plan digest for one generation.
 2. **A02:** repeated compilation produces identical canonical plan bytes and digest.
 3. **A03:** compiled plan data and nested values cannot be mutated.
 4. **A04:** missing, legacy, and unknown `schemaVersion` values are rejected at every entry point.

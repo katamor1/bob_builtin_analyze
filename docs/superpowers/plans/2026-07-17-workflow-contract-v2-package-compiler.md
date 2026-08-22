@@ -265,10 +265,10 @@ node --test test/workflowContractV2PlanStore.test.js test/runtimeWiring.test.js
 - Create: `extensions/workflow-register/test/fixtures/workflow-contract-v2/transitional-legacy-import-allowlist.json`
 - Modify: `extensions/workflow-register/test/architectureContracts.test.js`
 
-- [ ] RED: feed one valid and one deliberately invalid generation to validation, workspace registration, run creation, Bob adapter, Operation Hub, and command validation. Assert the same plan digest/handle for success and identical sorted diagnostics for failure.
+- [ ] RED: feed one valid and one deliberately invalid generation to validation, workspace registration, run creation, Bob adapter, the `workflowRegister.openOperationHub` route (`Bob 操作ハブ`), and command validation. Assert the same plan digest/handle for success and identical sorted diagnostics for failure.
 - [ ] RED: monkey-patch the compiler facade export before loading consumers; assert every named consumer calls it. This check was intentionally deferred from F6 until the owning compiler module exists.
 - [ ] RED: source-scan the newly routed v2 consumer files above and reject their direct imports of YAML/parser, F3, predicate compiler, provider binder, Bob binder, lock verifier, or package internals outside `contractV2/compiler.ts` and its explicit helpers. During the additive phase, legacy-only modules may retain imports only when their exact path/import/reason is in the frozen transitional allowlist; a new or widened entry fails review. C7 deletes the allowlist and applies the global zero-legacy assertion.
-- [ ] RED: prove a compile failure produces no registered item, run directory, provider invocation, Bob task, or Operation Hub executable action.
+- [ ] RED: prove a compile failure produces no registered item, run directory, provider invocation, Bob task, or executable action exposed through the `workflowRegister.openOperationHub` route (`Bob 操作ハブ`).
 - [ ] GREEN: retain plan leases/plan ids in registration and UI view models; format F2 diagnostics only at presentation boundaries.
 - [ ] Verify:
 
