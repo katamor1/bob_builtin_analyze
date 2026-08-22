@@ -1,6 +1,7 @@
 import * as vscode from "vscode"
-import { asSource, loadBobApi } from "./bobApi"
-import type { BobSourceLike, BobWorkflowApi } from "./bobApi"
+import { loadBobApi } from "./bobApi"
+import type { BobSourceLike } from "./bobApi"
+import { BOB_2_0_1_PROFILE_DIGEST } from "./core/contractV2/bobProfile"
 import { createBobWorkflow } from "./bobWorkflowFactory"
 import type { WorkflowDefinition } from "./bobWorkflowTypes"
 import type { CoreWorkflowDefinition } from "./core/model"
@@ -30,7 +31,6 @@ export interface RegisterWorkflowsInput {
 
 export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<WorkflowRegistrationUpdate> {
   const config = vscode.workspace.getConfiguration("workflowRegister")
-  // sourceId/sourceName と workflow id は Bob 側の登録互換性契約なので、設定値を登録 API へ一貫して渡す。
   const sourceId = config.get<string>("sourceId", "workflow-register")
   const sourceName = config.get<string>("sourceName", "Workflow Register")
   const lines: string[] = []
@@ -55,53 +55,65 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
   lines.push(`- Bob extension found: ${bob.found}`)
   lines.push(`- Bob extension active: ${bob.active}`)
   lines.push(`- Bob activation error: ${bob.activationError}`)
-  const api = bob.exportsValue as BobWorkflowApi | undefined
-  if (typeof api?.registerSource !== "function") {
-    lines.push("- fail: IBM Bob registerSource API is not available.")
+  lines.push(`- Bob audited profile: ${BOB_2_0_1_PROFILE_DIGEST}`)
+  const api = bob.api
+  if (!api) {
+    lines.push("- fail: IBM Bob 2.0.1 audited registerSource API is not available.")
+    await deactivateRegisteredSource(input.previousSource, lines)
+    await vscode.commands.executeCommand("setContext", "bob-code.hasWorkflows", false)
     return {
-      result: { summary: "Bob workflow registration API is unavailable.", lines },
+      result: { summary: "Bob workflow registration API is unavailable or incompatible.", lines },
       coreWorkflows,
-      sourceChanged: false,
-      idsChanged: false
+      registeredSource: undefined,
+      registeredIds: new Set(),
+      sourceChanged: true,
+      idsChanged: true
     }
   }
 
-  // 再登録時は古い source を先に無効化し、Bob 側に存在しない workflow id が残らないようにする。
   await deactivateRegisteredSource(input.previousSource, lines)
-  const sourceResult = await runAttempt("registerSource(sourceId, sourceName)", () => api.registerSource?.(sourceId, sourceName))
+  let source: BobSourceLike | undefined
+  const sourceResult = await runAttempt(
+    "registerSource(sourceId, sourceName)",
+    () => {
+      source = api.registerSource(sourceId, sourceName)
+      return source
+    }
+  )
   lines.push(formatAttempt(sourceResult))
-  const source = asSource(sourceResult.value)
-  lines.push(`- returned source keys: ${source ? Object.keys(source as Record<string, unknown>).join(",") || "none" : "none"}`)
-  lines.push(`- typeof source.registerWorkflow: ${typeof source?.registerWorkflow}`)
-  if (!source?.registerWorkflow) {
+  if (!source) {
+    await vscode.commands.executeCommand("setContext", "bob-code.hasWorkflows", false)
     return {
-      result: { summary: "Bob accepted the source request, but workflows cannot be registered.", lines },
+      result: { summary: "Bob accepted the source request, but an audited source was not returned.", lines },
       coreWorkflows,
       registeredSource: undefined,
+      registeredIds: new Set(),
       sourceChanged: true,
-      idsChanged: false
+      idsChanged: true
     }
   }
+  const auditedSource = source
+  lines.push("- audited source capabilities: deactivate, log, registerWorkflow")
 
   let registeredCount = 0
   const registeredIds = new Set<string>()
   for (const workflow of loaded.workflows) {
     const attempt = await runAttempt(
       `source.registerWorkflow(${workflow.id})`,
-      () => source.registerWorkflow?.(createBobWorkflow(workflow, input.createRunner(workflow)))
+      () => auditedSource.registerWorkflow(createBobWorkflow(workflow, input.createRunner(workflow)))
     )
     lines.push(formatAttempt(attempt))
     if (attempt.ok) {
       registeredIds.add(workflow.id)
       registeredCount += 1
-      source.log?.(`Workflow registered from ${workflow.file.fsPath}: ${workflow.id}`)
+      auditedSource.log(`Workflow registered from ${workflow.file.fsPath}: ${workflow.id}`)
     }
   }
   await vscode.commands.executeCommand("setContext", "bob-code.hasWorkflows", registeredIds.size > 0)
   return {
     result: { summary: `Registered ${registeredCount} workflow(s); ${registeredIds.size} workflow(s) are registered in this session.`, lines },
     coreWorkflows,
-    registeredSource: source,
+    registeredSource: auditedSource,
     registeredIds,
     sourceChanged: true,
     idsChanged: true
@@ -109,7 +121,7 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
 }
 
 export async function deactivateRegisteredSource(source: BobSourceLike | undefined, lines?: string[]): Promise<void> {
-  if (!source?.deactivate) return
-  const attempt = await runAttempt("previousSource.deactivate()", () => source.deactivate?.())
+  if (!source) return
+  const attempt = await runAttempt("previousSource.deactivate()", () => source.deactivate())
   lines?.push(formatAttempt(attempt))
 }

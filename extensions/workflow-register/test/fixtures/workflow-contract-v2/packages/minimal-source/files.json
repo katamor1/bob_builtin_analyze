@@ -1,0 +1,6 @@
+{
+  "workflow.yaml": "schemaVersion: workflow-register/v2\nid: minimal\n",
+  "workflow.lock.json": "{\"schemaVersion\":\"workflow-register-lock/v2\"}\n",
+  "prompts/draft.md": "Draft the result.\n",
+  "schemas/request.json": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$id\":\"schemas/request.json\",\"type\":\"object\"}\n"
+}

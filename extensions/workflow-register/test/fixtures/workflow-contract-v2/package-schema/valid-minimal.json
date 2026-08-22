@@ -1,0 +1,52 @@
+{
+  "workflowId": "minimal",
+  "pointer": {
+    "schemaVersion": "workflow-package-pointer/v1",
+    "workflowId": "minimal",
+    "generation": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "packageDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "lock": {
+    "schemaVersion": "workflow-register-lock/v2",
+    "compilerContractVersion": "workflow-register-compiler/v2",
+    "policyVersions": {
+      "canonicalJson": "workflow-contract-canonical-json/v1",
+      "diagnostics": "workflow-contract-diagnostics/v1",
+      "yaml": "workflow-contract-yaml/v2",
+      "packageShape": "workflow-contract-package-shape/v2",
+      "jsonSchema": "workflow-contract-json-schema/2020-12-v1",
+      "predicate": "workflow-contract-predicate/v2",
+      "provider": "workflow-contract-provider/v2",
+      "bob": "workflow-contract-bob/2.0.1",
+      "artifact": "workflow-contract-artifact/v2"
+    },
+    "workflow": {
+      "path": "workflow.yaml",
+      "bytes": 1,
+      "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "prompts": [],
+    "schemas": [],
+    "providers": [],
+    "bob": {
+      "profile": "bob/2.0.1",
+      "extensionId": "IBM.bob-code",
+      "extensionVersion": "2.0.1",
+      "profileDigest": "sha256:aea18a3b1d19f2a1231c7d5e6ac7a416f0ace09ffa823fe4ceb0f43733492b73",
+      "capabilities": [
+        "source.deactivate",
+        "source.log",
+        "source.registerWorkflow",
+        "task.getAllMetadata",
+        "task.getMessages",
+        "task.sendMessage",
+        "task.setStepComplete",
+        "task.startSubagent",
+        "task.toSerializable"
+      ],
+      "requiredCapabilities": [],
+      "taskCapabilities": []
+    },
+    "environmentDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+  }
+}

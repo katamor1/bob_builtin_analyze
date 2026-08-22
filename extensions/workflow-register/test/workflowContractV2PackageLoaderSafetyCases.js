@@ -1,0 +1,299 @@
+const assert = require("node:assert/strict")
+const { test } = require("node:test")
+const {
+  MemoryPackageFileSystem,
+  fixtureBytes,
+  installPublished,
+  rootSubject,
+  subject
+} = require("./workflowContractV2PackageLoaderTestSupport")
+
+async function expectRejected(mutator, pattern = /layout|path|link|regular|digest|snapshot|duplicate/i) {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  mutator(fileSystem, installed)
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+  await assert.rejects(() => subject().loadWorkflowPackageGeneration({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    generation: installed.digest
+  }), pattern)
+}
+
+test("loader rejects symlinks at every physical component and non-regular files", async (t) => {
+  for (const entry of [
+    { name: "slot", path: (_installed) => ["minimal"] },
+    { name: "versions", path: (_installed) => ["minimal", "versions"] },
+    { name: "generation", path: (installed) => installed.base },
+    { name: "prompts", path: (installed) => [...installed.base, "prompts"] },
+    { name: "prompt-file", path: (installed) => [...installed.base, "prompts", "draft.md"] }
+  ]) await t.test(entry.name, async () => {
+    await expectRejected((fileSystem, installed) => {
+      fileSystem.setKind(entry.path(installed), "symbolic-link")
+    }, /link|directory|regular/i)
+  })
+
+  await expectRejected((fileSystem, installed) => {
+    fileSystem.setKind([...installed.base, "workflow.yaml"], "other")
+  }, /regular/i)
+})
+
+test("loader rejects unexpected root entries, invalid names, depth, case-fold duplicates, and normalization duplicates", async () => {
+  await expectRejected((fileSystem, installed) => {
+    fileSystem.addFile([...installed.base, "README.md"], Buffer.from("x"))
+  }, /unexpected|layout/i)
+  await expectRejected((fileSystem, installed) => {
+    fileSystem.addDirectory([...installed.base, "other"])
+  }, /unexpected|layout/i)
+  await expectRejected((fileSystem, installed) => {
+    fileSystem.addFile([...installed.base, "prompts", ".."], Buffer.from("x"))
+  }, /path/i)
+  await expectRejected((fileSystem, installed) => {
+    fileSystem.addFile([...installed.base, "prompts", "bad\\name.md"], Buffer.from("x"))
+  }, /path/i)
+  await expectRejected((fileSystem, installed) => {
+    fileSystem.addFile([...installed.base, "prompts", "/absolute.md"], Buffer.from("x"))
+  }, /path/i)
+  await expectRejected((fileSystem, installed) => {
+    fileSystem.addFile([...installed.base, "prompts", "nested", "deeper", "too-deep.md"], Buffer.from("x"))
+  }, /depth/i)
+  await expectRejected((fileSystem, installed) => {
+    fileSystem.addFile([...installed.base, "prompts", "DRAFT.md"], Buffer.from("x"))
+  }, /duplicate/i)
+  await expectRejected((fileSystem, installed) => {
+    fileSystem.addFile([...installed.base, "prompts", "e\u0301.md"], Buffer.from("x"))
+    fileSystem.addFile([...installed.base, "prompts", "é.md"], Buffer.from("x"))
+  }, /duplicate/i)
+})
+
+test("loader rejects physical containment escape and generation or expected digest mismatch", async () => {
+  await expectRejected((fileSystem, installed) => {
+    fileSystem.entries.get(fileSystem.key([...installed.base, "workflow.yaml"])).physical = "/outside/workflow.yaml"
+  }, /contain/i)
+
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+  await assert.rejects(() => subject().loadWorkflowPackageGeneration({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    generation: `sha256:${"0".repeat(64)}`
+  }), /generation|digest/i)
+  await assert.rejects(() => subject().loadWorkflowPackageGeneration({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    generation: installed.digest,
+    expectedPackageDigest: `sha256:${"0".repeat(64)}`
+  }), /expected|digest/i)
+})
+
+test("loader detects file and directory mutation instead of mixing snapshots", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  let changed = false
+  fileSystem.hooks.afterReadFile = (segments, fs) => {
+    if (!changed && segments.join("/").endsWith("workflow.yaml")) {
+      changed = true
+      fs.mutate(segments, Buffer.from("changed\n"))
+    }
+  }
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+  await assert.rejects(() => subject().loadWorkflowPackageGeneration({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    generation: installed.digest
+  }), /snapshot|changed/i)
+
+  const directoryFs = new MemoryPackageFileSystem()
+  const directoryInstalled = installPublished(directoryFs)
+  let directoryChanged = false
+  directoryFs.hooks.beforeReadFile = (_segments, fs) => {
+    if (!directoryChanged) {
+      directoryChanged = true
+      fs.addFile([...directoryInstalled.base, "prompts", "later.md"], Buffer.from("late"))
+    }
+  }
+  const directoryRoot = rootSubject().createWorkflowPackageRoot(directoryFs, {})
+  await assert.rejects(() => subject().loadWorkflowPackageGeneration({
+    fileSystem: directoryFs,
+    collectionRoot: directoryRoot,
+    workflowId: "minimal",
+    generation: directoryInstalled.digest
+  }), /snapshot|directory|changed/i)
+})
+
+test("loader rejects a symbolic-link entry before resolving its physical target", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  const linkSegments = [...installed.base, "prompts", "draft.md"]
+  fileSystem.setKind(linkSegments, "symbolic-link")
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+
+  await assert.rejects(() => subject().loadWorkflowPackageGeneration({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    generation: installed.digest
+  }), /symbolic link/i)
+
+  assert.equal(
+    fileSystem.calls.some(([operation, logicalPath]) => (
+      operation === "realpath" && logicalPath === linkSegments.join("/")
+    )),
+    false,
+    "a rejected symbolic link must never be followed through realpath"
+  )
+})
+
+test("loader rejects control-file and directory physical identity changes during a snapshot", async () => {
+  const pointerFs = new MemoryPackageFileSystem()
+  installPublished(pointerFs)
+  let pointerChanged = false
+  pointerFs.hooks.afterReadFile = (segments, fs) => {
+    if (!pointerChanged && segments.join("/").endsWith("current.json")) {
+      pointerChanged = true
+      fs.entries.get(fs.key(segments)).physical = "/outside/current.json"
+    }
+  }
+  const pointerRoot = rootSubject().createWorkflowPackageRoot(pointerFs, {})
+  await assert.rejects(() => subject().loadCurrentWorkflowPackage({
+    fileSystem: pointerFs,
+    collectionRoot: pointerRoot,
+    workflowId: "minimal"
+  }), /physical|changed|contain/i)
+
+  const directoryFs = new MemoryPackageFileSystem()
+  const installed = installPublished(directoryFs)
+  let directoryMoved = false
+  directoryFs.hooks.afterReadFile = (_segments, fs) => {
+    if (!directoryMoved) {
+      directoryMoved = true
+      fs.entries.get(fs.key([...installed.base, "prompts"])).physical = "/outside/prompts"
+    }
+  }
+  const directoryRoot = rootSubject().createWorkflowPackageRoot(directoryFs, {})
+  await assert.rejects(() => subject().loadWorkflowPackageGeneration({
+    fileSystem: directoryFs,
+    collectionRoot: directoryRoot,
+    workflowId: "minimal",
+    generation: installed.digest
+  }), /physical|directory.*changed/i)
+})
+
+test("loader rejects a symbolic-link collection root before resolving it", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  fileSystem.setKind([], "symbolic-link")
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+
+  await assert.rejects(() => subject().loadWorkflowPackageGeneration({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    generation: installed.digest
+  }), /symbolic link|directory/i)
+
+  assert.equal(
+    fileSystem.calls.some(([operation, logicalPath]) => operation === "realpath" && logicalPath === ""),
+    false,
+    "the collection root must be lstat-checked before realpath"
+  )
+})
+
+test("loader reads package bytes through stable open handles instead of path reads", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  let openCalls = 0
+  let closeCalls = 0
+  fileSystem.openFile = async (_root, segments) => {
+    openCalls += 1
+    const entry = fileSystem.entries.get(fileSystem.key(segments))
+    if (!entry || entry.kind !== "file") throw new Error("not file")
+    const openedIdentity = entry.identity
+    const openedSize = entry.size
+    const openedBytes = Buffer.from(entry.bytes)
+    let closed = false
+    return Object.freeze({
+      initialStat: Object.freeze({ kind: "file", size: openedSize, identity: openedIdentity }),
+      async read() {
+        assert.equal(closed, false)
+        return Buffer.from(openedBytes)
+      },
+      async stat() {
+        assert.equal(closed, false)
+        return Object.freeze({ kind: "file", size: openedSize, identity: openedIdentity })
+      },
+      async close() {
+        if (!closed) {
+          closed = true
+          closeCalls += 1
+        }
+      }
+    })
+  }
+  fileSystem.readFile = async () => {
+    throw new Error("path-based readFile must not be used")
+  }
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+
+  const loaded = await subject().loadWorkflowPackageGeneration({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    generation: installed.digest
+  })
+
+  assert.equal(loaded.packageDigest, installed.digest)
+  assert.equal(openCalls, loaded.files.length)
+  assert.equal(closeCalls, openCalls)
+})
+
+
+test("loader rejects collection-root replacement between lstat and realpath", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  let replaced = false
+  fileSystem.hooks.beforeRealpath = (segments, fs) => {
+    if (replaced || segments.length !== 0) return
+    replaced = true
+    const rootEntry = fs.entries.get(fs.key([]))
+    rootEntry.kind = "symbolic-link"
+    rootEntry.identity = "symbolic-link:collection:1"
+    rootEntry.physical = "/outside"
+    for (const entry of fs.entries.values()) {
+      if (entry.segments.length === 0) continue
+      entry.physical = `/outside/${fs.key(entry.segments)}`
+    }
+  }
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+
+  await assert.rejects(() => subject().loadWorkflowPackageGeneration({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    generation: installed.digest
+  }), /collection root|symbolic link|directory.*changed|physical identity/i)
+})
+
+test("loader revalidates the collection root across the package snapshot", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  let replaced = false
+  fileSystem.hooks.beforeReadFile = (segments, fs) => {
+    if (replaced || !segments.includes("workflow.yaml")) return
+    replaced = true
+    fs.setKind([], "symbolic-link")
+  }
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+
+  await assert.rejects(() => subject().loadWorkflowPackageGeneration({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    generation: installed.digest
+  }), /collection root|symbolic link|directory.*changed|physical identity/i)
+})

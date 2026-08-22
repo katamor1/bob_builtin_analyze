@@ -1,0 +1,5 @@
+require("./workflowContractV2BobProfileCoreCases.js")
+require("./workflowContractV2BobCapabilitySelectionCases.js")
+require("./workflowContractV2BobProfileHardeningCases.js")
+require("./workflowContractV2BobRegistrationTypeBoundaryCases.js")
+require("./workflowContractV2BobLoaderBindingCases.js")

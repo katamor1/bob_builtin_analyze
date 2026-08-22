@@ -1,8 +1,13 @@
 import * as vscode from "vscode"
 import type {
+  BobWorkflowTaskBinding,
   LoadResult,
   WorkflowDefinition
 } from "./bobWorkflowTypes"
+import {
+  BOB_2_0_1_PROFILE_DIGEST,
+  BOB_2_0_1_TASK_CAPABILITIES
+} from "./core/contractV2/bobProfile"
 import type { CoreWorkflowDefinition } from "./core/model"
 import {
   compileWorkflowDocument,
@@ -17,6 +22,14 @@ import {
   type WorkflowFileCandidate
 } from "./workflowDiscovery"
 import { validateAndDescribeWorkflow } from "./workflowDiagnostics"
+
+// This loader is the legacy v1 document path. Contract v2 P4/R5 supplies its
+// plan-specific binding directly to adaptCoreWorkflowForBob; this path must not
+// pretend that compileWorkflowDocument produced v2 lock evidence.
+const LEGACY_BOB_TASK_BINDING: BobWorkflowTaskBinding = Object.freeze({
+  profileDigest: BOB_2_0_1_PROFILE_DIGEST,
+  taskCapabilities: BOB_2_0_1_TASK_CAPABILITIES
+})
 
 export async function loadWorkspaceWorkflows(sourceId: string): Promise<LoadResult> {
   const diagnostics: string[] = []
@@ -48,14 +61,18 @@ async function loadWorkflowFile(
   const compiled = compileWorkflowDocument({ sourceId, filePath: candidate.relativePath, text, strict: true })
   diagnostics.push(...formatWorkflowDiagnostics(compiled))
   if (!compiled.ok || !compiled.workflow) return { diagnostics }
-  const coreWorkflow = {
+  const coreWorkflow: CoreWorkflowDefinition = {
     ...compiled.workflow,
     logicalWorkflowId: compiled.workflow.id,
     workflowRoot: candidate.root.root,
     workflowFile: candidate.file.fsPath,
     workflowFolderName: candidate.root.name
   }
-  const workflow = adaptCoreWorkflowForBob(coreWorkflow, candidate.file)
+  const workflow = adaptCoreWorkflowForBob(
+    coreWorkflow,
+    candidate.file,
+    LEGACY_BOB_TASK_BINDING
+  )
   const workflowDiagnostics = validateAndDescribeWorkflow({
     relativePath: candidate.relativePath,
     folderName: candidate.folderName,

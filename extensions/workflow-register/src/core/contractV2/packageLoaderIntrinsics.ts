@@ -1,0 +1,96 @@
+import { posix as nodePathPosix, win32 as nodePathWin32 } from "node:path"
+import { types as utilTypes } from "node:util"
+
+const pathPosixParse = nodePathPosix.parse
+const pathWin32Parse = nodePathWin32.parse
+
+export const isProxy = utilTypes.isProxy
+export const arrayIsArray = Array.isArray
+export const arrayPrototype = Array.prototype
+export const arrayPush = Array.prototype.push
+export const arraySort = Array.prototype.sort
+export const bufferFrom = Buffer.from
+export const bufferByteLength = Buffer.byteLength.bind(Buffer) as (
+  value: string,
+  encoding?: BufferEncoding
+) => number
+export const numberIsSafeInteger = Number.isSafeInteger
+export const objectCreate = Object.create
+export const objectFreeze = Object.freeze
+export const objectGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor
+export const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
+export const objectGetPrototypeOf = Object.getPrototypeOf
+export const objectHasOwn = Object.hasOwn
+export const objectPrototype = Object.prototype
+export const reflectApply = Reflect.apply
+export const reflectOwnKeys = Reflect.ownKeys
+export const regexpTest = RegExp.prototype.test
+export const SetConstructor = Set
+export const setAdd = Set.prototype.add
+export const setHas = Set.prototype.has
+export const stringEndsWith = String.prototype.endsWith
+export const stringIncludes = String.prototype.includes
+export const stringNormalize = String.prototype.normalize
+export const stringSlice = String.prototype.slice
+export const stringStartsWith = String.prototype.startsWith
+export const stringToLowerCase = String.prototype.toLowerCase
+export const jsonParse = JSON.parse
+export const jsonStringify = JSON.stringify
+export const Uint8ArrayConstructor = Uint8Array
+export const textDecoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
+
+export function pushValue<T>(values: T[], value: T): void {
+  reflectApply(arrayPush, values, [value])
+}
+
+export function sortValues<T>(values: T[], compare: (left: T, right: T) => number): void {
+  reflectApply(arraySort, values, [compare])
+}
+
+export function addSetValue<T>(values: Set<T>, value: T): void {
+  reflectApply(setAdd, values, [value])
+}
+
+export function hasSetValue<T>(values: Set<T>, value: T): boolean {
+  return reflectApply(setHas, values, [value]) as boolean
+}
+
+export function testPattern(pattern: RegExp, value: string): boolean {
+  return reflectApply(regexpTest, pattern, [value]) as boolean
+}
+
+export function reflectBoolean(method: Function, value: string, argument: string): boolean {
+  return reflectApply(method, value, [argument]) as boolean
+}
+
+export function reflectString(method: Function, value: string, argument?: string): string {
+  return reflectApply(method, value, argument === undefined ? [] : [argument]) as string
+}
+
+export function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
+export function includes(values: readonly string[], value: string): boolean {
+  for (let index = 0; index < values.length; index += 1) {
+    if (values[index] === value) return true
+  }
+  return false
+}
+
+export function normalizeContainmentRoot(value: string): string {
+  let result = value
+  let minimumLength = 1
+  const posixRootLength = (reflectApply(pathPosixParse, undefined, [value]) as { root: string }).root.length
+  const win32RootLength = (reflectApply(pathWin32Parse, undefined, [value]) as { root: string }).root.length
+  if (posixRootLength > minimumLength) minimumLength = posixRootLength
+  if (win32RootLength > minimumLength) minimumLength = win32RootLength
+  while (
+    result.length > minimumLength
+    && (
+      reflectBoolean(stringEndsWith, result, "/")
+      || reflectBoolean(stringEndsWith, result, "\\")
+    )
+  ) result = reflectApply(stringSlice, result, [0, -1]) as string
+  return result
+}
