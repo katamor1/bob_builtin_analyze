@@ -75,9 +75,16 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          HISTORICAL_PATCH: docs/release-evidence/workflow-contract-v2-foundation-doc-sync.patch
+          EXPECTED_HISTORICAL_PATCH_BLOB: e0946c6a29f7aa17538b1bc89e8160892845fb44
         run: |
+          set -euo pipefail
+          actual_head="$(git rev-parse HEAD)"
+          test "$actual_head" = "$HEAD_SHA"
+          actual_historical_patch_blob="$(git rev-parse "$HEAD_SHA:$HISTORICAL_PATCH")"
+          test "$actual_historical_patch_blob" = "$EXPECTED_HISTORICAL_PATCH_BLOB"
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            git diff --check "$BASE_SHA...$HEAD_SHA"
+            git diff --check "$BASE_SHA...$HEAD_SHA" -- . ":(exclude)$HISTORICAL_PATCH"
           else
-            git diff --check "$HEAD_SHA^" "$HEAD_SHA"
+            git diff --check "$HEAD_SHA^" "$HEAD_SHA" -- . ":(exclude)$HISTORICAL_PATCH"
           fi

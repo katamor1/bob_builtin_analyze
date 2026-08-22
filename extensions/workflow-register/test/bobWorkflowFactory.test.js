@@ -4,6 +4,22 @@ const { test } = require("node:test")
 
 const outRoot = path.resolve(__dirname, "..", "out")
 const { createBobWorkflow } = require(path.join(outRoot, "bobWorkflowFactory.js"))
+const PROFILE_DIGEST = "sha256:aea18a3b1d19f2a1231c7d5e6ac7a416f0ace09ffa823fe4ceb0f43733492b73"
+
+class AuditedTask {
+  constructor() {
+    this.id = "task-1"
+    this.status = "running"
+  }
+
+  getAllMetadata() { return { id: this.id } }
+  getMessages() { return [] }
+  sendMessage() { return undefined }
+  setStepComplete() { return undefined }
+  startSubagent() { return Promise.resolve("ok") }
+  toSerializable() { return { id: this.id } }
+  unrelatedTaskMethod() { throw new Error("The task probe must not invoke unrelated methods.") }
+}
 
 function definition(overrides = {}) {
   return {
@@ -30,30 +46,158 @@ function definition(overrides = {}) {
   }
 }
 
-test("Bob workflow factory renders engine steps when stepExecution mode is engineSteps", async () => {
+test("Bob workflow factory probes an audited task before dispatching an engine step and preserves identity", async () => {
   const calls = []
+  const originalTask = new AuditedTask()
   const workflow = createBobWorkflow(definition(), {
     runSingleWorkflowStep: async () => { calls.push(["single"]); return true },
     runTodoStep: async (todo) => { calls.push(["todo", todo.id]); return true },
-    runEngineStep: async (stepId) => { calls.push(["engine", stepId]); return true }
+    runEngineStep: async (stepId, index, task) => {
+      calls.push(["engine", stepId, index, task])
+      return true
+    }
   })
 
   const steps = workflow.getSteps()
   assert.deepEqual(steps.map((step) => [step.id, step.title]), [["collect", "Collect"], ["review", "Review"]])
-  assert.equal(await steps[1].execution({}), true)
-  assert.deepEqual(calls, [["engine", "review"]])
+  assert.equal(await steps[1].execution(originalTask), true)
+  assert.equal(calls.length, 1)
+  assert.deepEqual(calls[0].slice(0, 3), ["engine", "review", 1])
+  assert.equal(calls[0][3], originalTask)
 })
 
-test("Bob workflow factory keeps legacy Todo step mode when stepExecution mode is todo", async () => {
+test("Bob workflow factory probes an audited task before dispatching a Todo step and preserves identity", async () => {
   const calls = []
+  const originalTask = new AuditedTask()
   const workflow = createBobWorkflow(definition({ stepExecution: { mode: "todo", allowOutOfOrder: false, showInBob: true } }), {
     runSingleWorkflowStep: async () => { calls.push(["single"]); return true },
-    runTodoStep: async (todo) => { calls.push(["todo", todo.id]); return true },
+    runTodoStep: async (todo, index, task) => { calls.push(["todo", todo.id, index, task]); return true },
     runEngineStep: async (stepId) => { calls.push(["engine", stepId]); return true }
   })
 
   const steps = workflow.getSteps()
   assert.deepEqual(steps.map((step) => [step.id, step.title]), [["todo-only", "Todo only"]])
-  assert.equal(await steps[0].execution({}), true)
-  assert.deepEqual(calls, [["todo", "todo-only"]])
+  assert.equal(await steps[0].execution(originalTask), true)
+  assert.equal(calls.length, 1)
+  assert.deepEqual(calls[0].slice(0, 3), ["todo", "todo-only", 0])
+  assert.equal(calls[0][3], originalTask)
+})
+
+test("Bob workflow factory fails closed before runner dispatch when a required task capability is missing", async () => {
+  let dispatches = 0
+  const workflow = createBobWorkflow(definition(), {
+    runSingleWorkflowStep: async () => { dispatches += 1; return true },
+    runTodoStep: async () => { dispatches += 1; return true },
+    runEngineStep: async () => { dispatches += 1; return true }
+  })
+  const task = new AuditedTask()
+  Object.defineProperty(task, "startSubagent", { value: undefined })
+
+  await assert.rejects(workflow.getSteps()[0].execution(task), /startSubagent/)
+  assert.equal(dispatches, 0)
+})
+
+test("Bob workflow factory fails closed before Todo dispatch when a required task capability is missing", async () => {
+  let todoDispatches = 0
+  const workflow = createBobWorkflow(definition({
+    stepExecution: { mode: "todo", allowOutOfOrder: false, showInBob: true }
+  }), {
+    runSingleWorkflowStep: async () => true,
+    runTodoStep: async () => { todoDispatches += 1; return true },
+    runEngineStep: async () => true
+  })
+  const task = new AuditedTask()
+  Object.defineProperty(task, "startSubagent", { value: undefined })
+
+  await assert.rejects(workflow.getSteps()[0].execution(task), /startSubagent/)
+  assert.equal(todoDispatches, 0)
+})
+
+test("Bob workflow factory fails closed before fallback dispatch when a required task capability is missing", async () => {
+  let singleDispatches = 0
+  const workflow = createBobWorkflow(definition({
+    stepExecution: { mode: "engineSteps", allowOutOfOrder: false, showInBob: false }
+  }), {
+    runSingleWorkflowStep: async () => { singleDispatches += 1; return true },
+    runTodoStep: async () => true,
+    runEngineStep: async () => true
+  })
+  const task = new AuditedTask()
+  Object.defineProperty(task, "startSubagent", { value: undefined })
+
+  assert.equal(workflow.getSteps()[0].id, "runWorkflow")
+  await assert.rejects(workflow.getSteps()[0].execution(task), /startSubagent/)
+  assert.equal(singleDispatches, 0)
+})
+
+test("Bob workflow factory probes only the workflow's locked task capability subset", async () => {
+  let received
+  const task = { sendMessage() { return undefined } }
+  const workflow = createBobWorkflow(definition({
+    bobTaskBinding: {
+      profileDigest: PROFILE_DIGEST,
+      taskCapabilities: ["task.sendMessage"]
+    }
+  }), {
+    runSingleWorkflowStep: async () => true,
+    runTodoStep: async () => true,
+    runEngineStep: async (_stepId, _index, value) => { received = value; return true }
+  })
+
+  assert.equal(await workflow.getSteps()[0].execution(task), true)
+  assert.equal(received, task)
+})
+
+test("Bob workflow factory rejects a drifted task binding before runner dispatch", async () => {
+  let dispatches = 0
+  const workflow = createBobWorkflow(definition({
+    bobTaskBinding: {
+      profileDigest: `sha256:${"0".repeat(64)}`,
+      taskCapabilities: ["task.sendMessage"]
+    }
+  }), {
+    runSingleWorkflowStep: async () => { dispatches += 1; return true },
+    runTodoStep: async () => { dispatches += 1; return true },
+    runEngineStep: async () => { dispatches += 1; return true }
+  })
+
+  await assert.rejects(workflow.getSteps()[0].execution({ sendMessage() {} }), /profile digest/)
+  assert.equal(dispatches, 0)
+})
+
+test("Bob workflow factory rejects a drifted task binding before Todo dispatch", async () => {
+  let todoDispatches = 0
+  const workflow = createBobWorkflow(definition({
+    stepExecution: { mode: "todo", allowOutOfOrder: false, showInBob: true },
+    bobTaskBinding: {
+      profileDigest: `sha256:${"0".repeat(64)}`,
+      taskCapabilities: ["task.sendMessage"]
+    }
+  }), {
+    runSingleWorkflowStep: async () => true,
+    runTodoStep: async () => { todoDispatches += 1; return true },
+    runEngineStep: async () => true
+  })
+
+  await assert.rejects(workflow.getSteps()[0].execution({ sendMessage() {} }), /profile digest/)
+  assert.equal(todoDispatches, 0)
+})
+
+test("Bob workflow factory rejects a drifted task binding before fallback dispatch", async () => {
+  let singleDispatches = 0
+  const workflow = createBobWorkflow(definition({
+    stepExecution: { mode: "engineSteps", allowOutOfOrder: false, showInBob: false },
+    bobTaskBinding: {
+      profileDigest: `sha256:${"0".repeat(64)}`,
+      taskCapabilities: ["task.sendMessage"]
+    }
+  }), {
+    runSingleWorkflowStep: async () => { singleDispatches += 1; return true },
+    runTodoStep: async () => true,
+    runEngineStep: async () => true
+  })
+
+  assert.equal(workflow.getSteps()[0].id, "runWorkflow")
+  await assert.rejects(workflow.getSteps()[0].execution({ sendMessage() {} }), /profile digest/)
+  assert.equal(singleDispatches, 0)
 })

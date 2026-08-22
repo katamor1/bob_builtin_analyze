@@ -1,0 +1,210 @@
+{
+  "version": "workflow-contract-predicate-golden/v1",
+  "visibilityCases": [
+    {
+      "id": "input-at-entry",
+      "placement": { "kind": "stepEntry", "stepIndex": 1 },
+      "predicate": {
+        "kind": "equals",
+        "left": { "source": "input", "id": "request", "pointer": "/status" },
+        "right": "ready"
+      },
+      "context": {
+        "inputs": { "request": { "status": "ready" } },
+        "committedOutputs": {}
+      },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "id": "prior-output-at-entry",
+      "placement": { "kind": "stepEntry", "stepIndex": 1 },
+      "predicate": {
+        "kind": "equals",
+        "left": { "source": "committedOutput", "id": "first", "pointer": "/decision" },
+        "right": "approved"
+      },
+      "context": {
+        "inputs": {},
+        "committedOutputs": { "first": { "decision": "approved" } }
+      },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "id": "same-output-after-commit",
+      "placement": { "kind": "stepTransition", "stepIndex": 1 },
+      "predicate": {
+        "kind": "equals",
+        "left": { "source": "committedOutput", "id": "second", "pointer": "/decision" },
+        "right": "approved"
+      },
+      "context": {
+        "inputs": {},
+        "committedOutputs": { "second": { "decision": "approved" } }
+      },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "id": "same-output-at-entry",
+      "placement": { "kind": "stepEntry", "stepIndex": 1 },
+      "predicate": {
+        "kind": "equals",
+        "left": { "source": "committedOutput", "id": "second", "pointer": "/decision" },
+        "right": "approved"
+      },
+      "expected": { "compile": "diagnostic", "pointer": "/steps/1/when/left/id" }
+    },
+    {
+      "id": "future-output",
+      "placement": { "kind": "stepTransition", "stepIndex": 0 },
+      "predicate": {
+        "kind": "equals",
+        "left": { "source": "committedOutput", "id": "second", "pointer": "/decision" },
+        "right": "approved"
+      },
+      "expected": { "compile": "diagnostic", "pointer": "/steps/1/when/left/id" }
+    },
+    {
+      "id": "transient-provider-result",
+      "placement": { "kind": "stepTransition", "stepIndex": 1 },
+      "predicate": {
+        "kind": "equals",
+        "left": { "source": "providerResult", "id": "second", "pointer": "/decision" },
+        "right": "approved"
+      },
+      "expected": { "compile": "diagnostic", "pointer": "/steps/1/when/left/source" }
+    },
+    {
+      "id": "same-output-not-yet-committed",
+      "placement": { "kind": "stepTransition", "stepIndex": 1 },
+      "predicate": {
+        "kind": "equals",
+        "left": { "source": "committedOutput", "id": "second", "pointer": "/decision" },
+        "right": "approved"
+      },
+      "context": { "inputs": {}, "committedOutputs": {} },
+      "expected": { "compile": "ok", "evaluate": false }
+    }
+  ],
+  "humanGates": [
+    {
+      "inventoryItem": "01",
+      "legacyPath": ".bob/template-library/standard/process-code-precheck/WORKFLOW.md",
+      "placement": { "kind": "stepTransition", "stepIndex": 11 },
+      "predicate": { "kind": "equals", "left": { "source": "committedOutput", "id": "humanGate", "pointer": "/decision" }, "right": "approved" },
+      "context": { "inputs": {}, "committedOutputs": { "humanGate": { "decision": "approved" } } },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "inventoryItem": "05",
+      "legacyPath": ".bob/workflows/process-code-doc-investigation/WORKFLOW.md",
+      "placement": { "kind": "stepTransition", "stepIndex": 6 },
+      "predicate": { "kind": "equals", "left": { "source": "committedOutput", "id": "humanGate", "pointer": "/decision" }, "right": "approved" },
+      "context": { "inputs": {}, "committedOutputs": { "humanGate": { "decision": "approved" } } },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "inventoryItem": "06",
+      "legacyPath": ".bob/workflows/process-code-precheck/WORKFLOW.md",
+      "placement": { "kind": "stepTransition", "stepIndex": 11 },
+      "predicate": { "kind": "equals", "left": { "source": "committedOutput", "id": "humanGate", "pointer": "/decision" }, "right": "approved" },
+      "context": { "inputs": {}, "committedOutputs": { "humanGate": { "decision": "approved" } } },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "inventoryItem": "07",
+      "legacyPath": ".bob/workflows/process-coding-plan/WORKFLOW.md",
+      "placement": { "kind": "stepTransition", "stepIndex": 6 },
+      "predicate": { "kind": "equals", "left": { "source": "committedOutput", "id": "humanGate", "pointer": "/decision" }, "right": "approved" },
+      "context": { "inputs": {}, "committedOutputs": { "humanGate": { "decision": "approved" } } },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "inventoryItem": "08",
+      "legacyPath": ".bob/workflows/process-common-review/WORKFLOW.md",
+      "placement": { "kind": "stepTransition", "stepIndex": 6 },
+      "predicate": { "kind": "equals", "left": { "source": "committedOutput", "id": "humanGate", "pointer": "/decision" }, "right": "approved" },
+      "context": { "inputs": {}, "committedOutputs": { "humanGate": { "decision": "approved" } } },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "inventoryItem": "09",
+      "legacyPath": ".bob/workflows/process-external-spec-design/WORKFLOW.md",
+      "placement": { "kind": "stepTransition", "stepIndex": 6 },
+      "predicate": { "kind": "equals", "left": { "source": "committedOutput", "id": "humanGate", "pointer": "/decision" }, "right": "approved" },
+      "context": { "inputs": {}, "committedOutputs": { "humanGate": { "decision": "approved" } } },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "inventoryItem": "10",
+      "legacyPath": ".bob/workflows/process-external-spec-review/WORKFLOW.md",
+      "placement": { "kind": "stepTransition", "stepIndex": 6 },
+      "predicate": { "kind": "equals", "left": { "source": "committedOutput", "id": "humanGate", "pointer": "/decision" }, "right": "approved" },
+      "context": { "inputs": {}, "committedOutputs": { "humanGate": { "decision": "approved" } } },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "inventoryItem": "11",
+      "legacyPath": ".bob/workflows/process-functional-test-design/WORKFLOW.md",
+      "placement": { "kind": "stepTransition", "stepIndex": 6 },
+      "predicate": { "kind": "equals", "left": { "source": "committedOutput", "id": "humanGate", "pointer": "/decision" }, "right": "approved" },
+      "context": { "inputs": {}, "committedOutputs": { "humanGate": { "decision": "approved" } } },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "inventoryItem": "12",
+      "legacyPath": ".bob/workflows/process-functional-test-execution-review/WORKFLOW.md",
+      "placement": { "kind": "stepTransition", "stepIndex": 6 },
+      "predicate": { "kind": "equals", "left": { "source": "committedOutput", "id": "humanGate", "pointer": "/decision" }, "right": "approved" },
+      "context": { "inputs": {}, "committedOutputs": { "humanGate": { "decision": "approved" } } },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "inventoryItem": "13",
+      "legacyPath": ".bob/workflows/process-integration-test-design/WORKFLOW.md",
+      "placement": { "kind": "stepTransition", "stepIndex": 6 },
+      "predicate": { "kind": "equals", "left": { "source": "committedOutput", "id": "humanGate", "pointer": "/decision" }, "right": "approved" },
+      "context": { "inputs": {}, "committedOutputs": { "humanGate": { "decision": "approved" } } },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "inventoryItem": "14",
+      "legacyPath": ".bob/workflows/process-internal-spec-design/WORKFLOW.md",
+      "placement": { "kind": "stepTransition", "stepIndex": 6 },
+      "predicate": { "kind": "equals", "left": { "source": "committedOutput", "id": "humanGate", "pointer": "/decision" }, "right": "approved" },
+      "context": { "inputs": {}, "committedOutputs": { "humanGate": { "decision": "approved" } } },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "inventoryItem": "15",
+      "legacyPath": ".bob/workflows/process-internal-spec-review/WORKFLOW.md",
+      "placement": { "kind": "stepTransition", "stepIndex": 6 },
+      "predicate": { "kind": "equals", "left": { "source": "committedOutput", "id": "humanGate", "pointer": "/decision" }, "right": "approved" },
+      "context": { "inputs": {}, "committedOutputs": { "humanGate": { "decision": "approved" } } },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "inventoryItem": "16",
+      "legacyPath": ".bob/workflows/process-qa-intake-analysis/WORKFLOW.md",
+      "placement": { "kind": "stepTransition", "stepIndex": 6 },
+      "predicate": { "kind": "equals", "left": { "source": "committedOutput", "id": "humanGate", "pointer": "/decision" }, "right": "approved" },
+      "context": { "inputs": {}, "committedOutputs": { "humanGate": { "decision": "approved" } } },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "inventoryItem": "17",
+      "legacyPath": ".bob/workflows/process-unit-test-design/WORKFLOW.md",
+      "placement": { "kind": "stepTransition", "stepIndex": 6 },
+      "predicate": { "kind": "equals", "left": { "source": "committedOutput", "id": "humanGate", "pointer": "/decision" }, "right": "approved" },
+      "context": { "inputs": {}, "committedOutputs": { "humanGate": { "decision": "approved" } } },
+      "expected": { "compile": "ok", "evaluate": true }
+    },
+    {
+      "inventoryItem": "18",
+      "legacyPath": ".bob/workflows/process-unit-test-execution-review/WORKFLOW.md",
+      "placement": { "kind": "stepTransition", "stepIndex": 6 },
+      "predicate": { "kind": "equals", "left": { "source": "committedOutput", "id": "humanGate", "pointer": "/decision" }, "right": "approved" },
+      "context": { "inputs": {}, "committedOutputs": { "humanGate": { "decision": "approved" } } },
+      "expected": { "compile": "ok", "evaluate": true }
+    }
+  ]
+}

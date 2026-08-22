@@ -1,0 +1,8 @@
+require("./workflowContractV2LockGenerationCases.js")
+require("./workflowContractV2LockVerificationCases.js")
+require("./workflowContractV2LockHostileCases.js")
+require("./workflowContractV2LockOrderingCases.js")
+require("./workflowContractV2LockPreflightCases.js")
+require("./workflowContractV2LockLimitCases.js")
+require("./workflowContractV2LockSchemaIdentityCases.js")
+require("./workflowContractV2LockSnapshotCases.js")

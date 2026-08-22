@@ -3,3 +3,6 @@
 
 # Reproducible Runtime characterization fixtures are reviewed as exact LF bytes.
 extensions/workflow-register/test/fixtures/reproducible-runtime/** text eol=lf
+
+# Workflow Contract v2 fixtures are reviewed as exact LF bytes.
+extensions/workflow-register/test/fixtures/workflow-contract-v2/** text eol=lf

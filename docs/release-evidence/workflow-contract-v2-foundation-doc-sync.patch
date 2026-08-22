@@ -1,0 +1,131 @@
+--- a/docs/superpowers/plans/2026-07-17-workflow-contract-v2-foundation.md
++++ b/docs/superpowers/plans/2026-07-17-workflow-contract-v2-foundation.md
+@@ -1,6 +1,6 @@
+ # Workflow Contract v2 Foundation Implementation Plan
+ 
+-> **Execution:** Follow the master plan's RED/GREEN/review/commit protocol. Tasks F1 and F2 are completed behavior that workspace recovery must replay, not redesign.
++> **Execution:** Follow the master plan's RED/GREEN/review/commit protocol. Tasks F1–F6 are completed implementation that documentation recovery must synchronize, not redesign. F7 implementation is complete, while the formal Foundation phase gate remains open.
+ 
+ **Goal:** Establish hostile-input-safe canonical evidence, diagnostics, local schemas, predicates, provider contracts, and Bob capability profiles before any package becomes executable.
+ 
+@@ -272,7 +272,7 @@
+ 
+ **Commit:** `feat(workflow): add strict local schema catalog`
+ 
+-## F4 — Strict YAML input and closed package-schema primitives
++## F4 — Strict YAML input and closed package-schema primitives — completed
+ 
+ **Files**
+ 
+@@ -327,13 +327,13 @@
+ 
+ It also owns the complete design-section-6 collection/resource table: inputs 0–256, steps 1–512, required artifacts 0–512, providers 0–256, step artifacts 0–128, agent context 0–256, transition decisions 0–128, form fields 1–128, select options 1–256, provider capabilities 0–128, exact Bob subset maxima, value-template collections 0–256, template depth 32/nodes 4,096 per step, and constructed document depth 64/nodes 65,536. Every dense-array and recursive-structure bound is checked before partial semantic output is returned.
+ 
+-- [ ] RED: reject BOM, non-UTF-8, CR/CRLF package bytes, multiple documents, aliases, anchors, merge keys, duplicate keys, explicit/custom tags, timestamp resolution, non-string keys, `-0`, and non-finite numbers.
+-- [ ] RED: require exact `schemaVersion: workflow-register/v2` and closed top-level fields `schemaVersion,id,name,description,inputs,steps,requiredArtifacts,resumePolicy,providers,bob`.
+-- [ ] RED: cover every design-section-6 field, exact required/optional boundary, typed default, discriminated form field, select-option rule, manual output object, unit/value output, numeric bound, path/media regex, enum, step discriminator, value-template variant, predicate placement, transition target/loop, provider/artifact/resume/Bob record, and cross-id uniqueness. Prove every unknown/no-op/step-inapplicable field maps to `WF2_UNKNOWN_OR_NOOP_FIELD` at the precise YAML-derived pointer.
+-- [ ] RED: cover every array lower/upper boundary, document/template depth/node boundary, sparse/exotic array, and one-over-limit case from the fixed table. Compile the implicit control-flow table exactly: first-step entry; `when=false` skip-to-next; success with no transition next/`$end`; success with ordered transition; required failure to `$fail`; optional failure to next; explicit `$end`/`$fail`. A skipped path performs zero provider calls and publishes nothing; a failed path publishes no output/artifact and evaluates no outgoing transition.
+-- [ ] RED: reject inline prompt/schema bodies and require canonical package-relative references. Reject duplicate ids, predicates outside the three allowed placements, syntactically invalid RFC 6901 pointers, and files declared in incompatible roles. Apply the visibility table: input predicates have no output, step-entry/templates/context/result allow strictly earlier lexical value outputs, and an outgoing transition alone may name its owning step's value output. Reject every other same/future reference. F5 resolves a syntactically valid pointer against the referenced compiled schema.
+-- [ ] GREEN: use `js-yaml` only behind a pre-scan/composer boundary that detects aliases/duplicate keys before construction; immediately pass its result through F1 cloning.
+-- [ ] Verify:
++- [x] RED: reject BOM, non-UTF-8, CR/CRLF package bytes, multiple documents, aliases, anchors, merge keys, duplicate keys, explicit/custom tags, timestamp resolution, non-string keys, `-0`, and non-finite numbers.
++- [x] RED: require exact `schemaVersion: workflow-register/v2` and closed top-level fields `schemaVersion,id,name,description,inputs,steps,requiredArtifacts,resumePolicy,providers,bob`.
++- [x] RED: cover every design-section-6 field, exact required/optional boundary, typed default, discriminated form field, select-option rule, manual output object, unit/value output, numeric bound, path/media regex, enum, step discriminator, value-template variant, predicate placement, transition target/loop, provider/artifact/resume/Bob record, and cross-id uniqueness. Prove every unknown/no-op/step-inapplicable field maps to `WF2_UNKNOWN_OR_NOOP_FIELD` at the precise YAML-derived pointer.
++- [x] RED: cover every array lower/upper boundary, document/template depth/node boundary, sparse/exotic array, and one-over-limit case from the fixed table. Compile the implicit control-flow table exactly: first-step entry; `when=false` skip-to-next; success with no transition next/`$end`; success with ordered transition; required failure to `$fail`; optional failure to next; explicit `$end`/`$fail`. A skipped path performs zero provider calls and publishes nothing; a failed path publishes no output/artifact and evaluates no outgoing transition.
++- [x] RED: reject inline prompt/schema bodies and require canonical package-relative references. Reject duplicate ids, predicates outside the three allowed placements, syntactically invalid RFC 6901 pointers, and files declared in incompatible roles. Apply the visibility table: input predicates have no output, step-entry/templates/context/result allow strictly earlier lexical value outputs, and an outgoing transition alone may name its owning step's value output. Reject every other same/future reference. F5 resolves a syntactically valid pointer against the referenced compiled schema.
++- [x] GREEN: use `js-yaml` only behind a pre-scan/composer boundary that detects aliases/duplicate keys before construction; immediately pass its result through F1 cloning.
++- [x] Verify:
+ 
+ ```bash
+ cd extensions/workflow-register
+@@ -341,9 +341,11 @@
+ node --test test/workflowContractV2Yaml.test.js
+ ```
+ 
++Recorded evidence: strict YAML/package-shape implementation and its focused boundary coverage are present on the Contract v2 branch. The task-level checklist is synchronized; formal Foundation gate replay and exact task commit evidence remain pending.
++
+ **Commit:** `feat(workflow): add strict v2 package document shape`
+ 
+-## F5 — Shared structured predicate AST
++## F5 — Shared structured predicate AST — completed
+ 
+ **Files**
+ 
+@@ -437,9 +439,11 @@
+ node --test test/workflowContractV2Predicate.test.js
+ ```
+ 
++Recorded evidence: the shared predicate implementation, golden parity fixture, and focused coverage are present on the Contract v2 branch. Formal Foundation gate replay and exact task commit evidence remain pending.
++
+ **Commit:** `feat(workflow): add shared v2 predicate contract`
+ 
+-## F6 — Exact provider contract registry
++## F6 — Exact provider contract registry — completed
+ 
+ **Files**
+ 
+@@ -648,9 +652,11 @@
+ npm run dependency:policy
+ ```
+ 
++Recorded evidence: provider-registry implementation and focused hostile-boundary coverage are present through branch baseline `9a0bd62d817992bca8fa31f3b7c986c8c0fe97f8`. Formal Foundation gate replay and the final task commit table remain pending.
++
+ **Commit:** `feat(workflow): add versioned provider contract registry`
+ 
+-## F7 — Audited Bob 2.0.1 profile and two-stage capability binding
++## F7 — Audited Bob 2.0.1 profile and two-stage capability binding — implementation complete; phase gate pending
+ 
+ **Files**
+ 
+@@ -698,10 +704,10 @@
+ ```
+ Its exact F1 digest is `sha256:aea18a3b1d19f2a1231c7d5e6ac7a416f0ace09ffa823fe4ceb0f43733492b73`.
+ 
+-- [ ] RED: pin the exact golden extension id/version, activation/source/task descriptors, capability order, task profile, and digest above. Recompute the digest in the test rather than trusting a copied string.
+-- [ ] RED: reject missing/wrong extension, incompatible version, proxy/accessor exports, missing/extra incompatible functions, duplicate/unknown capabilities, and lock/profile drift.
+-- [ ] RED: model task-handle-only capabilities separately; prove the compile-time snapshot never claims them and the runtime probe executes before provider/step dispatch.
+-- [ ] GREEN: return detached frozen evidence at compile time and a pure task-probe result at runtime. Do not put the live export or task handle into canonical plan data.
++- [x] RED: pin the exact golden extension id/version, activation/source/task descriptors, capability order, task profile, and digest above. Recompute the digest in the test rather than trusting a copied string.
++- [x] RED: reject missing/wrong extension, incompatible version, proxy/accessor exports, missing/extra incompatible functions, duplicate/unknown capabilities, and lock/profile drift.
++- [x] RED: model task-handle-only capabilities separately; prove the compile-time snapshot never claims them and the runtime probe executes before provider/step dispatch.
++- [x] GREEN: return detached frozen evidence at compile time and a pure task-probe result at runtime. Do not put the live export or task handle into canonical plan data.
+ - [ ] Verify:
+ 
+ ```bash
+@@ -710,6 +716,16 @@
+ node --test test/workflowContractV2BobProfile.test.js test/bobWorkflowFactory.test.js test/bobGateLifecycle.test.js
+ ```
+ 
++Recorded evidence:
++
++- exact profile digest `sha256:aea18a3b1d19f2a1231c7d5e6ac7a416f0ace09ffa823fe4ceb0f43733492b73`;
++- exact `IBM.bob-code@2.0.1` activation/source profile and task-capability subset validation;
++- explicit `adaptCoreWorkflowForBob(core, file, bobTaskBinding)` handoff: the legacy v1 loader supplies the audited six-capability binding, while P4/R5 owns each compiled plan's exact digest/subset;
++- isolated focused evidence only: profile/factory strict compile with 48/48 test events, explicit binding-boundary strict compile plus combined loader/F7 source suites with 6/6 passing tests, and legacy real-probe/original-task-identity integration pass;
++- six Codex review findings fixed and their threads resolved; final re-review of the final head remains pending.
++
++The isolated evidence above is not the repository Gate F or full extension suite. Hosted Actions currently terminate before any repository step (`steps: null`, `logs_url: null`), so formal repository verification remains open.
++
+ **Commit:** `feat(workflow): bind audited bob capability profile`
+ 
+ ## Foundation phase gate
+@@ -722,4 +738,19 @@
+ git diff --check
+ ```
+ 
++**Current status: open. P1 must not start.**
++
++The detailed live status record is `../../release-evidence/workflow-contract-v2-foundation-status-2026-07-23.md`.
++
++- [ ] repository `npm run compile`
++- [ ] exact master Gate F focused command
++- [ ] `npm run dependency:policy`
++- [ ] `npm run architecture:policy`
++- [ ] `npm run source:policy`
++- [ ] full extension `npm test`
++- [ ] `git diff --check`
++- [ ] synchronize with current `main` and resolve conflicts
++- [ ] record exact F1–F7 task commit hashes
++- [ ] final independent review with Critical=0 and Important=0
++
+ Record focused counts, full pass/skip/fail counts, reviewer decisions, and the seven task commit hashes before starting P1.

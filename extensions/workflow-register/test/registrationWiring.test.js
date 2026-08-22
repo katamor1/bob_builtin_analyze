@@ -8,14 +8,17 @@ function registrationSource() {
     "workflowRegisterService.ts",
     "workflowRegistrationService.ts",
     "bobApi.ts",
+    "core/contractV2/bobProfile.ts",
     "reports.ts"
   ])
 }
 
-test("Bob registration deactivates the previous source before replacing workflows", () => {
+test("Bob registration deactivates the previous audited source before replacing workflows", () => {
   const source = registrationSource()
 
-  assert.match(source, /interface BobSourceLike \{[\s\S]*deactivate\?: \(\) => unknown[\s\S]*\}/)
+  assert.match(source, /export type BobSourceLike = BoundBobSource/)
+  assert.match(source, /export interface BoundBobSource \{[\s\S]*readonly deactivate: \(\) => unknown[\s\S]*readonly log: \(message: string\) => unknown[\s\S]*readonly registerWorkflow: \(workflow: unknown\) => unknown[\s\S]*\}/)
+  assert.doesNotMatch(source, /deactivate\?: \(\) => unknown/)
   assert.match(source, /private registeredSource\?: BobSourceLike/)
   assert.match(source, /dispose\(\): void \{[\s\S]*void deactivateRegisteredSource\(source\)[\s\S]*\}/)
   assert.match(
@@ -29,9 +32,25 @@ test("Bob registration deactivates the previous source before replacing workflow
   )
   assert.match(
     source,
-    /await deactivateRegisteredSource\(input\.previousSource, lines\)[\s\S]*const sourceResult = await runAttempt\("registerSource\(sourceId, sourceName\)"/
+    /await deactivateRegisteredSource\(input\.previousSource, lines\)[\s\S]*const sourceResult = await runAttempt\(\s*"registerSource\(sourceId, sourceName\)"/
   )
   assert.match(source, /if \(update\.sourceChanged\) this\.registeredSource = update\.registeredSource/)
+})
+
+test("Bob registration binds the exact audited profile before source registration", () => {
+  const source = registrationSource()
+
+  assert.match(source, /const BOB_EXTENSION_ID = "IBM\.bob-code"/)
+  assert.match(source, /"sha256:aea18a3b1d19f2a1231c7d5e6ac7a416f0ace09ffa823fe4ceb0f43733492b73"/)
+  assert.match(source, /extensionVersion !== "2\.0\.1"/)
+  assert.match(source, /const api = bindBobCapabilities\(\{/)
+  assert.match(source, /extensionId: ext\.id/)
+  assert.match(source, /extensionVersion: packageJson\?\.version/)
+  assert.match(source, /expectedProfileDigest: BOB_2_0_1_PROFILE_DIGEST/)
+  assert.match(source, /requiredCapabilities: BOB_2_0_1_CAPABILITIES/)
+  assert.match(source, /liveExport: exportsValue/)
+  assert.doesNotMatch(source, /as BobWorkflowApi/)
+  assert.doesNotMatch(source, /asSource\(/)
 })
 
 test("Bob registration treats a false registerWorkflow return as failed", () => {
