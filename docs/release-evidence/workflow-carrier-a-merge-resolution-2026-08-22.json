@@ -1,6 +1,6 @@
 {
   "schemaVersion": "bob-main-consolidation/workflow-carrier-merge-resolution/v1",
-  "status": "pre_publication",
+  "status": "carrier_merged_pending_evidence_pr",
   "baseMainSha": "5280723da6f0660322435255acdaf0ccbd02506f",
   "frozenCarrier": {
     "fromSha": "56ba084d07f1641fa0454fe1da024f14fe99fd37",
@@ -637,7 +637,7 @@
       }
     },
     "task6CiRemediation": {
-      "status": "local_gates_passed_pending_publication",
+      "status": "completed_exact_head_ci_and_carrier_merge",
       "initialCarrierFailure": {
         "pullRequestNumber": 170,
         "head": "3b98bbd6c5d8b8a4b0559de0377c486f32f061c2",
@@ -702,6 +702,7 @@
         "minorFindings": 0
       },
       "formalLocalGates": {
+        "timeBoundary": "task6d_before_final_head_publication",
         "exactHead": "7467869201edc5f1d9d3e342542c7d29dbf390b6",
         "workingDirectory": "extensions/workflow-register",
         "singleSessionId": 40631,
@@ -726,7 +727,59 @@
       }
     },
     "exactHeadCi": {
-      "status": "pending_task_6"
+      "status": "passed",
+      "pullRequestNumber": 170,
+      "exactHead": "b728061be3d5365e0ff7adb89fd328bfc2450001",
+      "event": "pull_request",
+      "attempt": 1,
+      "oldFailedRunReused": false,
+      "publicationReportSha256": "8c7b6fb998739c1f6301a609b8492ffeb9281cfbd5e7b54331f957253cceb226",
+      "summary": {
+        "workflows": 3,
+        "jobs": 10,
+        "allSucceeded": true
+      },
+      "workflows": [
+        {
+          "name": "workflow-contracts",
+          "runId": 32550717770,
+          "status": "success"
+        },
+        {
+          "name": "extensions-quality",
+          "runId": 32550717771,
+          "status": "success"
+        },
+        {
+          "name": "three-extension-ui-contracts",
+          "runId": 32550717776,
+          "status": "success"
+        }
+      ],
+      "requiredJobs": [
+        {
+          "role": "Ubuntu workflow-register",
+          "jobId": 96976884206,
+          "status": "success"
+        },
+        {
+          "role": "Windows workflow-register",
+          "jobId": 96976884314,
+          "status": "success"
+        },
+        {
+          "role": "UI/docs",
+          "jobId": 96976884332,
+          "status": "success"
+        }
+      ],
+      "finalIndependentReview": {
+        "decision": "APPROVED",
+        "criticalFindings": 0,
+        "importantFindings": 0,
+        "minorFindings": 0,
+        "sha256": "35ad107144952a93a63e762f229c463dbda4d98afc11dd47edf7ce5494704703"
+      }
     }
   },
   "gitDiffStat": {
@@ -735,23 +788,97 @@
       "summary": "111 files changed, 25741 insertions(+), 1869 deletions(-)"
     },
     "finalBranch": {
-      "command": "git diff --stat 5280723da6f0660322435255acdaf0ccbd02506f HEAD",
+      "command": "git diff --stat 5280723da6f0660322435255acdaf0ccbd02506f b728061be3d5365e0ff7adb89fd328bfc2450001",
       "summary": "111 files changed, 25961 insertions(+), 1869 deletions(-)"
     }
   },
   "carrierPullRequest": {
-    "status": "pending_task_6",
-    "number": null,
-    "url": null,
-    "headRefOid": null
+    "status": "MERGED",
+    "number": 170,
+    "url": "https://github.com/katamor1/bob_builtin_analyze/pull/170",
+    "headRefOid": "b728061be3d5365e0ff7adb89fd328bfc2450001"
   },
-  "carrierMergeSha": null,
-  "carrierMergedMainSha": null,
-  "legacyPullRequestJudgments": [],
+  "carrierMergeSha": "36b54145bf2e365f8e56282ab18f6cbc900012d9",
+  "carrierMergedMainSha": "36b54145bf2e365f8e56282ab18f6cbc900012d9",
+  "legacyPullRequestJudgments": [
+    {
+      "number": 143,
+      "headRefName": "codex/workflow-contract-v2-f7",
+      "headRefOid": "2af41862b61d3e0f53218cc0f760b19292870a3b",
+      "baseRefName": "main",
+      "segment": {
+        "fromSha": "56ba084d07f1641fa0454fe1da024f14fe99fd37",
+        "headSha": "2af41862b61d3e0f53218cc0f760b19292870a3b",
+        "commitCount": 80,
+        "pathCount": 48
+      },
+      "ancestry": {
+        "segmentFromIsAncestorOfHead": true,
+        "headIsAncestorOfFrozenToSha": true,
+        "frozenToSha": "683e794eb4a39eea7bc3630bedbd2a557f4af8af"
+      },
+      "judgment": "F7 foundation and audited Bob boundary are ancestors of the frozen toSha; all frozen 105 paths are present within the reviewed 109-path product set, and the declared lifecycle/Windows/test resolutions plus B0/G0 GREEN evidence preserve its unique changes."
+    },
+    {
+      "number": 148,
+      "headRefName": "codex/workflow-contract-v2-p1",
+      "headRefOid": "a0da0c8f17cbb648873577a573230c8241f755f2",
+      "baseRefName": "codex/workflow-contract-v2-f7",
+      "segment": {
+        "fromSha": "2af41862b61d3e0f53218cc0f760b19292870a3b",
+        "headSha": "a0da0c8f17cbb648873577a573230c8241f755f2",
+        "commitCount": 6,
+        "pathCount": 16
+      },
+      "ancestry": {
+        "segmentFromIsAncestorOfHead": true,
+        "headIsAncestorOfFrozenToSha": true,
+        "frozenToSha": "683e794eb4a39eea7bc3630bedbd2a557f4af8af"
+      },
+      "judgment": "P1 package-pointer/lock-provider changes are a distinct ancestor segment; all frozen 105 paths are present within the reviewed 109-path product set and K0/L0/R0 GREEN evidence proves the segment was not lost."
+    },
+    {
+      "number": 149,
+      "headRefName": "codex/workflow-contract-v2-p2",
+      "headRefOid": "629f53ade7fcb42481fad6906d36ef6425fd1071",
+      "baseRefName": "codex/workflow-contract-v2-p1",
+      "segment": {
+        "fromSha": "a0da0c8f17cbb648873577a573230c8241f755f2",
+        "headSha": "629f53ade7fcb42481fad6906d36ef6425fd1071",
+        "commitCount": 70,
+        "pathCount": 21
+      },
+      "ancestry": {
+        "segmentFromIsAncestorOfHead": true,
+        "headIsAncestorOfFrozenToSha": true,
+        "frozenToSha": "683e794eb4a39eea7bc3630bedbd2a557f4af8af"
+      },
+      "judgment": "P2 package filesystem/loader/generation changes are a distinct ancestor segment; all frozen 105 paths are present within the reviewed 109-path product set and L0/J0/Y0 GREEN evidence proves the segment was not lost."
+    },
+    {
+      "number": 151,
+      "headRefName": "codex/workflow-contract-v2-p3",
+      "headRefOid": "683e794eb4a39eea7bc3630bedbd2a557f4af8af",
+      "baseRefName": "codex/workflow-contract-v2-p2",
+      "segment": {
+        "fromSha": "629f53ade7fcb42481fad6906d36ef6425fd1071",
+        "headSha": "683e794eb4a39eea7bc3630bedbd2a557f4af8af",
+        "commitCount": 40,
+        "pathCount": 20
+      },
+      "ancestry": {
+        "segmentFromIsAncestorOfHead": true,
+        "headIsAncestorOfFrozenToSha": true,
+        "frozenToSha": "683e794eb4a39eea7bc3630bedbd2a557f4af8af"
+      },
+      "judgment": "P3 lock snapshot/validation changes terminate at exact frozen toSha; all frozen 105 paths are present within the reviewed 109-path product set and K0 GREEN evidence proves the segment was not lost."
+    }
+  ],
   "publication": {
-    "status": "pending_task_7",
+    "status": "carrier_merged_pending_evidence_pr",
     "evidencePullRequest": null,
-    "publishedMainSha": null
+    "publishedMainSha": null,
+    "legacyPullRequestActionsStatus": "blocked_pending_evidence_pr_review_merge_and_blob_verification"
   },
   "intentionallyOmittedPaths": [],
   "scopeBoundary": "Workflow A only. This evidence does not resolve Workflow B, Workflow C, Processing carriers, or their later overlap."
