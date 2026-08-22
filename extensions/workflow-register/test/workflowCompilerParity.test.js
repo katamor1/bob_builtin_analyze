@@ -45,7 +45,9 @@ const vscode = {
   },
   extensions: {
     getExtension: () => ({
+      id: "IBM.bob-code",
       isActive: true,
+      packageJSON: { version: "2.0.1" },
       exports: {
         registerSource: () => {
           runtime.registerSourceCalls += 1
@@ -81,6 +83,8 @@ function resetRuntime(workspaceRoot, files) {
     activeTextEditor: undefined
   }
   runtime.source = {
+    deactivate: () => undefined,
+    log: () => undefined,
     registerWorkflow: (workflow) => {
       runtime.registeredWorkflows.push(workflow)
       return true
