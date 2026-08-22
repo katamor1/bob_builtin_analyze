@@ -169,17 +169,20 @@
     }
   },
   "productPathFidelity": {
-    "comparison": "5280723da6f0660322435255acdaf0ccbd02506f..b543b38e17a1461cd53c75fb72acb38f38e636ac",
-    "comparisonCommand": "git diff --name-only 5280723da6f0660322435255acdaf0ccbd02506f b543b38e17a1461cd53c75fb72acb38f38e636ac -- . ':(exclude)docs/release-evidence/workflow-carrier-a-merge-resolution-2026-08-22.json' ':(exclude)docs/release-evidence/workflow-carrier-a-merge-resolution-2026-08-22.md'",
+    "comparison": "5280723da6f0660322435255acdaf0ccbd02506f..7467869201edc5f1d9d3e342542c7d29dbf390b6",
+    "comparisonCommand": "git diff --name-only 5280723da6f0660322435255acdaf0ccbd02506f 7467869201edc5f1d9d3e342542c7d29dbf390b6 -- . ':(exclude)docs/release-evidence/workflow-carrier-a-merge-resolution-2026-08-22.json' ':(exclude)docs/release-evidence/workflow-carrier-a-merge-resolution-2026-08-22.md'",
     "frozenPathCount": 105,
-    "expectedPathCount": 107,
-    "actualPathCount": 107,
+    "expectedPathCount": 109,
+    "actualPathCount": 109,
     "addedContractPaths": [
       ".gitattributes",
-      "extensions/workflow-register/test/workflowCompilerParity.test.js"
+      ".github/workflows/three-extension-ui-contracts.yml",
+      "extensions/workflow-register/test/workflowCompilerParity.test.js",
+      "scripts/three-extension-ui-contract-workflow.test.js"
     ],
     "actualPaths": [
       ".gitattributes",
+      ".github/workflows/three-extension-ui-contracts.yml",
       "docs/release-evidence/workflow-contract-v2-foundation-doc-sync.patch",
       "docs/release-evidence/workflow-contract-v2-foundation-status-2026-07-23.md",
       "docs/superpowers/plans/2026-07-17-workflow-contract-v2-atomic-authoring.md",
@@ -285,17 +288,18 @@
       "extensions/workflow-register/test/workflowContractV2Predicate.test.js",
       "extensions/workflow-register/test/workflowContractV2ProviderRegistry.test.js",
       "extensions/workflow-register/test/workflowContractV2Yaml.test.js",
-      "extensions/workflow-register/test/workflowDefinitionLoader.test.js"
+      "extensions/workflow-register/test/workflowDefinitionLoader.test.js",
+      "scripts/three-extension-ui-contract-workflow.test.js"
     ],
     "missingPaths": [],
     "extraPaths": [],
     "intentionallyOmittedPaths": []
   },
   "branchPathFidelity": {
-    "comparison": "5280723da6f0660322435255acdaf0ccbd02506f..b543b38e17a1461cd53c75fb72acb38f38e636ac",
+    "comparison": "5280723da6f0660322435255acdaf0ccbd02506f..7467869201edc5f1d9d3e342542c7d29dbf390b6",
     "derivation": "productPathFidelity.actualPaths plus evidenceOnlyPaths",
-    "expectedPathCount": 109,
-    "actualPathCount": 109,
+    "expectedPathCount": 111,
+    "actualPathCount": 111,
     "evidenceOnlyPaths": [
       "docs/release-evidence/workflow-carrier-a-merge-resolution-2026-08-22.json",
       "docs/release-evidence/workflow-carrier-a-merge-resolution-2026-08-22.md"
@@ -364,14 +368,58 @@
       "finalBlob": "d1036dfe549f193c2e8a71f289b6bd88003d80fb",
       "frozenBlob": "d1c9b0458e944adc2d201e1da001124b84f024aa",
       "reason": "Reviewed test asserts the exact repository LF checkout contract for Contract v2 fixtures while the production YAML parser remains strict."
+    },
+    {
+      "path": "docs/superpowers/plans/2026-07-17-workflow-contract-v2-package-compiler.md",
+      "finalBlob": "ebf249d51228012efa83a7c6627862fbe30ed83a",
+      "frozenBlob": "e7fa3d2bde5953e4dcc063f17f97df5cc58633f7",
+      "reason": "Reviewed Task 6 CI remediation synchronizes the current compiler plan to the canonical workflowRegister.openOperationHub route and Bob 操作ハブ display label without changing internal identifiers."
+    },
+    {
+      "path": "docs/superpowers/plans/2026-07-17-workflow-contract-v2-runtime.md",
+      "finalBlob": "24b98777d582fa703c077c94a62ac3593fcb8587",
+      "frozenBlob": "6d8c70e5bf61c75a778b56f20f09499352c24f5e",
+      "reason": "Reviewed Task 6 CI remediation synchronizes the current runtime plan to the canonical workflowRegister.openOperationHub route and Bob 操作ハブ display label without changing internal identifiers."
+    },
+    {
+      "path": "docs/superpowers/specs/2026-07-17-workflow-contract-v2-design.md",
+      "finalBlob": "efdd38885803057260b96d60c8d0435a320788d9",
+      "frozenBlob": "60d121fbe96d10b7504a632bb2698600144dcdbf",
+      "reason": "Reviewed Task 6 CI remediation synchronizes the current design specification to the canonical workflowRegister.openOperationHub route and Bob 操作ハブ display label without changing internal identifiers."
     }
   ],
   "addedContractPathResolutions": [
     {
       "path": ".gitattributes",
+      "commit": "54d0b6c99da5884532125d224b9a760e8c333a37",
+      "baseBlob": "46c1dff9503b7f30ac547f243713f83712f064a0",
       "finalBlob": "7b7d9a12b2c975a5e0c96e0f94f292e850851b8c",
+      "frozenBlob": null,
+      "authority": "Reviewed Task 3 Windows portability amendment and independent review; this path is outside the frozen 105-path carrier.",
       "rule": "extensions/workflow-register/test/fixtures/workflow-contract-v2/** text eol=lf",
       "reason": "Added repository checkout-contract path; makes exact-byte Contract v2 fixture checkout reproducible on Windows."
+    },
+    {
+      "path": ".github/workflows/three-extension-ui-contracts.yml",
+      "commit": "7467869201edc5f1d9d3e342542c7d29dbf390b6",
+      "parentSha": "3b98bbd6c5d8b8a4b0559de0377c486f32f061c2",
+      "baseBlob": "e21dff9c2cc4bcc0d481aec1575461828fd6365c",
+      "finalBlob": "74a900c6db525c9dcebf9a121c28eb5936faac5f",
+      "frozenBlob": null,
+      "authority": "Reviewed Task 6 CI fix amendment and exact five-path independent review; this path is outside the frozen 105-path carrier.",
+      "contract": "Fail closed on exact checked-out head and historical-patch blob before excluding exactly that literal path from the pull-request or pushed-commit whitespace range.",
+      "reason": "Make the changed-file whitespace gate compatible with the immutable historical artifact without weakening checks for any other path."
+    },
+    {
+      "path": "scripts/three-extension-ui-contract-workflow.test.js",
+      "commit": "7467869201edc5f1d9d3e342542c7d29dbf390b6",
+      "parentSha": "3b98bbd6c5d8b8a4b0559de0377c486f32f061c2",
+      "baseBlob": "de89418a61ddd9394717f9d8426abe3f224c3ec5",
+      "finalBlob": "52fb4726e9069f32d4e0ce011ff415f6e5ea2781",
+      "frozenBlob": null,
+      "authority": "Reviewed Task 6 CI fix amendment and exact five-path independent review; this path is outside the frozen 105-path carrier.",
+      "contract": "Bind exact GitHub event/base/head expressions, gate ordering, one literal exclusion, and the pull-request versus push range branches; reject fixed, swapped, or unconditional mutations.",
+      "reason": "Prevent the one-path historical exception from becoming a stale-head, wrong-range, wildcard, or fail-open bypass."
     }
   ],
   "reviewedAddedProductDepartures": [
@@ -588,13 +636,108 @@
         "extraPaths": []
       }
     },
+    "task6CiRemediation": {
+      "status": "local_gates_passed_pending_publication",
+      "initialCarrierFailure": {
+        "pullRequestNumber": 170,
+        "head": "3b98bbd6c5d8b8a4b0559de0377c486f32f061c2",
+        "workflow": "three-extension-ui-contracts",
+        "runId": 32547887762,
+        "jobId": 96969574121,
+        "failedStepNumber": 5,
+        "failedStepName": "Verify UI and documentation contracts",
+        "tests": 30,
+        "pass": 29,
+        "fail": 1,
+        "skipped": 0,
+        "publicationReportSha256": "117389952e2ecd0253d0985368a11092f7be832cba15d540ae3c66809ca3326c"
+      },
+      "fixCommit": {
+        "sha": "7467869201edc5f1d9d3e342542c7d29dbf390b6",
+        "parentSha": "3b98bbd6c5d8b8a4b0559de0377c486f32f061c2",
+        "message": "fix: align workflow carrier CI contracts",
+        "changedPathCount": 5,
+        "insertions": 72,
+        "deletions": 10,
+        "changedPaths": [
+          ".github/workflows/three-extension-ui-contracts.yml",
+          "docs/superpowers/plans/2026-07-17-workflow-contract-v2-package-compiler.md",
+          "docs/superpowers/plans/2026-07-17-workflow-contract-v2-runtime.md",
+          "docs/superpowers/specs/2026-07-17-workflow-contract-v2-design.md",
+          "scripts/three-extension-ui-contract-workflow.test.js"
+        ]
+      },
+      "redGreen": {
+        "documentationRed": {"command": "node --test scripts/three-extension-documentation-contract.test.js", "exitCode": 1, "tests": 11, "pass": 10, "fail": 1},
+        "workflowContractRed": {"command": "node --test scripts/three-extension-ui-contract-workflow.test.js", "exitCode": 1, "tests": 1, "pass": 0, "fail": 1},
+        "mutationReds": [
+          "fixed EVENT_NAME",
+          "fixed BASE_SHA",
+          "fixed HEAD_SHA",
+          "swapped pull-request and push ranges",
+          "unconditional pull-request range",
+          "unconditional push range"
+        ],
+        "mutationRedCount": 6,
+        "focusedGreen": {"tests": 12, "pass": 12, "fail": 0, "exitCode": 0},
+        "actionsEquivalentRootGreen": {"fileCount": 7, "tests": 30, "pass": 30, "fail": 0, "exitCode": 0},
+        "gitBashBranchChecks": [
+          {"event": "pull_request", "exitCode": 0},
+          {"event": "push", "exitCode": 0}
+        ],
+        "documentSynchronization": {"canonicalRouteOccurrences": 7, "japaneseLabelOccurrences": 7, "obsoleteEnglishLabelOccurrences": 0},
+        "unscopedWhitespace": {"command": "git diff --check 5280723da6f0660322435255acdaf0ccbd02506f...7467869201edc5f1d9d3e342542c7d29dbf390b6", "exitCode": 2, "findingCount": 27, "findingPaths": ["docs/release-evidence/workflow-contract-v2-foundation-doc-sync.patch"]},
+        "scopedWhitespace": {"command": "git diff --check 5280723da6f0660322435255acdaf0ccbd02506f...7467869201edc5f1d9d3e342542c7d29dbf390b6 -- . ':(exclude)docs/release-evidence/workflow-contract-v2-foundation-doc-sync.patch'", "exitCode": 0, "findingCount": 0}
+      },
+      "reviewAuthority": {
+        "amendmentSha256": "f284b1e05d7ff0b38a9788e876287e9290bd69ed655e99b932fb9ff9c059c431",
+        "amendmentReviewSha256": "cfed37dc6c7ef3711050fd6de15f7b2a2095b454bb8b8bc473370f3ad9ab4e39",
+        "fixReportSha256": "943cd7c6006e676a5954dd78302f3ff916622ef22512446468e9e35d1e6259c8",
+        "fixReviewPackageSha256": "7c0c987755a1352219da9fd0584ebfe38ab3a2d512ca418472e47eb2a745252b",
+        "fixPatchSha256": "7d6a4655f79657cdacb9405186384c3fea066ba4e9e8e17f2fa40d93d28aeb78",
+        "fixIndependentReviewSha256": "ff8c975ce3985cde81b307da6ecad168cfb1f25002d4bdd1d9a2a442166c0bef",
+        "decision": "APPROVED",
+        "criticalFindings": 0,
+        "importantFindings": 0,
+        "minorFindings": 0
+      },
+      "formalLocalGates": {
+        "exactHead": "7467869201edc5f1d9d3e342542c7d29dbf390b6",
+        "workingDirectory": "extensions/workflow-register",
+        "singleSessionId": 40631,
+        "startedAt": "2026-08-22T12:37:47.9493512+09:00",
+        "completedAt": "2026-08-22T12:43:51.94890096+09:00",
+        "retryCount": 0,
+        "formalSequence": [
+          {"order": 1, "command": "npm.cmd ci", "exitCode": 0},
+          {"order": 2, "command": "npm.cmd run compile", "exitCode": 0},
+          {"order": 3, "command": "npm.cmd run dependency:policy", "exitCode": 0, "tests": 3, "pass": 3, "fail": 0},
+          {"order": 4, "command": "npm.cmd run architecture:policy", "exitCode": 0, "typescriptFiles": 257},
+          {"order": 5, "command": "npm.cmd run source:policy", "exitCode": 0, "typescriptFiles": 257},
+          {"order": 6, "command": "npm.cmd run schema:policy", "exitCode": 0, "tests": 5, "pass": 5, "fail": 0},
+          {"order": 7, "command": "npm.cmd run unused:report", "exitCode": 0, "depcheckIssues": 0},
+          {"order": 8, "command": "npm.cmd run audit:prod", "exitCode": 0, "productionVulnerabilities": 0},
+          {"order": 9, "command": "npm.cmd test", "exitCode": 0, "tests": 1878, "suites": 4, "pass": 1877, "fail": 0, "skipped": 1, "durationMs": 191379.8474},
+          {"order": 10, "command": "npm.cmd run package", "exitCode": 0, "packagedFiles": 851},
+          {"order": 11, "command": "npm.cmd run package:policy", "exitCode": 0, "byteSize": 1150213, "entries": 851, "byteLimit": 1200000}
+        ],
+        "artifact": {"path": "extensions/workflow-register/workflow-register-0.1.0.vsix", "byteSize": 1150213, "entries": 851, "sha256": "639b868b8a62bb78557be6165970e0c8e8a2c53a6278e01dedeb346ec756f688"},
+        "finalInvariants": {"worktreeClean": true, "remoteHeadStillInitialFailedHead": "3b98bbd6c5d8b8a4b0559de0377c486f32f061c2", "historicalPatchBlob": "e0946c6a29f7aa17538b1bc89e8160892845fb44", "packageLockBlob": "243bfe66b9e441e0c8c002f0ff2324ebfc8d9dc0", "frozenPathCount": 105, "frozenDepartureCount": 11, "productExpected": 109, "productActual": 109, "branchExpected": 111, "branchActual": 111, "missingPaths": [], "extraPaths": []}
+      }
+    },
     "exactHeadCi": {
       "status": "pending_task_6"
     }
   },
   "gitDiffStat": {
-    "command": "git diff --stat 5280723da6f0660322435255acdaf0ccbd02506f b543b38e17a1461cd53c75fb72acb38f38e636ac",
-    "summary": "109 files changed, 25468 insertions(+), 1866 deletions(-)"
+    "fixHead": {
+      "command": "git diff --stat 5280723da6f0660322435255acdaf0ccbd02506f 7467869201edc5f1d9d3e342542c7d29dbf390b6",
+      "summary": "111 files changed, 25741 insertions(+), 1869 deletions(-)"
+    },
+    "finalBranch": {
+      "command": "git diff --stat 5280723da6f0660322435255acdaf0ccbd02506f HEAD",
+      "summary": "111 files changed, 25961 insertions(+), 1869 deletions(-)"
+    }
   },
   "carrierPullRequest": {
     "status": "pending_task_6",
