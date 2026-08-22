@@ -2,9 +2,9 @@
 
 ## Result and immutable boundary
 
-Workflow Carrier A is materialized locally through independently reviewed CI-remediation commit `7467869201edc5f1d9d3e342542c7d29dbf390b6` on reviewed base main `5280723da6f0660322435255acdaf0ccbd02506f`; its parent is the initial published carrier head `3b98bbd6c5d8b8a4b0559de0377c486f32f061c2`, the Task 5 remediation commit is `b543b38e17a1461cd53c75fb72acb38f38e636ac`, and the foundation product commit is `54d0b6c99da5884532125d224b9a760e8c333a37`. The frozen authority is range `56ba084d07f1641fa0454fe1da024f14fe99fd37..683e794eb4a39eea7bc3630bedbd2a557f4af8af`, 196 commits and 105 paths. Its archived patch is `carrier-patches/workflow-a.patch`, SHA-256 `6defa23b468efdac0ccb8e2c331f00191959481a3c01750c3dfcc4910df9f769`, 1,218,707 bytes.
+Workflow Carrier A is merged through [PR #170](https://github.com/katamor1/bob_builtin_analyze/pull/170). Its independently reviewed exact head is `b728061be3d5365e0ff7adb89fd328bfc2450001`; the carrier merge commit and the exact carrier-merged `origin/main` are both `36b54145bf2e365f8e56282ab18f6cbc900012d9`. The reviewed CI-remediation commit is `7467869201edc5f1d9d3e342542c7d29dbf390b6` on reviewed base main `5280723da6f0660322435255acdaf0ccbd02506f`; its parent is the initial published carrier head `3b98bbd6c5d8b8a4b0559de0377c486f32f061c2`, the Task 5 remediation commit is `b543b38e17a1461cd53c75fb72acb38f38e636ac`, and the foundation product commit is `54d0b6c99da5884532125d224b9a760e8c333a37`. The frozen authority is range `56ba084d07f1641fa0454fe1da024f14fe99fd37..683e794eb4a39eea7bc3630bedbd2a557f4af8af`, 196 commits and 105 paths. Its archived patch is `carrier-patches/workflow-a.patch`, SHA-256 `6defa23b468efdac0ccb8e2c331f00191959481a3c01750c3dfcc4910df9f769`, 1,218,707 bytes.
 
-This is pre-publication evidence. PR #170's initial exact head `3b98bbd6c5d8b8a4b0559de0377c486f32f061c2` failed one required current-document contract, after which the reviewed five-path fix was committed only locally. All 11 formal local gates then passed once, without retry, on exact fix head `7467869201edc5f1d9d3e342542c7d29dbf390b6`. The remote PR still points to the initial failed head. The final carrier-PR head, successful exact-head CI, carrier merge SHA, carrier-merged `origin/main`, evidence PR, and published-main identity remain intentionally `pending`/`null`; none is predicted or self-referenced here. Publication of the new exact head remains Task 6E, and merge publication remains Task 7.
+PR #170's initial exact head `3b98bbd6c5d8b8a4b0559de0377c486f32f061c2` failed one required current-document contract. The reviewed five-path fix then passed all 11 formal local gates once, without retry, on exact fix head `7467869201edc5f1d9d3e342542c7d29dbf390b6`. Final exact head `b728061be3d5365e0ff7adb89fd328bfc2450001` passed all three required workflows and 10 jobs on attempt 1, received independent `APPROVED` review with Critical 0 / Important 0 / Minor 0, and was merged without reusing the old failed run. This docs-only evidence update is now at status `carrier_merged_pending_evidence_pr`: the evidence PR and published-main identity remain intentionally `null`, and no value is predicted or self-referenced. Legacy PR comments and closures remain blocked until the evidence PR is reviewed, merged, and its two published blobs are verified.
 
 The preflight command `git apply --check --3way --index <archived-workflow-a.patch>` exited `0` while reporting 92 fallback paths, 12 clean paths, and exactly one conflict path:
 
@@ -287,6 +287,22 @@ The amendment and exact fix were independently approved with Critical 0 / Import
 | full-index fix patch | `7d6a4655f79657cdacb9405186384c3fea066ba4e9e8e17f2fa40d93d28aeb78` |
 | exact fix independent review | `ff8c975ce3985cde81b307da6ecad168cfb1f25002d4bdd1d9a2a442166c0bef` |
 
+### Task 6E exact-head publication, review, and carrier merge
+
+[PR #170](https://github.com/katamor1/bob_builtin_analyze/pull/170) reached `MERGED` with reviewed exact head `b728061be3d5365e0ff7adb89fd328bfc2450001`. Its merge commit is `36b54145bf2e365f8e56282ab18f6cbc900012d9`, and the fetched carrier-merged `origin/main` was exactly `36b54145bf2e365f8e56282ab18f6cbc900012d9`. The Task 6E publication report SHA-256 is `8c7b6fb998739c1f6301a609b8492ffeb9281cfbd5e7b54331f957253cceb226`.
+
+All exact-head Actions completed successfully on attempt 1: 3 workflows and 10 jobs, with no reuse or rerun of failed run `32547887762`.
+
+| Workflow | Run ID | Result |
+| --- | ---: | --- |
+| `workflow-contracts` | `32550717770` | success |
+| `extensions-quality` | `32550717771` | success |
+| `three-extension-ui-contracts` | `32550717776` | success |
+
+Required job identities were Ubuntu workflow-register `96976884206`, Windows workflow-register `96976884314`, and UI/docs `96976884332`; all succeeded. Final independent exact-head review was `APPROVED`, Critical 0 / Important 0 / Minor 0, bound by SHA-256 `35ad107144952a93a63e762f229c463dbda4d98afc11dd47edf7ce5494704703`.
+
+The next publication boundary is deliberately unfilled: evidence pull request `null`, published-main SHA `null`. These values will be recorded only after that distinct docs-only PR exists and is merged.
+
 ## Product commits and independent review
 
 The product commit is:
@@ -367,9 +383,9 @@ The exact 11-command sequence ran once, in order, in one directly captured sessi
 
 The newly generated `extensions/workflow-register/workflow-register-0.1.0.vsix` is 1,150,213 bytes, contains 851 ZIP entries, and has SHA-256 `639b868b8a62bb78557be6165970e0c8e8a2c53a6278e01dedeb346ec756f688`.
 
-Post-gate proofs bound this result to the unchanged fix head: clean status; lock committed/index/working blob `243bfe66b9e441e0c8c002f0ff2324ebfc8d9dc0`; historical patch blob `e0946c6a29f7aa17538b1bc89e8160892845fb44`; frozen paths 105; frozen departures 11; product 109/109; branch 111/111; missing/extra/omitted `[]`. The remote carrier branch and PR remain on the initial failed head; no push, PR body edit, workflow rerun, merge, legacy-PR action, force update, or deletion occurred.
+Post-gate proofs bound this result to the unchanged fix head: clean status; lock committed/index/working blob `243bfe66b9e441e0c8c002f0ff2324ebfc8d9dc0`; historical patch blob `e0946c6a29f7aa17538b1bc89e8160892845fb44`; frozen paths 105; frozen departures 11; product 109/109; branch 111/111; missing/extra/omitted `[]`. At this Task 6D capture boundary only, the remote carrier branch and PR still pointed to initial failed head `3b98bbd6c5d8b8a4b0559de0377c486f32f061c2`, and no push, PR body edit, workflow rerun, merge, legacy-PR action, force update, or deletion had occurred. The later Task 6E publication and merge are recorded separately above.
 
-## Fix-head and final-branch `git diff --stat`
+## Historical fix-head and reviewed carrier-head `git diff --stat`
 
 The reviewed product/fix head measurement before the evidence rewrite is:
 
@@ -383,11 +399,24 @@ Its exact summary is:
 111 files changed, 25741 insertions(+), 1869 deletions(-)
 ```
 
-The final evidence-content measurement, reverified after committing the exact two evidence paths with `git diff --stat 5280723da6f0660322435255acdaf0ccbd02506f HEAD`, is:
+The reviewed carrier-head measurement, reverified for exact head `b728061be3d5365e0ff7adb89fd328bfc2450001` with `git diff --stat 5280723da6f0660322435255acdaf0ccbd02506f b728061be3d5365e0ff7adb89fd328bfc2450001`, is:
 
 ```text
 111 files changed, 25961 insertions(+), 1869 deletions(-)
 ```
+
+## Legacy pull-request preservation judgments
+
+All four segment proofs were recomputed against frozen `toSha` `683e794eb4a39eea7bc3630bedbd2a557f4af8af`. For every row, the segment `from` is an ancestor of the original head and the original head is an ancestor of that frozen `toSha`. The carrier preserves all frozen 105 paths within the reviewed 109-path product set; the four reviewed non-frozen product paths are `.gitattributes`, `.github/workflows/three-extension-ui-contracts.yml`, `extensions/workflow-register/test/workflowCompilerParity.test.js`, and `scripts/three-extension-ui-contract-workflow.test.js`. Product fidelity is 109/109 and branch fidelity is 111/111, with missing/extra/omitted `[]` and exactly 11 reviewed frozen-blob departures.
+
+| PR | Original head branch | Full original head | Original base | Frozen segment | Scale | From → head | Head → frozen `toSha` | Individual judgment |
+| ---: | --- | --- | --- | --- | --- | --- | --- | --- |
+| #143 | `codex/workflow-contract-v2-f7` | `2af41862b61d3e0f53218cc0f760b19292870a3b` | `main` | `56ba084d07f1641fa0454fe1da024f14fe99fd37..2af41862b61d3e0f53218cc0f760b19292870a3b` | 80 commits / 48 paths | `true` | `true` | F7 foundation and audited Bob boundary are ancestors of the frozen `toSha`; all frozen 105 paths are present within the reviewed 109-path product set, and the declared lifecycle/Windows/test resolutions plus B0/G0 GREEN evidence preserve its unique changes. |
+| #148 | `codex/workflow-contract-v2-p1` | `a0da0c8f17cbb648873577a573230c8241f755f2` | `codex/workflow-contract-v2-f7` | `2af41862b61d3e0f53218cc0f760b19292870a3b..a0da0c8f17cbb648873577a573230c8241f755f2` | 6 commits / 16 paths | `true` | `true` | P1 package-pointer/lock-provider changes are a distinct ancestor segment; all frozen 105 paths are present within the reviewed 109-path product set and K0/L0/R0 GREEN evidence proves the segment was not lost. |
+| #149 | `codex/workflow-contract-v2-p2` | `629f53ade7fcb42481fad6906d36ef6425fd1071` | `codex/workflow-contract-v2-p1` | `a0da0c8f17cbb648873577a573230c8241f755f2..629f53ade7fcb42481fad6906d36ef6425fd1071` | 70 commits / 21 paths | `true` | `true` | P2 package filesystem/loader/generation changes are a distinct ancestor segment; all frozen 105 paths are present within the reviewed 109-path product set and L0/J0/Y0 GREEN evidence proves the segment was not lost. |
+| #151 | `codex/workflow-contract-v2-p3` | `683e794eb4a39eea7bc3630bedbd2a557f4af8af` | `codex/workflow-contract-v2-p2` | `629f53ade7fcb42481fad6906d36ef6425fd1071..683e794eb4a39eea7bc3630bedbd2a557f4af8af` | 40 commits / 20 paths | `true` | `true` | P3 lock snapshot/validation changes terminate at exact frozen `toSha`; all frozen 105 paths are present within the reviewed 109-path product set and K0 GREEN evidence proves the segment was not lost. |
+
+No legacy PR comment or closure is authorized yet. Those actions remain blocked until the docs-only evidence PR receives exact-head CI and independent review, is merged, and both evidence blobs plus their semantic bindings are verified on fetched `origin/main`. Every legacy source branch remains preserved.
 
 ## Scope boundary
 
