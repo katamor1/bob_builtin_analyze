@@ -88,7 +88,7 @@ const EXPECTED_ARCHIVES = [
   { root: 'C:\\Users\\stell\\source\\archives\\bob_builtin_analyze\\2026-08-22-remote-main-unification', manifestSha256: 'bcdb61aad397ef4c6463eaa789d5d278b9d1bcad34015bc472c1dfc97773e476' }
 ]
 const EXPECTED_TRUST = [
-  { id: 'original-repository-bundle', sha256: '55db2865e7795d9192e75bfb3dbaadc47d28366128c241edda512aef4ca599a1' }, { id: 'carrier-manifest', sha256: 'ac5f4e94602e355828a6596be8ab9107f4f34677f0014d97f92eb960ffa539b4' }, { id: 'local-cleanup-bundle', sha256: 'e0e6fd92f1d7504c3271c01b0eae3542d3562a9214b8164957e19b56ac48dc40' }, { id: 'remote-cleanup-execution-plan', sha256: '9e36b465afbba6826556e4d7347ca1c7cb805bdb6280c77ccfeb15f6479046c8d' }, { id: 'remote-cleanup-execution-result', sha256: '3ba79a5536d18dc0fc9ec15ffe41ca6cd37c527f5dd30f02aba4ea399c6faed7' }, { id: 'remote-recovery-bundle', sha256: '06a338f28879218a8cbae247a3b4c5b951f152cd46caca4d81b7b07504cfbf1f' }
+  { id: 'original-repository-bundle', sha256: '55db2865e7795d9192e75bfb3dbaadc47d28366128c241edda512aef4ca599a1' }, { id: 'carrier-manifest', sha256: 'ac5f4e94602e355828a6596be8ab9107f4f34677f0014d97f92eb960ffa539b4' }, { id: 'local-cleanup-bundle', sha256: 'e0e6fd92f1d7504c3271c01b0eae3542d3562a9214b8164957e19b56ac48dc40' }, { id: 'remote-cleanup-execution-plan', sha256: '9e36b465afbba6826556e4d7347ca1c7cb805bdb6280c77cceb15f6479046c8d' }, { id: 'remote-cleanup-execution-result', sha256: '3ba79a5536d18dc0fc9ec15ffe41ca6cd37c527f5dd30f02aba4ea399c6faed7' }, { id: 'remote-recovery-bundle', sha256: '06a338f28879218a8cbae247a3b4c5b951f152cd46caca4d81b7b07504cfbf1f' }
 ]
 const EXPECTED_PATCHES = [
   { id: 'workflow-b', sha256: '59eca51331f3c580a63435021e03c05780ffbe6b65db76949cb0d4bff8c428c7' }, { id: 'workflow-c', sha256: '2852e9e0e535bbb63165ae01538dd271bd888afe0b7f7dcbca53d193ef24912f' }, { id: 'processing-a', sha256: '6913ddddcffb150eb207aee99bdbbad158b4ed05e9c3ca8714693d31f6122536' }, { id: 'processing-b', sha256: 'edd675378aa15650b5648308ae1f7621fa830844699ad4d06660463c9d2cb10b' }, { id: 'processing-c', sha256: '294c11760ed94bdddec8f37f6f9517f42f7e9c6442ad23df6041ff9f470bbab5' }
@@ -106,6 +106,17 @@ test('program index has every mandatory boundary, safety constraint, completion 
 })
 test('program index closes exact baseline prerequisite, static artifacts, archives, trust and carrier identities', () => {
   const validated = validateProgramIndex(validIndex()); assert.deepEqual(validated.baselinePrerequisites, EXPECTED_PREREQUISITES); assert.deepEqual(validated.staticArtifactPaths, EXPECTED_STATIC_PATHS); assert.deepEqual(validated.immutableArchives, EXPECTED_ARCHIVES); assert.deepEqual(validated.trustChainIdentities, EXPECTED_TRUST); assert.deepEqual(validated.carrierPatchIdentities, EXPECTED_PATCHES)
+})
+test('remote cleanup execution plan pin matches the approved spec and rejects the superseded typo', () => {
+  const corrected = '9e36b465afbba6826556e4d7347ca1c7cb805bdb6280c77cceb15f6479046c8d'
+  const supersededTypo = '9e36b465afbba6826556e4d7347ca1c7cb805bdb6280c77ccfeb15f6479046c8d'
+  assert.equal(validateProgramIndex(validIndex()).trustChainIdentities.find(({ id }) => id === 'remote-cleanup-execution-plan').sha256, corrected)
+  expectReject((index) => { index.trustChainIdentities.find(({ id }) => id === 'remote-cleanup-execution-plan').sha256 = supersededTypo })
+})
+test('static archive, trust-chain, and carrier SHA-256 pins are independently lowercase 64-hex values', () => {
+  const index = validateProgramIndex(validIndex())
+  for (const { manifestSha256 } of index.immutableArchives) assert.match(manifestSha256, /^[0-9a-f]{64}$/u)
+  for (const { sha256 } of [...index.trustChainIdentities, ...index.carrierPatchIdentities]) assert.match(sha256, /^[0-9a-f]{64}$/u)
 })
 test('program index fixes all twenty catalog rows and downstream protocol policy exactly', () => {
   const validated = validateProgramIndex(validIndex()); assert.deepEqual(validated.programAtomicSlices, EXPECTED_SLICES); assert.deepEqual(validated.downstreamProtocolPolicy, EXPECTED_PROTOCOL); assert.equal(validated.programAtomicSlices.some(({ sliceId }) => sliceId === 'GATE-WF2-P' || sliceId === 'FINAL-VALIDATION-CLOSURE'), false)
