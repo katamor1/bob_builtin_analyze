@@ -77,7 +77,8 @@ const commitResult = template => {
   const sequence = template.record.campaignMode === 'new_campaign' ? 1 : template.record.priorCampaignIndexHead.sequence + 1
   const path = `campaign-index/${String(sequence).padStart(4, '0')}-attempt_started.json`
   const attemptStarted = file(`${ROOT}/${path}`)
-  return { schemaVersion: `${S}wave0a-begin-admission-commit-result/v1`, mutationAuthority: false, attemptStarted, admissionCommitIndexHead: { sequence, path, sha256: attemptStarted.sha256 }, readyHandoff: file(`${ROOT}/handoffs/${ATTEMPT}-${String(sequence + 1).padStart(4, '0')}-ready.json`), campaignIndexHead: { sequence: sequence + 1, path: `campaign-index/${String(sequence + 1).padStart(4, '0')}-operator_handoff.json`, sha256: HASH }, beginTransactionDescriptor: file(`${ROOT}/campaign-transactions/${TX}/transaction.json`), beginTransactionReceipt: file(`${ROOT}/campaign-transactions/${TX}/transaction-receipt.json`), initialControlBinding: installedBinding, commitBinding: binding(template), installedRoot: dir(ROOT), ...(template.record.campaignMode === 'new_campaign' ? { firstRootInstallPlan: file(planTarget.canonicalPath, bytes(installPlan)), transientAbsence: installedAbsences } : {}) }
+  const installedRoot = template.record.campaignMode === 'new_campaign' ? { ...template.record.stagedRoot, canonicalPath: template.record.campaignRoot } : { ...template.record.campaignRootIdentity }
+  return { schemaVersion: `${S}wave0a-begin-admission-commit-result/v1`, mutationAuthority: false, attemptStarted, admissionCommitIndexHead: { sequence, path, sha256: attemptStarted.sha256 }, readyHandoff: file(`${ROOT}/handoffs/${ATTEMPT}-${String(sequence + 1).padStart(4, '0')}-ready.json`), campaignIndexHead: { sequence: sequence + 1, path: `campaign-index/${String(sequence + 1).padStart(4, '0')}-operator_handoff.json`, sha256: HASH }, beginTransactionDescriptor: file(`${ROOT}/campaign-transactions/${TX}/transaction.json`), beginTransactionReceipt: file(`${ROOT}/campaign-transactions/${TX}/transaction-receipt.json`), initialControlBinding: installedBinding, commitBinding: binding(template), installedRoot, ...(template.record.campaignMode === 'new_campaign' ? { firstRootInstallPlan: file(planTarget.canonicalPath, bytes(installPlan)), transientAbsence: installedAbsences } : {}) }
 }
 const observation = (template, status) => {
   const result = commitResult(template)
@@ -86,8 +87,8 @@ const observation = (template, status) => {
 const members = roles => roles.map((role, index) => ({ memberOrdinal: String(index + 1).padStart(4, '0'), role, byteSize: 3, sha256: digest(Buffer.from('{}\n')) }))
 const descriptor = (operation, extra, roles) => ({ schemaVersion: `${S}feature-integration-transaction/v1`, transactionId: TX, inputRecordSha256: ['reserve_intent', 'publish_receipt'].includes(operation) ? digest(Buffer.from('{}\n')) : HASH, members: members(roles), createdAt: AT, scope: 'attempt', operation, attemptId: ATTEMPT, priorEventSha256: HASH, priorCampaignIndexHead: INDEX_HEAD, ...extra })
 const descriptors = [
-  ['new begin', { schemaVersion: `${S}feature-integration-transaction/v1`, transactionId: TX, inputRecordSha256: HASH, members: members(['attempt_incomplete_marker', ...Array(5).fill('attachment'), 'event', 'campaign_index', 'handoff', 'campaign_index']), createdAt: AT, scope: 'campaign', operation: 'begin_with_handoff', campaignMode: 'new_campaign', rootInstall: 'atomic_first_root', attemptId: ATTEMPT, priorCampaignIndexHead: null, readyEventSha256: HASH, beginAdmission: binding(templateNew) }],
-  ['existing begin', { schemaVersion: `${S}feature-integration-transaction/v1`, transactionId: TX, inputRecordSha256: HASH, members: members(['campaign_index', 'attempt_incomplete_marker', ...Array(5).fill('attachment'), 'event', 'handoff', 'campaign_index']), createdAt: AT, scope: 'campaign', operation: 'begin_with_handoff', campaignMode: 'existing_campaign_new_attempt', rootInstall: 'existing_root_transaction', attemptId: ATTEMPT, priorCampaignIndexHead: INDEX_HEAD, readyEventSha256: HASH, beginAdmission: binding(templateExisting) }],
+  ['new begin', { schemaVersion: `${S}feature-integration-transaction/v1`, transactionId: TX, inputRecordSha256: HASH, members: members(['attempt_incomplete_marker', ...Array(5).fill('attachment'), 'event', 'campaign_index', 'handoff', 'campaign_index']), createdAt: AT, scope: 'campaign', operation: 'begin_with_handoff', campaignMode: 'new_campaign', rootInstall: 'atomic_first_root', attemptId: ATTEMPT, priorCampaignIndexHead: null, readyEventSha256: digest(Buffer.from('{}\n')), beginAdmission: binding(templateNew) }],
+  ['existing begin', { schemaVersion: `${S}feature-integration-transaction/v1`, transactionId: TX, inputRecordSha256: HASH, members: members(['campaign_index', 'attempt_incomplete_marker', ...Array(5).fill('attachment'), 'event', 'handoff', 'campaign_index']), createdAt: AT, scope: 'campaign', operation: 'begin_with_handoff', campaignMode: 'existing_campaign_new_attempt', rootInstall: 'existing_root_transaction', attemptId: ATTEMPT, priorCampaignIndexHead: INDEX_HEAD, readyEventSha256: digest(Buffer.from('{}\n')), beginAdmission: binding(templateExisting) }],
   ['append', descriptor('append', {}, ['attachment', 'event'])],
   ['finalize', descriptor('append_and_finalize', { terminalState: 'FAILED' }, ['attachment', 'event', 'manifest', 'manifest_hash', 'campaign_index'])],
   ['checkpoint', descriptor('checkpoint', {}, ['attachment', 'checkpoint', 'campaign_index'])],
@@ -417,4 +418,68 @@ test('campaign primitives: path sets use the same nonexpanding ordinal compariso
   bad.entries[1].coordinationFile.canonicalPath = good.entries[0].coordinationFile.canonicalPath.toLowerCase()
   bad.tupleSha256 = hash(bad.entries)
   assert.throws(() => policy.validateCampaignPrimitive('OperationCoordinationAuthority', bad), TypeError)
+})
+
+// Literal expectations independently checked against StringComparer.OrdinalIgnoreCase.
+const reviewOrdinalCases = [
+  ['ı', 'I', false], ['ſ', 'S', false], ['ß', 'SS', false], ['ß', 'ẞ', false],
+  ['日本語', '日本語', true], ['a', 'A', true], ['é', 'É', true], ['σ', 'ς', true], ['µ', 'Μ', true],
+  ['\u1f80', '\u1f88', true], ['\u1fb3', '\u1fbc', true], ['\u{10428}', '\u{10400}', true], ['\u{10d50}', '\u{10d70}', true],
+  ['\u019b', '\ua7dc', false], ['\u0264', '\ua7cb', false], ['\u1c89', '\u1c8a', false],
+  ['\ua7d2', '\ua7d3', false], ['\u{16ea0}', '\u{16ebb}', false]
+]
+for (const [left, right, equivalent] of reviewOrdinalCases) test(`campaign primitives: review regression ordinal ${left}/${right}`, () => {
+  const original = absence(`C:/wave0a/${left}`)
+  assert.deepEqual(policy.validateCampaignPrimitive('NoFollowPathAbsenceProof', original), original)
+  const candidate = { ...original, canonicalPath: `C:/wave0a/${right}` }
+  if (equivalent) assert.deepEqual(policy.validateCampaignPrimitive('NoFollowPathAbsenceProof', candidate), candidate)
+  else assert.throws(() => policy.validateCampaignPrimitive('NoFollowPathAbsenceProof', candidate), TypeError)
+  const coordinationSet = clone(externalTools.operationCoordination)
+  coordinationSet.entries[0].coordinationFile.canonicalPath = `C:/wave0a/coordination/${left}`
+  coordinationSet.entries[1].coordinationFile.canonicalPath = `C:/wave0a/coordination/${right}`
+  coordinationSet.tupleSha256 = hash(coordinationSet.entries)
+  if (equivalent) assert.throws(() => policy.validateCampaignPrimitive('OperationCoordinationAuthority', coordinationSet), TypeError)
+  else assert.deepEqual(policy.validateCampaignPrimitive('OperationCoordinationAuthority', coordinationSet), coordinationSet)
+  const staged = clone(finalized)
+  staged.root.canonicalPath = `C:/wave0a/${left}`
+  for (const key of ['campaignAuthority', 'campaignAuthorityHash', 'attemptIncompleteMarker', 'attemptStarted', 'readyEvent', 'readyHandoff', 'beginTransactionDescriptor', 'beginTransactionReceipt']) staged[key].canonicalPath = staged[key].canonicalPath.replace('C:/wave0a/staged', `C:/wave0a/${right}`)
+  for (const key of ['campaignIndexPublicationLock', 'attemptPublicationLock', 'recoveryFenceRoot']) staged.transientAbsence[key] = absence(staged.transientAbsence[key].canonicalPath.replace('C:/wave0a/staged', `C:/wave0a/${right}`))
+  staged.transientAbsence.tupleSha256 = hash(['campaignIndexPublicationLock', 'attemptPublicationLock', 'recoveryFenceRoot'].map(key => [key, staged.transientAbsence[key]]))
+  if (equivalent) assert.deepEqual(policy.validateCampaignPrimitive('FinalizedReadyStagedRootIdentity', staged), staged)
+  else assert.throws(() => policy.validateCampaignPrimitive('FinalizedReadyStagedRootIdentity', staged), TypeError)
+})
+
+test('campaign primitives: review regression suffix-pending requires exact successor attempt-start head', () => {
+  const good = observation(templateExisting, 'admission_committed_suffix_pending')
+  assert.deepEqual(policy.validateCampaignPrimitive('BeginAdmissionObservation', good), good)
+  for (const head of [INDEX_HEAD, { sequence: 9, path: 'campaign-index/0009-attempt_finalized.json', sha256: HASH }, { sequence: 3, path: 'campaign-index/0003-operator_handoff.json', sha256: HASH }, { sequence: 9, path: 'campaign-index/0009-attempt_started.json', sha256: HASH }]) {
+    assert.throws(() => policy.validateCampaignPrimitive('BeginAdmissionObservation', { ...good, admissionCommitIndexHead: head }), TypeError)
+  }
+  for (const template of [templateNew, templateExisting]) {
+    const prepared = observation(template, 'prepared')
+    assert.deepEqual(policy.validateCampaignPrimitive('BeginAdmissionObservation', prepared), prepared)
+  }
+  assert.throws(() => policy.validateCampaignPrimitive('BeginAdmissionObservation', observation(templateNew, 'admission_committed_suffix_pending')), TypeError)
+})
+
+for (const template of [templateNew, templateExisting]) test(`campaign primitives: review regression installed root invariant identity ${template.record.campaignMode}`, () => {
+  const good = commitResult(template)
+  assert.deepEqual(policy.validateCampaignPrimitive('BeginAdmissionCommitResult', good), good)
+  for (const key of ['dev', 'ino', 'attributes']) {
+    const bad = clone(good); bad.installedRoot[key] = String(BigInt(bad.installedRoot[key]) + 1n)
+    assert.throws(() => policy.validateCampaignPrimitive('BeginAdmissionCommitResult', bad), TypeError, `changed ${key}`)
+  }
+  const badPath = clone(good); badPath.installedRoot.canonicalPath += '-other'
+  assert.throws(() => policy.validateCampaignPrimitive('BeginAdmissionCommitResult', badPath), TypeError)
+  if (template.record.campaignMode === 'new_campaign') assert.notEqual(good.installedRoot.canonicalPath, template.record.stagedRoot.canonicalPath)
+})
+
+for (const [name, fixture] of descriptors.filter(([, value]) => value.operation === 'begin_with_handoff')) test(`campaign primitives: review regression READY event digest ${name}`, () => {
+  assert.deepEqual(policy.validateTransactionDescriptor(fixture), fixture)
+  for (const target of ['descriptor', 'event']) {
+    const bad = clone(fixture)
+    if (target === 'descriptor') bad.readyEventSha256 = HASH
+    else bad.members.find(member => member.role === 'event').sha256 = HASH
+    assert.throws(() => policy.validateTransactionDescriptor(bad), TypeError)
+  }
 })
