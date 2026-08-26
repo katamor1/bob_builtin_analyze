@@ -125,8 +125,19 @@ test('validation rejects any top-level dynamic field or unknown key', () => {
 test('validation rejects wrong schema repository baseline authority records and escaping authority paths', () => {
   for (const mutate of [i => { i.schemaVersion = 'wrong' }, i => { i.repository = 'wrong/repo' }, i => { i.planningBaselineMainSha = 'a'.repeat(40) }, i => { i.authorityDocuments.pop() }, i => { i.authorityDocuments.push(clone(PLAN)) }, i => { i.authorityDocuments[0].repositoryPath = '../escape.md' }, i => { i.authorityDocuments[1].repositoryPath = 'C:\\escape.md' }, i => { i.authorityDocuments[0].blobSha256 = 'a'.repeat(64) }, i => { i.authorityDocuments[1].containingCommitSha = 'A'.repeat(40) }]) expectReject(mutate)
 })
-test('validation rejects every baseline prerequisite drift and undeclared prerequisite dependency', () => {
+test('validation rejects every baseline prerequisite drift and deferred capability dependency drift', () => {
   for (const mutate of [i => { i.baselinePrerequisites = [] }, i => { i.baselinePrerequisites.push(clone(i.baselinePrerequisites[0])) }, i => { i.baselinePrerequisites[0].authorityEvidence.repositoryPath = 'docs/x.md' }, i => { i.baselinePrerequisites[0].authorityEvidence.containingCommitSha = 'a'.repeat(40) }, i => { i.baselinePrerequisites[0].authorityEvidence.blobOid = 'a'.repeat(40) }, i => { i.baselinePrerequisites[0].authorityEvidence.blobSha256 = 'a'.repeat(64) }, i => { i.baselinePrerequisites[0].requiresLaterEvidence = false }, i => { i.deferredCapabilities[3].hardDependsOn.push('MISSING') }]) expectReject(mutate)
+})
+test('validation rejects an undeclared baseline prerequisite dependency', () => {
+  expectReject((index) => { index.baselinePrerequisites[0].hardDependsOn = ['UNDECLARED-BASELINE-DEPENDENCY'] })
+})
+test('validation rejects forbidden dynamic fields and ordinary unknown keys inside nested authority and policy records', () => {
+  for (const mutate of [
+    i => { i.baselinePrerequisites[0].authorityEvidence.status = 'forbidden' },
+    i => { i.baselinePrerequisites[0].authorityEvidence.ordinaryUnknown = 'forbidden' },
+    i => { i.downstreamProtocolPolicy.gateP.status = 'forbidden' },
+    i => { i.downstreamProtocolPolicy.gateP.ordinaryUnknown = 'forbidden' }
+  ]) expectReject(mutate)
 })
 test('validation rejects missing duplicate reordered or altered boundary policy', () => {
   for (const mutate of [i => { i.planBoundaries.pop() }, i => { i.planBoundaries.push(clone(i.planBoundaries[0])) }, i => { i.planBoundaries.reverse() }, i => { i.planBoundaries[1].authorizedScope.pop() }, i => { i.planBoundaries[3].authorizedScope = i.planBoundaries[3].authorizedScope.filter((x) => !x.startsWith('GATE-R-')) }, i => { i.planBoundaries[7].authorizedScope = i.planBoundaries[7].authorizedScope.filter((x) => x !== 'FINAL-VALIDATION-CONTROL') }, i => { i.planBoundaries[1].hardDependsOn = ['MISSING'] }, i => { i.planBoundaries[0].hardDependsOn = ['FINAL-VALIDATION'] }]) expectReject(mutate)
