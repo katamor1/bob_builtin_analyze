@@ -6,12 +6,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { parseArguments, renderAuthenticated, runGenerator } from '../create-feature-integration-program-index.mjs'
+import { parseArguments, renderAuthenticated, runGenerator, collectExitedProcess } from '../create-feature-integration-program-index.mjs'
 
-const ROOT = path.resolve(fileURLToPath(new URL('../../..', import.meta.url))).replaceAll('\\', '/')
-const GENERATOR = `${ROOT}/tools/main-consolidation/create-feature-integration-program-index.mjs`
+const WORKSPACE = path.resolve(fileURLToPath(new URL('../../..', import.meta.url))).replaceAll('\\', '/')
+const ROOT = 'C:/test-only/non-authorizing-repository'
+const GENERATOR = `${WORKSPACE}/tools/main-consolidation/create-feature-integration-program-index.mjs`
 const GIT = 'C:/Program Files/Git/cmd/git.exe'
-const NODE = 'C:/Program Files/nodejs/node.exe'
+const NODE = process.execPath
 const PS = 'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'
 const APPROVAL = 'C:/Users/stell/source/archives/bob_builtin_analyze/2026-08-23-feature-integration-approval/wave0a-exact-lease-approval-instruction.json'
 const COMPARISON = APPROVAL.replace('instruction.json', 'comparison-exception.json')
@@ -36,8 +37,15 @@ function native(file, argv, options = {}) {
 let cached
 function fixture() {
   if (!cached) {
-    const blob = (oid) => Buffer.from(native(GIT, ['-C', ROOT, 'cat-file', 'blob', oid], { encoding: 'buffer' }))
-    cached = { options: parseArguments(args), approval: { bytesBase64: readFileSync(APPROVAL).toString('base64'), identity: { canonicalPath: APPROVAL, dev: '2248873766', ino: '54887620461830694', size: '2917', mtimeNs: '1787756728314313100', ctimeNs: '1787756728314313100', linkCount: '1', reparseTag: '0' } }, comparison: { bytesBase64: readFileSync(COMPARISON).toString('base64'), identity: { canonicalPath: COMPARISON, dev: '2248873766', ino: '22517998138680662', size: '12226', mtimeNs: '1787756742711789700', ctimeNs: '1787756742711789700', linkCount: '1', reparseTag: '0' } }, results: [result(), result(DESIGN_BLOB + '\n'), result(blob(DESIGN_BLOB)), result(PLAN_BLOB + '\n'), result(blob(PLAN_BLOB)), result(BASE_BLOB + '\n'), result(blob(BASE_BLOB))] }
+    // Repository-owned source documents are fixtures, not live Git/approval authority.
+    // A fresh Windows checkout may use CRLF; committed document bytes use LF.
+    const blob = (relative) => Buffer.from(readFileSync(path.join(WORKSPACE, relative), 'utf8').replaceAll('\r\n', '\n'))
+    const suffix = `planCommit=${PLAN_COMMIT} planBlob=${PLAN_BLOB} planSha256=da634d96eafe938d730ba2ab7f93fdeced1adb63c0f2bf2b7913330cda91d372`
+    const approvalText = `WAVE0A-EXACT-LEASE-MERGE-V1 を承認 ${suffix}`
+    const message = (role, ordinal, text) => ({ source: 'codex_trusted_transcript_v1', threadId: 'unit-test-non-authorizing', messageId: `unit-test-${ordinal}`, role, normalizedText: text, normalizedUtf8Sha256: sha(text), observedAt: `2000-01-01T00:00:0${ordinal}.000Z`, ordinal })
+    const approval = { schemaVersion: 'bob-builtin-analyze/feature-integration-approval-instruction/v4', purpose: 'implement_committed_wave0a_plan_and_exact_lease_addendum', mutationAuthority: false, approvedPlanIdentity: { repositoryPath: PLAN_PATH, containingCommitSha: PLAN_COMMIT, blobOid: PLAN_BLOB, blobSha256: 'da634d96eafe938d730ba2ab7f93fdeced1adb63c0f2bf2b7913330cda91d372' }, trustedTranscript: { source: 'codex_trusted_transcript_v1', threadId: 'unit-test-non-authorizing', assistantAnnouncement: message('assistant_announcement', 1, `Wave 0A plan committed ${suffix}`), assistantPrompt: message('assistant_prompt', 2, approvalText), userApproval: message('user_approval', 3, approvalText) }, approvalText, capturedAt: '2000-01-01T00:00:04.000Z' }
+    const bytes = Buffer.from(JSON.stringify(approval)); const options = parseArguments(args); options.approvalInstruction = 'C:/test-only/non-authorizing-approval.json'
+    cached = { options, approval: { bytesBase64: bytes.toString('base64'), identity: { canonicalPath: options.approvalInstruction, dev: '1', ino: '2', size: String(bytes.length), mtimeNs: '3', ctimeNs: '3', linkCount: '1', reparseTag: '0' } }, comparison: null, results: [result(), result(DESIGN_BLOB + '\n'), result(blob(DESIGN_PATH)), result(PLAN_BLOB + '\n'), result(blob(PLAN_PATH)), result(BASE_BLOB + '\n'), result(blob(BASE_PATH))] }
   }
   return structuredClone(cached)
 }
@@ -46,14 +54,13 @@ function editRecord(f, which, change) {
   f[which].bytesBase64 = Buffer.from(JSON.stringify(record)).toString('base64')
 }
 function strictFixture() {
-  const f = fixture(); f.comparison = null
-  editRecord(f, 'approval', (record) => {
-    for (const key of ['assistantAnnouncement', 'userApproval']) {
-      const message = record.trustedTranscript[key]; message.normalizedText = message.normalizedText.slice(0, -1); message.normalizedUtf8Sha256 = sha(message.normalizedText)
-    }
-  })
-  f.approval.identity.canonicalPath = 'C:/strict/approval.json'; f.options.approvalInstruction = 'C:/strict/approval.json'
-  f.approval.identity.size = String(Buffer.from(f.approval.bytesBase64, 'base64').length)
+  return fixture()
+}
+const localPairAvailable = process.platform === 'win32' && existsSync(APPROVAL) && existsSync(COMPARISON)
+function localPairFixture() {
+  const f = fixture(); f.options.approvalInstruction = APPROVAL
+  f.approval = { bytesBase64: readFileSync(APPROVAL).toString('base64'), identity: { canonicalPath: APPROVAL, dev: '2248873766', ino: '54887620461830694', size: '2917', mtimeNs: '1787756728314313100', ctimeNs: '1787756728314313100', linkCount: '1', reparseTag: '0' } }
+  f.comparison = { bytesBase64: readFileSync(COMPARISON).toString('base64'), identity: { canonicalPath: COMPARISON, dev: '2248873766', ino: '22517998138680662', size: '12226', mtimeNs: '1787756742711789700', ctimeNs: '1787756742711789700', linkCount: '1', reparseTag: '0' } }
   return f
 }
 const rejected = /invalid|mismatch|dirty|approval|identity|bound|exit|unknown|duplicate|absolute|selector|strict|schema|capture|transcript|native|authority|blob|comparison|closed|reparse|link|process/i
@@ -95,7 +102,8 @@ test('bridge request has exact fixed Git argv, no CWD/PATH redirection, and clos
     assert.equal(options.env.PATH, undefined); assert.equal(options.env.HOME, undefined); assert.equal(options.env.USERPROFILE, undefined)
     assert.equal(options.env.SystemRoot, 'C:/Windows'); assert.equal(options.env.GIT_CONFIG_GLOBAL, 'NUL')
     assert.equal(options.env.GIT_CONFIG_NOSYSTEM, '1'); assert.equal(options.env.GIT_NO_REPLACE_OBJECTS, '1')
-    assert.equal(options.env.TEMP, 'C:/Users/stell/AppData/Local/Temp')
+    assert.equal(options.env.TEMP, undefined); assert.equal(options.timeout, undefined); assert.equal(options.maxBuffer, undefined)
+    assert.equal(request.nodeExecutable, process.execPath.replaceAll('\\', '/'))
     assert.deepEqual(request.workingAuthorities, [{ path: DESIGN_PATH, sha256: '709872ba8fa3188c666473248bf5196d1131672cfdec388929ecdb8c4c0292f5' }, { path: PLAN_PATH, sha256: 'da634d96eafe938d730ba2ab7f93fdeced1adb63c0f2bf2b7913330cda91d372' }])
     assert.equal(request.options.repositoryRoot, ROOT); assert.equal(request.options.gitExecutable, GIT)
     return { status: 0, stdout: Buffer.from('{"mode":"created","sha256":"' + 'a'.repeat(64) + '","bytes":123}\n'), stderr: Buffer.alloc(0) }
@@ -135,15 +143,13 @@ test('design/plan/baseline commit, blob, SHA crossings and working-tree substitu
   for (const value of [BASE_BLOB + '\nextra', BASE_BLOB + '\r\n\n', ' ' + BASE_BLOB + '\n']) { const f = fixture(); f.results[5] = result(value); assert.throws(() => renderAuthenticated(f), rejected) }
 })
 
-test('the fixed two-LF exception requires the original paired native identities and exact byte digests', () => {
+test('local exact-pair integration: original paired identities, byte digests, and every exception drift', { skip: !localPairAvailable && 'original private pair is not installed on this host' }, () => {
+  assert.ok(Buffer.isBuffer(renderAuthenticated(localPairFixture())))
   for (const which of ['approval', 'comparison']) {
-    for (const field of ['canonicalPath', 'dev', 'ino', 'size', 'mtimeNs', 'ctimeNs', 'linkCount', 'reparseTag']) { const f = fixture(); f[which].identity[field] += 'x'; assert.throws(() => renderAuthenticated(f), rejected) }
-    const f = fixture(); f[which].bytesBase64 = Buffer.from(Buffer.from(f[which].bytesBase64, 'base64').toString() + '\n').toString('base64'); assert.throws(() => renderAuthenticated(f), rejected)
+    for (const field of ['canonicalPath', 'dev', 'ino', 'size', 'mtimeNs', 'ctimeNs', 'linkCount', 'reparseTag']) { const f = localPairFixture(); f[which].identity[field] += 'x'; assert.throws(() => renderAuthenticated(f), rejected) }
+    const f = localPairFixture(); f[which].bytesBase64 = Buffer.from(Buffer.from(f[which].bytesBase64, 'base64').toString() + '\n').toString('base64'); assert.throws(() => renderAuthenticated(f), rejected)
   }
-  const f = fixture(); f.comparison = null; assert.throws(() => renderAuthenticated(f), rejected)
-})
-
-test('two LFs, changed IDs, pair crossing, sidecar authority or comparison-rule drift cannot extend exception', () => {
+  const f = localPairFixture(); f.comparison = null; assert.throws(() => renderAuthenticated(f), rejected)
   const cases = [
     ['approval', (a) => { a.trustedTranscript.userApproval.normalizedText += '\n' }],
     ['approval', (a) => { a.trustedTranscript.assistantAnnouncement.messageId = 'different' }],
@@ -155,12 +161,22 @@ test('two LFs, changed IDs, pair crossing, sidecar authority or comparison-rule 
     ['comparison', (a) => { a.instructionFileIdentity.ino = '1' }],
     ['comparison', (a) => { a.originalObservations[2].rawText += '\n' }]
   ]
-  for (const [which, change] of cases) { const f = fixture(); editRecord(f, which, change); assert.throws(() => renderAuthenticated(f), rejected) }
+  for (const [which, change] of cases) { const f = localPairFixture(); editRecord(f, which, change); assert.throws(() => renderAuthenticated(f), rejected) }
+})
+
+test('synthetic non-authorizing records cannot opt into a generic terminal-LF exception', () => {
+  for (const suffix of ['\n', '\n\n', ' ']) {
+    const f = fixture(); editRecord(f, 'approval', (a) => { const m = a.trustedTranscript.userApproval; m.normalizedText += suffix; m.normalizedUtf8Sha256 = sha(m.normalizedText) })
+    f.approval.identity.size = String(Buffer.from(f.approval.bytesBase64, 'base64').length)
+    assert.throws(() => renderAuthenticated(f), /strict approval text/)
+    f.comparison = { bytesBase64: Buffer.from('{"operation":"trim"}').toString('base64'), identity: { ...f.approval.identity } }
+    assert.throws(() => renderAuthenticated(f), /comparison/)
+  }
 })
 
 test('ordinary v4 stays strict with closed keys, normalized hashes, exact text, ordered distinct transcript and approval identity', () => {
   assert.ok(Buffer.isBuffer(renderAuthenticated(strictFixture())))
-  const cases = [(a) => { a.extra = true }, (a) => { a.mutationAuthority = true }, (a) => { a.approvedPlanIdentity.containingCommitSha = DESIGN_COMMIT }, (a) => { a.approvedPlanIdentity.blobSha256 = 'a'.repeat(64) }, (a) => { a.trustedTranscript.source = 'self' }, (a) => { a.trustedTranscript.userApproval.role = 'assistant_prompt' }, (a) => { a.trustedTranscript.userApproval.threadId = 'other' }, (a) => { a.trustedTranscript.userApproval.messageId = a.trustedTranscript.assistantPrompt.messageId }, (a) => { a.trustedTranscript.userApproval.ordinal = 1 }, (a) => { a.trustedTranscript.userApproval.normalizedText += '\n'; a.trustedTranscript.userApproval.normalizedUtf8Sha256 = sha(a.trustedTranscript.userApproval.normalizedText) }, (a) => { a.trustedTranscript.assistantAnnouncement.normalizedUtf8Sha256 = 'a'.repeat(64) }, (a) => { a.approvalText = 'prefix' + a.approvalText }, (a) => { a.capturedAt = '2020-01-01T00:00:00.000Z' }]
+  const cases = [(a) => { a.extra = true }, (a) => { a.mutationAuthority = true }, (a) => { a.approvedPlanIdentity.containingCommitSha = DESIGN_COMMIT }, (a) => { a.approvedPlanIdentity.blobSha256 = 'a'.repeat(64) }, (a) => { a.trustedTranscript.source = 'self' }, (a) => { a.trustedTranscript.userApproval.role = 'assistant_prompt' }, (a) => { a.trustedTranscript.userApproval.threadId = 'other' }, (a) => { a.trustedTranscript.userApproval.messageId = a.trustedTranscript.assistantPrompt.messageId }, (a) => { a.trustedTranscript.userApproval.ordinal = 1 }, (a) => { a.trustedTranscript.userApproval.normalizedText += '\n'; a.trustedTranscript.userApproval.normalizedUtf8Sha256 = sha(a.trustedTranscript.userApproval.normalizedText) }, (a) => { a.trustedTranscript.assistantAnnouncement.normalizedUtf8Sha256 = 'a'.repeat(64) }, (a) => { a.approvalText = 'prefix' + a.approvalText }, (a) => { a.capturedAt = '1999-01-01T00:00:00.000Z' }]
   for (const change of cases) { const f = strictFixture(); editRecord(f, 'approval', change); f.approval.identity.size = String(Buffer.from(f.approval.bytesBase64, 'base64').length); assert.throws(() => renderAuthenticated(f), rejected) }
 })
 
@@ -239,4 +255,74 @@ try {
   assert.equal(existsSync(path.join(dir, 'missing.json')), false)
   assert.equal(statSync(path.join(dir, 'output.json')).size, 9)
   // Retain the bounded native fixture for independent inspection; never delete user paths.
+})
+
+// Round-1 review regressions. These intentionally exercise the current native boundary,
+// not a replacement success stub. Metadata fixtures are never initialized/executed as Git repositories.
+function reviewNativeSource() {
+  let source
+  runGenerator(args, { env: {}, execute(_exe, _argv, options) {
+    source = JSON.parse(options.input).nativeSource
+    return { status: 0, stdout: Buffer.from('{"mode":"created","sha256":"' + 'a'.repeat(64) + '","bytes":123}'), stderr: Buffer.alloc(0) }
+  } })
+  return source
+}
+function reviewMetadata(dir, config = '[core]\n bare = false\n') {
+  const root = path.join(dir, 'tree')
+  for (const p of ['objects', 'objects/info', 'objects/pack', 'refs', 'info']) mkdirSync(path.join(root, '.git', p), { recursive: true })
+  writeFileSync(path.join(root, '.git', 'config'), config)
+  return root
+}
+const psQuote = (value) => "'" + value.replaceAll("'", "''") + "'"
+function reviewNative(body) {
+  const source = "$ErrorActionPreference='Stop'\nAdd-Type -TypeDefinition @'\n" + reviewNativeSource() + "\n'@\n" + body
+  const executable = path.join(process.env.SystemRoot || 'C:/Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe')
+  const r = spawnSync(executable, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '& ([ScriptBlock]::Create([Console]::In.ReadToEnd()))'], { input: source, encoding: 'utf8', timeout: 30000, maxBuffer: 65536, env: { SystemRoot: process.env.SystemRoot || 'C:/Windows', TEMP: tmpdir(), TMP: tmpdir() } })
+  assert.equal(r.error, undefined, String(r.error)); assert.equal(r.status, 0, r.stderr)
+  return JSON.parse(r.stdout)
+}
+
+test('review I1: same-line Git core.worktree grammar cannot redirect semantic repository root', { skip: process.platform !== 'win32' }, () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'program-index-review-i1-'))
+  const root = reviewMetadata(dir, '[core] worktree = C:/elsewhere\n')
+  const result = reviewNative(`$s=New-Object ProgramIndexNative; $rejected=$false;try { try {$s.HoldRepository(${psQuote(root)})}catch{$rejected=$true}; [Console]::WriteLine((@{rejected=$rejected}|ConvertTo-Json -Compress)) }finally{$s.Dispose()}`)
+  assert.equal(result.rejected, true, 'Git-supported same-line core.worktree must reject before a repository command')
+})
+
+test('review I1: accepted config is a closed grammar and Git-reported root/admin/common paths must match held identities', { skip: process.platform !== 'win32' }, () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'program-index-review-config-')); const root = reviewMetadata(dir)
+  const cases = ['[core] worktree = C:/elsewhere\n', '[CoRe]\n WoRkTrEe = "C:/elsewhere"\n', '[core]\n worktree = C:/else\\\n where\n', '[include] path = C:/elsewhere\n', '[includeIf "gitdir:*"] path = C:/elsewhere\n', '[filter "x"] clean = execute\n', '[core]\n fsmonitor = execute\n', '[extensions]\n worktreeConfig = true\n', '[core]\n bare = true\n', '[core]\n worktree\n', '[core.worktree]\n x = y\n']
+  const result = reviewNative(`$rejected=0;foreach($text in @(${cases.map(psQuote).join(',')})){try{[ProgramIndexNative]::ValidateConfig($text)}catch{$rejected++}};[ProgramIndexNative]::ValidateConfig('[core] bare = false');$s=New-Object ProgramIndexNative;try{$s.HoldRepository(${psQuote(root)});$correct=${psQuote(root.replaceAll('\\', '/') + '\n' + path.join(root, '.git').replaceAll('\\', '/') + '\n' + path.join(root, '.git').replaceAll('\\', '/') + '\n')};$s.CheckRepositoryBinding([Text.Encoding]::UTF8.GetBytes($correct));$bindingRejected=$false;try{$s.CheckRepositoryBinding([Text.Encoding]::UTF8.GetBytes(($correct.Replace(${psQuote(root.replaceAll('\\', '/'))},'C:/different'))))}catch{$bindingRejected=$true};[Console]::WriteLine((@{rejected=$rejected;bindingRejected=$bindingRejected}|ConvertTo-Json -Compress))}finally{$s.Dispose()}`)
+  assert.equal(result.rejected, cases.length); assert.equal(result.bindingRejected, true)
+})
+
+test('review I3: descendant holding stdout is settled before protected leases release', { skip: process.platform !== 'win32' }, () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'program-index-review-i3-')); const leaf = path.join(dir, 'held'); const pidFile = path.join(dir, 'descendant.pid')
+  writeFileSync(leaf, 'held')
+  const child = `const {spawn}=require('node:child_process');const p=spawn(process.execPath,['-e','setTimeout(()=>{},15000)'],{stdio:['ignore','inherit','inherit'],detached:true,windowsHide:true});require('node:fs').writeFileSync(${JSON.stringify(pidFile)},String(p.pid));setTimeout(()=>{},15000)`
+  const result = reviewNative(`$s=New-Object ProgramIndexNative;$descendant=$null;$threw=$false;$alive=$false;$releasedWhileAlive=$false;try{$null=$s.HoldFile(${psQuote(leaf)});try{$null=$s.Run(${psQuote(process.execPath)},@('-e',${psQuote(child)}),'',1024,750)}catch{$threw=$true};$pidText=[IO.File]::ReadAllText(${psQuote(pidFile)});try{$descendant=[Diagnostics.Process]::GetProcessById([int]$pidText);$alive=!$descendant.HasExited}catch{};$s.Dispose();if($alive){try{[IO.File]::WriteAllText(${psQuote(leaf)},'lease released');$releasedWhileAlive=$true}catch{}};[Console]::WriteLine((@{threw=$threw;descendantAlive=$alive;leaseReleasedWhileAlive=$releasedWhileAlive}|ConvertTo-Json -Compress))}finally{if($descendant){if(!$descendant.HasExited){$descendant.Kill();if(!$descendant.WaitForExit(5000)){throw 'owned test descendant cleanup did not settle'}};$descendant.Dispose()};$s.Dispose()}`)
+  assert.equal(result.threw, true, 'fixture must actually exercise bounded failure')
+  assert.equal(result.descendantAlive, false, 'timeout returned while the actual descendant still owned stdout')
+  assert.equal(result.leaseReleasedWhileAlive, false, 'lease was released before actual child-tree settlement')
+})
+
+test('review I4: ordinary suite runs when all private approval paths are unavailable', (t) => {
+  const script = `import fs from 'node:fs';import {syncBuiltinESMExports} from 'node:module';const original=fs.readFileSync,exists=fs.existsSync;const privatePath=p=>String(p).replaceAll('\\\\','/').includes('/source/archives/');fs.readFileSync=(p,...rest)=>{if(privatePath(p))throw Error('PRIVATE_APPROVAL_UNAVAILABLE');return original(p,...rest)};fs.existsSync=p=>privatePath(p)?false:exists(p);syncBuiltinESMExports();await import(${JSON.stringify(import.meta.url)});`
+  const ordinaryNames = '^(all public|ambient|bridge request|native bridge|committed blobs|staged,|every command|design/plan|local exact-pair|synthetic non-authorizing|ordinary v4|import is inert|unknown flags|Windows held|review I[13]:)'
+  const r = spawnSync(process.execPath, ['--test-name-pattern=' + ordinaryNames, '--test-reporter=tap', '--input-type=module', '-e', script], { encoding: 'utf8', timeout: 30000, maxBuffer: 65536, env: { SystemRoot: process.env.SystemRoot || 'C:/Windows', TEMP: tmpdir(), TMP: tmpdir() } })
+  assert.equal(r.error, undefined, String(r.error) + '\n' + r.stdout + r.stderr); assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.match(r.stdout, /SKIP original private pair is not installed on this host/)
+  const counts = r.stdout.match(/# tests \d+[\s\S]*$/)?.[0]
+  assert.ok(counts, 'private-free subprocess must report its actual test counts')
+  t.diagnostic('Private-free subprocess (not additional top-level tests): ' + counts.replaceAll('\n', ' '))
+})
+
+test('review I3: outer collection discards oversized streams but waits for real exit instead of killing holder', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'program-index-outer-'))
+  for (const stream of ['stdout', 'stderr']) {
+    const marker = path.join(dir, stream + '.settled')
+    const r = await collectExitedProcess(process.execPath, ['-e', `process.${stream}.write('x'.repeat(100000));setTimeout(()=>{require('node:fs').writeFileSync(${JSON.stringify(marker)},'settled');process.exit(7)},100)`], { env: { SystemRoot: process.env.SystemRoot || 'C:/Windows' }, input: '' })
+    assert.equal(r.status, 7); assert.equal(r.overflow, true); assert.ok(r.stdout.length <= 65536); assert.ok(r.stderr.length <= 65536)
+    assert.equal(readFileSync(marker, 'utf8'), 'settled', 'collector killed process before its actual terminal work')
+  }
 })

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { buildProgramIndex, validateProgramIndex, canonicalJson } from './featureIntegrationProgramPolicy.mjs'
 
@@ -20,7 +20,7 @@ const IDS = ['msg_05f07830af5cd031016a8ef5b4cc3887d0897fb0269372062f', 'msg_05f0
 const SUFFIX = `planCommit=${PLAN.containingCommitSha} planBlob=${PLAN.blobOid} planSha256=${PLAN.blobSha256}`
 const ANNOUNCEMENT = `Wave 0A plan committed ${SUFFIX}`
 const APPROVAL_TEXT = `WAVE0A-EXACT-LEASE-MERGE-V1 を承認 ${SUFFIX}`
-const NODE = 'C:/Program Files/nodejs/node.exe'
+const NODE = process.execPath.replaceAll('\\', '/')
 const POWERSHELL = 'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe'
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex')
 function requireThat(ok, label) { if (!ok) throw new Error(label) }
@@ -47,7 +47,7 @@ export function parseArguments(argv) {
 function closedEnvironment(ambient) {
   for (const name of Object.keys(ambient)) requireThat(!/^(?:GIT_|NODE_OPTIONS$|NODE_PATH$)/iu.test(name), `ambient selector ${name} rejected`)
   const environment = Object.create(null)
-  Object.assign(environment, { SystemRoot: 'C:/Windows', WINDIR: 'C:/Windows', TEMP: 'C:/Users/stell/AppData/Local/Temp', TMP: 'C:/Users/stell/AppData/Local/Temp', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: 'NUL', GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_NO_REPLACE_OBJECTS: '1', GIT_ATTR_NOSYSTEM: '1', LC_ALL: 'C' })
+  Object.assign(environment, { SystemRoot: 'C:/Windows', WINDIR: 'C:/Windows', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: 'NUL', GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_NO_REPLACE_OBJECTS: '1', GIT_ATTR_NOSYSTEM: '1', LC_ALL: 'C' })
   return environment
 }
 function decode(text, limit, label) {
@@ -149,6 +149,7 @@ public sealed class ProgramIndexNative : IDisposable {
  [DllImport("kernel32.dll",SetLastError=true)] static extern bool WriteFile(SafeFileHandle h,byte[] b,uint n,out uint r,IntPtr o);
  [DllImport("kernel32.dll",SetLastError=true)] static extern bool FlushFileBuffers(SafeFileHandle h);
  readonly Dictionary<string,SafeFileHandle> held = new Dictionary<string,SafeFileHandle>(StringComparer.OrdinalIgnoreCase);
+ string repositoryRoot,repositoryAdmin,repositoryCommon;
  static Exception Error(string s) { return new IOException(s+" native error "+Marshal.GetLastWin32Error()); }
  static string Full(string p) { string f=Path.GetFullPath(p); if(!Path.IsPathRooted(p)||!String.Equals(f.Replace('\\','/'),p.Replace('\\','/'),StringComparison.OrdinalIgnoreCase)) throw Error("noncanonical absolute path"); return f; }
  static string Final(SafeFileHandle h) { var b=new StringBuilder(32768); uint n=GetFinalPathNameByHandleW(h,b,(uint)b.Capacity,0); if(n==0||n>=b.Capacity) throw Error("final path"); string s=b.ToString(); if(!s.StartsWith(@"\\?\")) throw Error("nonlocal final path"); return s.Substring(4); }
@@ -165,6 +166,42 @@ public sealed class ProgramIndexNative : IDisposable {
  public void RequireHash(string p,string expected) { byte[] bytes=Read(p,4194304);using(var sha=System.Security.Cryptography.SHA256.Create()){string actual=BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-","").ToLowerInvariant();if(actual!=expected)throw Error("dirty authority hash mismatch");} }
  void Refuse(string p) { if(Present(p))throw Error("repository selector/pointer rejected "+p); }
  void FreezeTree(string p,int depth,ref int count) { if(!Present(p))return;if(depth>8||++count>4096)throw Error("repository metadata bound");HoldDirectoryChain(p);foreach(string f in Directory.GetFiles(p))HoldFile(f);foreach(string d in Directory.GetDirectories(p))FreezeTree(d,depth+1,ref count); }
+ public static void ValidateConfig(string config) {
+  // A deliberately closed, conservative subset of Git's grammar. Unsupported
+  // quoting, continuations and legacy section syntax reject rather than bypass.
+  if(config.Length>65536||config.IndexOf('\\')>=0||config.IndexOf('\0')>=0)throw Error("unsupported config grammar");
+  string section="";
+  foreach(string raw in config.Replace("\r\n","\n").Split('\n')) {
+   string line=raw.Trim();if(line.Length==0||line[0]=='#'||line[0]==';')continue;
+   if(line[0]=='[') {
+    var header=System.Text.RegularExpressions.Regex.Match(line,"^\\[([A-Za-z][A-Za-z0-9-]*)(?: \\\"[^\\\"\\\\]*\\\")?\\]\\s*(.*)$");
+    if(!header.Success)throw Error("unsupported config section grammar");
+    section=header.Groups[1].Value.ToLowerInvariant();line=header.Groups[2].Value.Trim();
+    if(Array.IndexOf(new[]{"core","remote","branch","user","lfs"},section)<0)throw Error("local config selector rejected");
+    if(line.Length==0||line[0]=='#'||line[0]==';')continue;
+   }
+   var item=System.Text.RegularExpressions.Regex.Match(line,"^([A-Za-z][A-Za-z0-9-]*)\\s*=\\s*([^\\r\\n]*)$");
+   if(!item.Success)throw Error("unsupported config assignment grammar");string key=item.Groups[1].Value.ToLowerInvariant();string value=item.Groups[2].Value.Trim();
+   if(section=="core") {
+    if(Array.IndexOf(new[]{"repositoryformatversion","filemode","bare","logallrefupdates","symlinks","ignorecase"},key)<0)throw Error("local core config selector rejected");
+    string token=value.Split('#',';')[0].Trim();
+    if(key=="repositoryformatversion"?token!="0":key=="bare"?token!="false":token!="true"&&token!="false")throw Error("unsupported core config value");
+   } else {
+    string[] allowed=section=="remote"?new[]{"url","fetch","pushurl"}:section=="branch"?new[]{"remote","merge","vscode-merge-base"}:section=="user"?new[]{"name","email"}:section=="lfs"?new[]{"repositoryformatversion"}:new string[0];
+    if(Array.IndexOf(allowed,key)<0)throw Error("local config key rejected");
+   }
+  }
+ }
+ public void CheckRepositoryBinding(byte[] output) {
+  string text=Text(output);string[] lines=text.Replace("\r\n","\n").Split('\n');
+  if(lines.Length!=4||lines[3]!="")throw Error("Git semantic root output invalid");
+  string[] expected={repositoryRoot,repositoryAdmin,repositoryCommon};
+  for(int i=0;i<3;i++)if(!String.Equals(Full(lines[i]),expected[i],StringComparison.OrdinalIgnoreCase))throw Error("Git semantic root/admin/common mismatch");
+ }
+ public void AuthenticateRepositoryBinding(string git) {
+  byte[] output=Run(git,new[]{"-C",repositoryRoot,"rev-parse","--path-format=absolute","--show-toplevel","--absolute-git-dir","--git-common-dir"},"",16384,30000);
+  CheckRepositoryBinding(output);
+ }
  public void HoldRepository(string root) {
   root=Full(root);HoldDirectoryChain(root);string dot=Path.Combine(root,".git");string admin,common;
   if((GetFileAttributesW(dot)&0x10)!=0){HoldDirectoryChain(dot);admin=dot;common=dot;}
@@ -174,19 +211,107 @@ public sealed class ProgramIndexNative : IDisposable {
    if(!String.Equals(Path.GetDirectoryName(admin),Path.Combine(common,"worktrees"),StringComparison.OrdinalIgnoreCase))throw Error("admin pointer mismatch");
   }
   foreach(string folder in new[]{admin,common}) {foreach(string f in new[]{"HEAD","index","packed-refs","config","config.worktree","shallow"})HoldOptionalFile(Path.Combine(folder,f));Refuse(Path.Combine(folder,"objects","info","alternates"));Refuse(Path.Combine(folder,"objects","info","http-alternates"));Refuse(Path.Combine(folder,"info","grafts"));Refuse(Path.Combine(folder,"refs","replace"));}
-  string config=Text(Read(Path.Combine(common,"config"),65536));if(System.Text.RegularExpressions.Regex.IsMatch(config,@"(?im)^\s*\[\s*(include|includeIf|extensions|filter)\b|^\s*(worktree|fsmonitor)\s*="))throw Error("local config selector rejected");
+  ValidateConfig(Text(Read(Path.Combine(common,"config"),65536)));
   if(Present(Path.Combine(admin,"config.worktree")))throw Error("worktree config selector rejected");
   int count=0;FreezeTree(Path.Combine(common,"refs"),0,ref count);
   HoldDirectoryChain(Path.Combine(common,"objects"));
+  repositoryRoot=root;repositoryAdmin=admin;repositoryCommon=common;
  }
  static string Quote(string s) { var b=new StringBuilder("\"");int slashes=0;foreach(char c in s){if(c=='\\'){slashes++;continue;}if(c=='\"'){b.Append('\\',slashes*2+1);b.Append(c);}else{b.Append('\\',slashes);b.Append(c);}slashes=0;}b.Append('\\',slashes*2);return b.Append('"').ToString(); }
- static void Environment(ProcessStartInfo p) { p.EnvironmentVariables.Clear();foreach(var kv in new Dictionary<string,string>{{"SystemRoot","C:/Windows"},{"WINDIR","C:/Windows"},{"TEMP","C:/Users/stell/AppData/Local/Temp"},{"TMP","C:/Users/stell/AppData/Local/Temp"},{"GIT_CONFIG_NOSYSTEM","1"},{"GIT_CONFIG_GLOBAL","NUL"},{"GIT_TERMINAL_PROMPT","0"},{"GIT_OPTIONAL_LOCKS","0"},{"GIT_NO_REPLACE_OBJECTS","1"},{"GIT_ATTR_NOSYSTEM","1"},{"LC_ALL","C"}})p.EnvironmentVariables.Add(kv.Key,kv.Value); }
+ static string EnvironmentBlock() {
+  string temp=Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),"Temp");
+  var values=new SortedDictionary<string,string>(StringComparer.OrdinalIgnoreCase){{"SystemRoot","C:/Windows"},{"WINDIR","C:/Windows"},{"TEMP",temp},{"TMP",temp},{"GIT_CONFIG_NOSYSTEM","1"},{"GIT_CONFIG_GLOBAL","NUL"},{"GIT_TERMINAL_PROMPT","0"},{"GIT_OPTIONAL_LOCKS","0"},{"GIT_NO_REPLACE_OBJECTS","1"},{"GIT_ATTR_NOSYSTEM","1"},{"LC_ALL","C"}};
+  var b=new StringBuilder();foreach(var kv in values)b.Append(kv.Key).Append('=').Append(kv.Value).Append('\0');return b.Append('\0').ToString();
+ }
  static byte[] Bounded(Stream stream,int limit) {using(var m=new MemoryStream()){byte[] b=new byte[8192];int n;while((n=stream.Read(b,0,b.Length))>0){if(m.Length+n>limit)throw Error("child stream bound");m.Write(b,0,n);}return m.ToArray();} }
+ [StructLayout(LayoutKind.Sequential)] struct Security {public int Size;public IntPtr Descriptor;[MarshalAs(UnmanagedType.Bool)]public bool Inherit;}
+ [StructLayout(LayoutKind.Sequential)] struct Startup {public int Size;public IntPtr Reserved,Desktop,Title;public uint X,Y,XSize,YSize,XChars,YChars,Fill,Flags;public short Show,ReservedSize;public IntPtr ReservedBytes,Input,Output,Error;}
+ [StructLayout(LayoutKind.Sequential)] struct StartupEx {public Startup Startup;public IntPtr Attributes;}
+ [StructLayout(LayoutKind.Sequential)] struct ProcessInfo {public IntPtr Process,Thread;public uint ProcessId,ThreadId;}
+ [StructLayout(LayoutKind.Sequential)] struct BasicLimit {public long ProcessTime,JobTime;public uint Flags;public UIntPtr MinWorking,MaxWorking;public uint ActiveLimit;public UIntPtr Affinity;public uint Priority,Scheduling;}
+ [StructLayout(LayoutKind.Sequential)] struct IoCounters {public ulong ReadOps,WriteOps,OtherOps,ReadBytes,WriteBytes,OtherBytes;}
+ [StructLayout(LayoutKind.Sequential)] struct ExtendedLimit {public BasicLimit Basic;public IoCounters Io;public UIntPtr ProcessMemory,JobMemory,PeakProcessMemory,PeakJobMemory;}
+ [StructLayout(LayoutKind.Sequential)] struct Accounting {public long User,Kernel,PeriodUser,PeriodKernel;public uint PageFaults,TotalProcesses,ActiveProcesses,TerminatedProcesses;}
+ [DllImport("kernel32.dll",SetLastError=true)]static extern IntPtr CreateJobObjectW(IntPtr attributes,IntPtr name);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool SetInformationJobObject(IntPtr job,int cls,ref ExtendedLimit limits,uint length);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool QueryInformationJobObject(IntPtr job,int cls,out Accounting info,uint length,IntPtr returned);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool AssignProcessToJobObject(IntPtr job,IntPtr process);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool TerminateJobObject(IntPtr job,uint code);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool TerminateProcess(IntPtr process,uint code);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool CreatePipe(out IntPtr read,out IntPtr write,ref Security security,uint size);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool SetHandleInformation(IntPtr handle,uint mask,uint flags);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool InitializeProcThreadAttributeList(IntPtr list,int count,int flags,ref IntPtr size);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool UpdateProcThreadAttribute(IntPtr list,uint flags,IntPtr attribute,IntPtr value,IntPtr size,IntPtr previous,IntPtr returned);
+ [DllImport("kernel32.dll")]static extern void DeleteProcThreadAttributeList(IntPtr list);
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateProcessW(string application,StringBuilder command,IntPtr processAttributes,IntPtr threadAttributes,bool inherit,uint flags,IntPtr environment,string cwd,ref StartupEx startup,out ProcessInfo info);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern uint ResumeThread(IntPtr thread);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern uint WaitForSingleObject(IntPtr handle,uint milliseconds);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetExitCodeProcess(IntPtr process,out uint code);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool CloseHandle(IntPtr handle);
+ static void Close(ref IntPtr handle){if(handle!=IntPtr.Zero){if(!CloseHandle(handle))throw Error("close native handle");handle=IntPtr.Zero;}}
+ static bool JobEmpty(IntPtr job){Accounting info;if(!QueryInformationJobObject(job,1,out info,(uint)Marshal.SizeOf(typeof(Accounting)),IntPtr.Zero))throw Error("job accounting");return info.ActiveProcesses==0;}
+ static bool ProcessExited(IntPtr process){uint state=WaitForSingleObject(process,0);if(state==0xffffffff)throw Error("process wait");return state==0;}
+ static bool Completed(Task a,Task b,Task c){return (a==null||a.IsCompleted)&&(b==null||b.IsCompleted)&&(c==null||c.IsCompleted);}
+ static void Settle(IntPtr job,IntPtr process,bool assigned,Task stdout,Task stderr,Task stdin){
+  bool terminated=assigned?TerminateJobObject(job,1):TerminateProcess(process,1);
+  if(!terminated&&!ProcessExited(process))throw Error("child termination failed; settlement unconfirmed");
+  var clock=Stopwatch.StartNew();
+  while(!ProcessExited(process)||(assigned&&!JobEmpty(job))||!Completed(stdout,stderr,stdin)){
+   if(clock.ElapsedMilliseconds>5000)throw Error("child settlement deadline exceeded");
+   System.Threading.Thread.Sleep(10);
+  }
+ }
+ bool unsettled;
  public byte[] Run(string executable,string[] args,string input,int limit,int timeout) {
-  HoldFile(executable);var start=new ProcessStartInfo();start.FileName=Full(executable);start.Arguments=String.Join(" ",Array.ConvertAll(args,Quote));start.WorkingDirectory=@"C:\Windows\System32";start.UseShellExecute=false;start.CreateNoWindow=true;start.RedirectStandardInput=true;start.RedirectStandardOutput=true;start.RedirectStandardError=true;Environment(start);
-  using(var p=new Process()){p.StartInfo=start;if(!p.Start())throw Error("child start");var stdout=Task.Run(()=>Bounded(p.StandardOutput.BaseStream,limit));var stderr=Task.Run(()=>Bounded(p.StandardError.BaseStream,65536));var stdin=Task.Run(()=>{byte[] b=Encoding.UTF8.GetBytes(input);p.StandardInput.BaseStream.Write(b,0,b.Length);p.StandardInput.Close();});var clock=Stopwatch.StartNew();
-   try {while(!p.WaitForExit(10)||!stdout.IsCompleted||!stderr.IsCompleted||!stdin.IsCompleted){if(clock.ElapsedMilliseconds>timeout||stdout.IsFaulted||stderr.IsFaulted||stdin.IsFaulted)throw Error("child timeout/stream failure");}if(p.ExitCode!=0)throw Error("child exit "+p.ExitCode);Task.WaitAll(stdout,stderr,stdin);return stdout.Result;}
-   catch {try{if(!p.HasExited)p.Kill();p.WaitForExit(3000);}catch{}throw;}
+  HoldFile(executable);if(unsettled)throw Error("prior child unsettled");
+  IntPtr job=IntPtr.Zero,inRead=IntPtr.Zero,inWrite=IntPtr.Zero,outRead=IntPtr.Zero,outWrite=IntPtr.Zero,errRead=IntPtr.Zero,errWrite=IntPtr.Zero,attributes=IntPtr.Zero,handleList=IntPtr.Zero,environment=IntPtr.Zero;
+  ProcessInfo pi=new ProcessInfo();bool assigned=false,attributesReady=false;
+  FileStream outputStream=null,errorStream=null,inputStream=null;Task<byte[]> stdout=null,stderr=null;Task stdin=null;
+  try {
+   job=CreateJobObjectW(IntPtr.Zero,IntPtr.Zero);if(job==IntPtr.Zero)throw Error("create child job");
+   var limits=new ExtendedLimit();limits.Basic.Flags=0x2000;
+   if(!SetInformationJobObject(job,9,ref limits,(uint)Marshal.SizeOf(typeof(ExtendedLimit))))throw Error("configure child job");
+   var security=new Security{Size=Marshal.SizeOf(typeof(Security)),Inherit=true};
+   if(!CreatePipe(out inRead,out inWrite,ref security,0)||!CreatePipe(out outRead,out outWrite,ref security,0)||!CreatePipe(out errRead,out errWrite,ref security,0))throw Error("create child pipes");
+   foreach(IntPtr parent in new[]{inWrite,outRead,errRead})if(!SetHandleInformation(parent,1,0))throw Error("parent pipe inheritance");
+   IntPtr size=IntPtr.Zero;InitializeProcThreadAttributeList(IntPtr.Zero,1,0,ref size);
+   attributes=Marshal.AllocHGlobal(size);if(!InitializeProcThreadAttributeList(attributes,1,0,ref size))throw Error("child attribute list");attributesReady=true;
+   handleList=Marshal.AllocHGlobal(IntPtr.Size*3);Marshal.WriteIntPtr(handleList,0,inRead);Marshal.WriteIntPtr(handleList,IntPtr.Size,outWrite);Marshal.WriteIntPtr(handleList,IntPtr.Size*2,errWrite);
+   if(!UpdateProcThreadAttribute(attributes,0,new IntPtr(0x20002),handleList,new IntPtr(IntPtr.Size*3),IntPtr.Zero,IntPtr.Zero))throw Error("child handle allowlist");
+   var startup=new StartupEx();startup.Startup.Size=Marshal.SizeOf(typeof(StartupEx));startup.Startup.Flags=0x100;startup.Startup.Input=inRead;startup.Startup.Output=outWrite;startup.Startup.Error=errWrite;startup.Attributes=attributes;
+   environment=Marshal.StringToHGlobalUni(EnvironmentBlock());
+   var command=new StringBuilder(Quote(Full(executable))+" "+String.Join(" ",Array.ConvertAll(args,Quote)));
+   if(!CreateProcessW(Full(executable),command,IntPtr.Zero,IntPtr.Zero,true,0x08080404,environment,@"C:\Windows\System32",ref startup,out pi))throw Error("create suspended child");
+   unsettled=true;
+   if(!AssignProcessToJobObject(job,pi.Process))throw Error("assign suspended child to job");assigned=true;
+   Close(ref inRead);Close(ref outWrite);Close(ref errWrite);
+   outputStream=new FileStream(new SafeFileHandle(outRead,true),FileAccess.Read);outRead=IntPtr.Zero;
+   errorStream=new FileStream(new SafeFileHandle(errRead,true),FileAccess.Read);errRead=IntPtr.Zero;
+   inputStream=new FileStream(new SafeFileHandle(inWrite,true),FileAccess.Write);inWrite=IntPtr.Zero;
+   stdout=Task.Run(()=>Bounded(outputStream,limit));stderr=Task.Run(()=>Bounded(errorStream,65536));
+   stdin=Task.Run(()=>{try{byte[] bytes=Encoding.UTF8.GetBytes(input);inputStream.Write(bytes,0,bytes.Length);}finally{inputStream.Dispose();}});
+   if(ResumeThread(pi.Thread)==0xffffffff)throw Error("resume job child");
+   var clock=Stopwatch.StartNew();
+   while(!ProcessExited(pi.Process)||!JobEmpty(job)||!Completed(stdout,stderr,stdin)){
+    if(clock.ElapsedMilliseconds>timeout||stdout.IsFaulted||stderr.IsFaulted||stdin.IsFaulted)throw Error("child timeout/stream failure");
+    System.Threading.Thread.Sleep(10);
+   }
+   unsettled=false;uint code;if(!GetExitCodeProcess(pi.Process,out code))throw Error("child exit query");
+   if(code!=0)throw Error("child exit "+code);Task.WaitAll(stdout,stderr,stdin);return stdout.Result;
+  } catch {
+   if(unsettled){
+    // If the OS cannot confirm termination, keep this holder and its leases alive.
+    // No result/publication or normal Dispose is permitted in that fatal state.
+    try{Settle(job,pi.Process,assigned,stdout,stderr,stdin);unsettled=false;}
+    catch(Exception failure){Console.Error.WriteLine("FATAL_UNSETTLED_CHILD: "+failure.Message);while(true){try{Settle(job,pi.Process,assigned,stdout,stderr,stdin);unsettled=false;break;}catch{System.Threading.Thread.Sleep(100);}}}
+   }
+   throw;
+  } finally {
+   if(!unsettled){
+    if(outputStream!=null)outputStream.Dispose();if(errorStream!=null)errorStream.Dispose();if(inputStream!=null)inputStream.Dispose();
+    Close(ref inRead);Close(ref inWrite);Close(ref outRead);Close(ref outWrite);Close(ref errRead);Close(ref errWrite);Close(ref pi.Thread);Close(ref pi.Process);Close(ref job);
+    if(attributesReady)DeleteProcThreadAttributeList(attributes);if(attributes!=IntPtr.Zero)Marshal.FreeHGlobal(attributes);if(handleList!=IntPtr.Zero)Marshal.FreeHGlobal(handleList);if(environment!=IntPtr.Zero)Marshal.FreeHGlobal(environment);
+   }
   }
  }
  public void Publish(string p,byte[] bytes,bool verify) {
@@ -194,7 +319,7 @@ public sealed class ProgramIndexNative : IDisposable {
   var h=CreateFileW(p,0xc0000000,1,IntPtr.Zero,1,0x02200000,IntPtr.Zero);if(h.IsInvalid){h.Dispose();throw Error("wx create collision");}try{Check(h,p,false);uint n;if(!WriteFile(h,bytes,(uint)bytes.Length,out n,IntPtr.Zero)||n!=bytes.Length||!FlushFileBuffers(h))throw Error("publish write/flush");held.Add(p,h);}catch{h.Dispose();throw;}
   byte[] actual=Read(p,4194304);if(actual.Length!=bytes.Length)throw Error("published identity drift");for(int i=0;i<bytes.Length;i++)if(actual[i]!=bytes[i])throw Error("published byte drift");
  }
- public void Dispose(){foreach(var h in held.Values)h.Dispose();held.Clear();}
+ public void Dispose(){if(unsettled)throw Error("cannot release leases before child settlement");foreach(var h in held.Values)h.Dispose();held.Clear();}
 }
 `
 const bridge = String.raw`
@@ -203,11 +328,14 @@ $ProgressPreference='SilentlyContinue'
 $session=$null
 try {
  $request=[Console]::In.ReadToEnd() | ConvertFrom-Json
+ $runtimeTemp=[IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'),'Temp')
+ $env:TEMP=$runtimeTemp;$env:TMP=$runtimeTemp
  Add-Type -TypeDefinition $request.nativeSource
  $session=New-Object ProgramIndexNative
  $o=$request.options
  $session.HoldRepository($o.repositoryRoot)
  $null=$session.HoldFile($o.gitExecutable)
+ $session.AuthenticateRepositoryBinding($o.gitExecutable)
  $null=$session.HoldFile($request.nodeExecutable)
  $null=$session.HoldFile($request.modulePath)
  $null=$session.HoldFile($request.policyPath)
@@ -233,30 +361,50 @@ try {
  $sha=[Security.Cryptography.SHA256]::Create();try{$digest=([BitConverter]::ToString($sha.ComputeHash($rendered))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
  $mode='created';if($o.verifyExisting){$mode='verified'}
  [Console]::Out.WriteLine((@{mode=$mode;sha256=$digest;bytes=$rendered.Length} | ConvertTo-Json -Compress))
-} catch { [Console]::Error.WriteLine($_.Exception.ToString());exit 1 } finally { if($session){$session.Dispose()} }
+} catch { $message=$_.Exception.ToString();[Console]::Error.WriteLine($message.Substring(0,[Math]::Min(4096,$message.Length)));exit 1 } finally { if($session){$session.Dispose()} }
 `
 
-export function runGenerator(argv, { env = process.env, execute = spawnSync } = {}) {
+// Bounded raw collection without timeout/maxBuffer auto-kill. Even after an overflow,
+// drain/discard and wait for close; the native bridge owns child deadlines/settlement.
+export function collectExitedProcess(executable, argv, options) {
+  return new Promise((resolve) => {
+    const { input, ...spawnOptions } = options
+    const child = spawn(executable, argv, { ...spawnOptions, stdio: ['pipe', 'pipe', 'pipe'] })
+    const stdout = []; const stderr = []; let outSize = 0; let errSize = 0; let overflow = false; let error
+    child.on('error', (cause) => { error = cause })
+    child.stdin.on('error', (cause) => { error ??= cause })
+    child.stdout.on('error', (cause) => { error ??= cause }); child.stderr.on('error', (cause) => { error ??= cause })
+    child.stdout.on('data', (chunk) => { const available = Math.max(0, 65536 - outSize); if (chunk.length > available) overflow = true; if (available) stdout.push(chunk.subarray(0, available)); outSize += Math.min(chunk.length, available) })
+    child.stderr.on('data', (chunk) => { const available = Math.max(0, 65536 - errSize); if (chunk.length > available) overflow = true; if (available) stderr.push(chunk.subarray(0, available)); errSize += Math.min(chunk.length, available) })
+    child.on('close', (status, signal) => resolve({ status, signal, error, overflow, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) }))
+    child.stdin.end(input)
+  })
+}
+
+export function runGenerator(argv, { env = process.env, execute = collectExitedProcess } = {}) {
   // Deliberately before environment inspection, script construction or any adapter access.
   const options = parseArguments(argv)
   const environment = closedEnvironment(env)
-  requireThat(process.platform === 'win32', 'native Windows leases required')
+  if (execute === collectExitedProcess) requireThat(process.platform === 'win32', 'native Windows leases required')
   const prefix = ['-C', options.repositoryRoot, '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false', '-c', 'core.hooksPath=NUL', '-c', 'core.attributesFile=NUL', '-c', 'core.excludesFile=NUL', '-c', 'core.sparseCheckout=false']
   const authorities = [DESIGN, PLAN, BASE]
   const commands = [[...prefix, 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignored=matching', '--', ...authorities.map((a) => a.repositoryPath)]]
   for (const [i, a] of authorities.entries()) { const commit = i === 0 ? options.designCommit : i === 1 ? options.planCommit : a.containingCommitSha; commands.push([...prefix, 'rev-parse', '--verify', `${commit}:${a.repositoryPath}`], [...prefix, 'cat-file', 'blob', a.blobOid]) }
   const rendererSource = `import {renderAuthenticated} from ${JSON.stringify(import.meta.url)};const chunks=[];let size=0;for await(const chunk of process.stdin){size+=chunk.length;if(size>8388608)throw Error('renderer input bound');chunks.push(chunk)}process.stdout.write(renderAuthenticated(JSON.parse(Buffer.concat(chunks).toString('utf8'))));`
   const request = { options, commands, nativeSource, nodeExecutable: NODE, modulePath: fileURLToPath(import.meta.url).replaceAll('\\', '/'), policyPath: fileURLToPath(new URL('./featureIntegrationProgramPolicy.mjs', import.meta.url)).replaceAll('\\', '/'), authorityPaths: authorities.map((a) => a.repositoryPath), workingAuthorities: [DESIGN, PLAN].map((a) => ({ path: a.repositoryPath, sha256: a.blobSha256 })), outputPath: OUTPUT, fixedInstruction: INSTRUCTION, fixedSidecar: SIDECAR, rendererSource }
-  const result = execute(POWERSHELL, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', bridge], { input: JSON.stringify(request), env: environment, cwd: 'C:/Windows/System32', shell: false, windowsHide: true, timeout: 240000, maxBuffer: 65536 })
-  requireThat(!result.error && result.status === 0, `native bridge exit failure: ${result.error?.message ?? Buffer.from(result.stderr ?? '').toString('utf8').slice(0, 2000)}`)
-  requireThat(Buffer.isBuffer(result.stdout) && result.stdout.length <= 65536 && Buffer.isBuffer(result.stderr) && result.stderr.length <= 65536, 'native bridge output bound')
-  const summary = jsonBytes(result.stdout, 'native summary'); keys(summary, ['mode', 'sha256', 'bytes'], 'native summary')
-  requireThat(summary.mode === (options.verifyExisting ? 'verified' : 'created') && /^[0-9a-f]{64}$/u.test(summary.sha256) && Number.isSafeInteger(summary.bytes) && summary.bytes > 0 && summary.bytes <= 4194304, 'native summary mismatch')
-  return summary
+  const result = execute(POWERSHELL, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', bridge], { input: JSON.stringify(request), env: environment, cwd: 'C:/Windows/System32', shell: false, windowsHide: true })
+  const checked = (exited) => {
+    requireThat(!exited.error && exited.status === 0, `native bridge exit failure: ${exited.error?.message ?? Buffer.from(exited.stderr ?? '').toString('utf8').slice(0, 2000)}`)
+    requireThat(!exited.overflow && Buffer.isBuffer(exited.stdout) && exited.stdout.length <= 65536 && Buffer.isBuffer(exited.stderr) && exited.stderr.length <= 65536, 'native bridge output bound')
+    const summary = jsonBytes(exited.stdout, 'native summary'); keys(summary, ['mode', 'sha256', 'bytes'], 'native summary')
+    requireThat(summary.mode === (options.verifyExisting ? 'verified' : 'created') && /^[0-9a-f]{64}$/u.test(summary.sha256) && Number.isSafeInteger(summary.bytes) && summary.bytes > 0 && summary.bytes <= 4194304, 'native summary mismatch')
+    return summary
+  }
+  return result && typeof result.then === 'function' ? result.then(checked) : checked(result)
 }
 
 const direct = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url && !process.execArgv.some((arg) => ['-e', '--eval', '--input-type=module', '--test'].includes(arg))
 if (direct) {
-  try { process.stdout.write(JSON.stringify(runGenerator(process.argv.slice(2))) + '\n') }
+  try { process.stdout.write(JSON.stringify(await runGenerator(process.argv.slice(2))) + '\n') }
   catch (error) { process.stderr.write(error.message + '\n'); process.exitCode = 1 }
 }
