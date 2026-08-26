@@ -213,6 +213,8 @@ test("documentation metadata recursively classifies the complete configured scop
   assert.equal(classification.get("extensions/bob-bazaar-review/docs/review-run-v3-iteration2-ja.md"), "historical")
   assert.equal(classification.get("extensions/bob-bazaar-review/docs/review-run-v3-iteration3-dashboard-ja.md"), "historical")
   assert.equal(classification.get("docs/workflows/code-consistency-review/README.md"), "current")
+  assert.equal(classification.get("docs/superpowers/specs/2026-08-23-feature-selection-and-sequential-main-integration-design.md"), "current")
+  assert.equal(classification.get("docs/superpowers/plans/2026-08-23-feature-integration-program-index-and-wave-0a.md"), "current")
 })
 
 test("workflow action contract current copies remain synchronized", () => {
