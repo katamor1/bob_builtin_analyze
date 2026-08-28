@@ -1,7 +1,7 @@
 # Wave 0A trusted transcript terminal-LF 比較例外の限定設計追補
 
 - Addendum ID: `WAVE0A-TERMINAL-LF-COMPARISON-EXCEPTION-V1`
-- Status: 設計作成と訂正設計は承認済み。比較例外の適用、外部capture、Task 0、source/test実装の再開は、identity固定済み実装計画に対する別承認待ち。
+- Status: 設計作成、訂正設計、bundle commitment限定訂正は承認済み。比較例外の適用、外部capture、Task 0、source/test実装の再開は、bundle commitment訂正後の本設計とidentity固定済み実装計画に対する各別承認待ち。
 - Date: 2026-08-29
 - Repository: `katamor1/bob_builtin_analyze`
 - Base checkpoint: `7383d96c37b8a86cd32fe4114839ff3650a9280a`
@@ -28,6 +28,10 @@
 この指示は本設計書と後続実装計画を文書限定で作成・review・local commitする許可である。比較例外の使用、`approval.json`または例外sidecarの作成、Task 0/R1、campaign/control authority、main/remote/PR、branch/worktree cleanup、保護clone、既存archiveの変更を許可しない。
 
 計画化監査で、初版commit `08a6540e5ad93e16aba21a69f9d47748c123d5ac` / blob `3b3895cbe5843414636f045f124a24bb24ced7ae` / SHA-256 `993e865d271b975103d91e22ec4b8cfdaf37bce5b2fdb05c0f2a8776ce9caa78` に、既知draft SHAの2桁欠落、計画自身のidentityを計画bytesへ埋め込む固定点、Task 0前のcapture実装ownership欠落を確認した。ユーザーは、(1) 64桁SHAへの訂正、(2) plan identityのcommit後substitution、(3) committed plan blob内のidentity固定済みoperatorをrepository非変更で実行する方式、(4) 訂正commitを含むHEAD chainへの更新、を承認した。本訂正も文書限定であり、最終exact approvalまでは外部・source/test mutationを許可しない。
+
+訂正設計commit `e15b77aea11e11db165eff0670a29280c35b3c3c` / blob `20e0d77de4034ca4d2a66b89869ed1b7cc90865e` / SHA-256 `f9b82de9ba5c8a0f82f87e75f13fa6dd2ea663310e2c167bbe6c22e0335fa41e` の計画化監査で、25 repository commit slicesに必要な50 progress-row wrappersと4 non-progress wrappersから、56 sections / 54 action invocationsの完全bundleが必要である一方、同bundleをsidecar top-levelとself-test receiptへ完全展開するclosed schemaは、極端に短い値を使った保守的下限でもsidecarの65,536-byte capを超えることを確認した。単一bundleの独立下限は90,393 bytes、旧record全体の独立下限は189,753 bytesであり、参照共有を持たないcanonical JSONでは適合encodingが存在しない。
+
+ユーザーはprovider message `msg_01a049fe-9ecd-72a3-84ea-142e2e46f033`（message ordinal `1301`、`2026-08-28T20:10:18.701Z`、raw text 65 UTF-8 bytes / SHA-256 `104473206433590e45ef203f4ac79462552089d9bc2ba2c1105f911e3ce862d9`、raw record 427 bytes / SHA-256 `6cb1b73e8a4f7b6701df6de4c990a3711701ca16854e4aee4909607dac76c0f7`）で `WAVE0A-TERMINAL-LF-BUNDLE-COMMITMENT-CORRECTION-V1` を承認した。この承認は、65,536-byte cap、56/54の完全台帳、row-specific wrapper、action-specific contractを維持したまま、外部record内の完全bundle複製だけを後述するcontent-addressed commitmentへ置換する文書訂正に限る。外部capture、Task 0、claim、source/test mutationを許可しない。
 
 ## 2. 観測された不一致
 
@@ -169,6 +173,9 @@ type PlanEmbeddedOperatorOperation =
   | 'progress_row'
   | 'complete'
 
+type PlanEmbeddedOperatorCommandArgument = string
+type PlanEmbeddedOperatorEnvironmentValue = string
+
 type PlanEmbeddedOperatorSectionIdentity = {
   ordinal: PositiveSafeInteger
   sectionId: BoundedAsciiToken
@@ -184,11 +191,12 @@ type PlanEmbeddedOperatorSectionIdentity = {
 
 type PlanEmbeddedOperatorInvocationIdentity = {
   schemaVersion:
-    'bob-builtin-analyze/wave0a-terminal-lf-action-invocation/v1'
+    'bob-builtin-analyze/wave0a-terminal-lf-action-invocation/v2'
   actionId: BoundedAsciiToken
   operation: PlanEmbeddedOperatorOperation
   boundProgressRowId: BoundedAsciiToken | null
   selectedWrapperSectionId: BoundedAsciiToken
+  planRevision: LowercaseSha
   planBlobReaderExecutable: ExternalFileIdentity
   bootstrapExecutable: ExternalFileIdentity
   bootstrapProgramUtf8Sha256: LowercaseSha256
@@ -202,9 +210,50 @@ type PlanEmbeddedOperatorInvocationIdentity = {
   callerInputs: 'none'
 }
 
+type PlanEmbeddedOperatorExactArgvHashPreimage = {
+  schemaVersion:
+    'bob-builtin-analyze/wave0a-terminal-lf-exact-argv-preimage/v1'
+  bootstrap: readonly PlanEmbeddedOperatorCommandArgument[]
+  planRevisionBefore: readonly PlanEmbeddedOperatorCommandArgument[]
+  planBlobRead: readonly PlanEmbeddedOperatorCommandArgument[]
+  planRevisionAfter: readonly PlanEmbeddedOperatorCommandArgument[]
+  powershell: readonly PlanEmbeddedOperatorCommandArgument[]
+}
+
+type PlanEmbeddedOperatorEnvironmentHashPreimage = {
+  schemaVersion:
+    'bob-builtin-analyze/wave0a-terminal-lf-environment-preimage/v1'
+  entries: readonly {
+    name: BoundedAsciiToken
+    value: PlanEmbeddedOperatorEnvironmentValue
+  }[]
+}
+
+type PlanEmbeddedOperatorCommandContractHashPreimage = {
+  schemaVersion:
+    'bob-builtin-analyze/wave0a-terminal-lf-command-contract-preimage/v1'
+  invocationSchemaVersion:
+    'bob-builtin-analyze/wave0a-terminal-lf-action-invocation/v2'
+  actionId: BoundedAsciiToken
+  operation: PlanEmbeddedOperatorOperation
+  boundProgressRowId: BoundedAsciiToken | null
+  selectedWrapperSectionId: BoundedAsciiToken
+  planRevision: LowercaseSha
+  planBlobReaderExecutable: ExternalFileIdentity
+  bootstrapExecutable: ExternalFileIdentity
+  bootstrapProgramUtf8Sha256: LowercaseSha256
+  powershellExecutable: ExternalFileIdentity
+  exactArgvSha256: LowercaseSha256
+  workingDirectory: ExternalDirectoryIdentity
+  environmentNameValueManifestSha256: LowercaseSha256
+  stdinFraming:
+    'exact_library_bytes_then_exact_selected_wrapper_bytes_utf8_no_bom'
+  callerInputs: 'none'
+}
+
 type PlanEmbeddedOperatorBundleIdentity = {
   schemaVersion:
-    'bob-builtin-analyze/wave0a-terminal-lf-plan-embedded-operator-bundle/v1'
+    'bob-builtin-analyze/wave0a-terminal-lf-plan-embedded-operator-bundle/v2'
   planIdentity: RepoObjectIdentity
   extraction:
     'raw_committed_plan_blob_unique_lf_marker_interiors_no_markers'
@@ -215,6 +264,36 @@ type PlanEmbeddedOperatorBundleIdentity = {
   operationSections: readonly PlanEmbeddedOperatorSectionIdentity[]
   sectionRosterSha256: LowercaseSha256
   actionInvocations: readonly PlanEmbeddedOperatorInvocationIdentity[]
+  actionInvocationRosterSha256: LowercaseSha256
+}
+
+type PlanEmbeddedOperatorSectionRosterHashPreimage = {
+  schemaVersion:
+    'bob-builtin-analyze/wave0a-terminal-lf-section-roster-preimage/v1'
+  sections: readonly PlanEmbeddedOperatorSectionIdentity[]
+}
+
+type PlanEmbeddedOperatorActionInvocationRosterHashPreimage = {
+  schemaVersion:
+    'bob-builtin-analyze/wave0a-terminal-lf-action-invocation-roster-preimage/v1'
+  actionInvocations: readonly PlanEmbeddedOperatorInvocationIdentity[]
+}
+
+type PlanEmbeddedOperatorBundleIdentityHashPreimage = {
+  schemaVersion:
+    'bob-builtin-analyze/wave0a-terminal-lf-plan-embedded-operator-bundle-identity-preimage/v2'
+  bundleIdentity: PlanEmbeddedOperatorBundleIdentity
+}
+
+type PlanEmbeddedOperatorBundleCommitment = {
+  schemaVersion:
+    'bob-builtin-analyze/wave0a-terminal-lf-plan-embedded-operator-bundle-commitment/v1'
+  planIdentity: RepoObjectIdentity
+  sectionCount: 56
+  actionInvocationCount: 54
+  sectionRosterSha256: LowercaseSha256
+  actionInvocationRosterSha256: LowercaseSha256
+  operatorBundleIdentitySha256: LowercaseSha256
 }
 
 type PlanEmbeddedOperatorSelfTestWorkspaceIdentity = {
@@ -249,8 +328,8 @@ type PlanEmbeddedOperatorSelfTestWorkspaceIdentity = {
 
 type PlanEmbeddedOperatorSelfTestReceipt = {
   schemaVersion:
-    'bob-builtin-analyze/wave0a-terminal-lf-operator-self-test-receipt/v1'
-  operatorBundleIdentity: PlanEmbeddedOperatorBundleIdentity
+    'bob-builtin-analyze/wave0a-terminal-lf-operator-self-test-receipt/v2'
+  operatorBundleIdentitySha256: LowercaseSha256
   testCaseRosterSha256: LowercaseSha256
   testCaseCount: PositiveSafeInteger
   passedCaseCount: PositiveSafeInteger
@@ -289,22 +368,32 @@ type TrustedApprovalMessage = {
 }
 ```
 
-`BoundedUtf8String`はUTF-8/NFCで、個々のmessage textは1..4,096 bytes、`rawRecord`は1..16,384 bytesとする。sidecar全体のcanonical UTF-8 bytesは1..65,536。canonical JSONはUTF-8、sorted keys、terminal LF 1個を要求し、BOM、CRLF、duplicate key、accessor/caller objectを受理しない。
+`BoundedUtf8String`はUTF-8/NFCで、個々のmessage textは1..4,096 bytes、`rawRecord`は1..16,384 bytesとする。sidecar全体のcanonical UTF-8 bytesは1..65,536。canonical JSONはUTF-8、sorted keys、terminal LF 1個を要求し、BOM、CRLF、duplicate key、accessor/caller objectを受理しない。captureはself-test完了後、まだ未知の`evidenceRootIdentity.dev` / `ino`だけを最大20桁のcanonical U64値へ置換したpre-root size envelopeをbounded memoryでcanonical化し、65,536 bytes以下の場合だけfixed evidence rootをcreate-newする。root identity取得後に全actual fieldを持つcandidate sidecarを改めてcanonical化し、candidate byte lengthが記録済みenvelope以下かつ1..65,536 bytesであることを確認してからsidecar leafをcreate-newする。schema-valid actual identityはenvelopeを超えないため、超過は別の正常なpost-root armではなく実装・schema driftである。その場合はrootを既存のまま保持して新しい承認待ちで停止し、推測削除・再利用しない。投影値を受入条件にせず、pre-root envelopeとactual candidate bytesの両方へhard gateを適用する。
 
 Task 0前のcapture、Task 0 read-only verification、claim/receipt、manifest/progress、completionはrepository sourceへbootstrap実装を追加しない。後続実装計画のcommitted blobへ、共通PowerShell/C# library、portable/real-Windows self-test、各operation wrapperを一意なASCII start/end marker付きsectionとして収録する。markerはplan blob内に各一回だけ存在し、section bytesはstart marker直後のLFからend marker直前まで、markerを含めずLF line endingのUTF-8 raw bytesとして抽出する。section identity、roster、command contractの宣言は全marker interiorの外に置き、宣言が自分または別section interiorと重なる場合を拒否する。nested/duplicate/missing marker、CR/CRLF、working-tree bytes、caller text、別commit/pathを拒否する。
 
-実装計画はsectionごとのordinal、role、operation、progress-row binding、allowed predecessor、marker、byte length、SHA-256と、ordinal sort済みsection roster hashを本文へ固定する。library/test/wrapperのrole組合せ、全ordinal、predecessor、operation bindingをclosed rosterと照合し、`progress_row` wrapperは一つのliteral row IDだけへ結合する。これらはsection interior bytesのhashであり、plan自身のcommit/blob/SHA-256をplan bytesへ埋め込まない。commit後に`planIdentity`を導出し、同じcommitted blobから全section identityを再計算して`PlanEmbeddedOperatorBundleIdentity`を構成する。
+実装計画はsectionごとのordinal、role、operation、progress-row binding、allowed predecessor、marker、byte length、SHA-256と、ordinal sort済みsection roster hashを本文へ固定する。library/test/wrapperのrole組合せ、全ordinal、predecessor、operation bindingをclosed rosterと照合し、`progress_row` wrapperは一つのliteral row IDだけへ結合する。25 repository commit slicesのstart/completeに50 progress-row wrappers、`capture` / `task0_verify` / `consume` / `complete`に4 wrappersを要求するため、sectionはlibrary 1 + test 1 + operation wrapper 54のexact 56件、action invocationはoperation wrapperと一対一のexact 54件とする。54 actionの`selectedWrapperSectionId`集合は54 operation-wrapper section IDsの完全なpermutationで、重複・欠落がなく、各invocationの`operation`と`boundProgressRowId`は選択sectionの同fieldへexact一致する。50 literal progress row IDsは各一回だけbindし、4 non-progress wrappersは`boundProgressRowId:null`を各一回だけ持つ。これらはsection interior bytesのhashであり、plan自身のcommit/blob/SHA-256をplan bytesへ埋め込まない。commit後に`planIdentity`を導出し、同じcommitted blobから全section identityと全action invocation identityを再計算して完全な`PlanEmbeddedOperatorBundleIdentity/v2`を構成する。
 
-各操作は、計画がmarker外へliteral固定した一つのaction-specific command contractだけで起動する。contractは選択済みwrapper section、raw plan blobを読むpinned executableとexact argv、最小bootstrap executableとprogram hash、pinned PowerShell executable、`-NoLogo` / `-NoProfile` / `-NonInteractive` / stdin executionを含むexact argv、canonical cwd、closed environment name/value manifest、stdin framingを固定し、そのcanonical bytesを`commandContractSha256`へ結合する。bootstrapは固定commit/pathのraw blobを取得してplan blob identityと全section identityを検証し、固定libraryとcontractが選択した一つのwrapperだけを連結してPowerShell stdinへ渡す。operation selectorを受けるgeneric driverは作らず、caller argv/path/JSON/text、environment-selected mode、profile、network、script file、repository import、working-tree fallbackを全て拒否する。planから抽出・検証・連結・起動する主体もこのaction-specific contractであり、contract外の手作業または別bootstrapを許可しない。
+`sectionRosterSha256`は`UTF8('bob-builtin-analyze/wave0a-terminal-lf-section-roster/v1') || 0x00 || sectionRosterPreimageCanonicalBytes`、`actionInvocationRosterSha256`は`UTF8('bob-builtin-analyze/wave0a-terminal-lf-action-invocation-roster/v1') || 0x00 || actionInvocationRosterPreimageCanonicalBytes`、`operatorBundleIdentitySha256`は`UTF8('bob-builtin-analyze/wave0a-terminal-lf-plan-embedded-operator-bundle-identity/v2') || 0x00 || bundleIdentityPreimageCanonicalBytes`の各SHA-256として再導出する。三つのpreimage rootはそれぞれ上記`PlanEmbeddedOperatorSectionRosterHashPreimage`、`PlanEmbeddedOperatorActionInvocationRosterHashPreimage`、`PlanEmbeddedOperatorBundleIdentityHashPreimage`のexact own-key setだけを持つ。`sections`はbundleの`[librarySection, testSection, ...operationSections]`とcanonical object単位でbyte-identical、`actionInvocations`はbundleの同arrayと同順・同objectでbyte-identicalでなければならず、別arrayをhashするsplit viewを拒否する。section rosterはordinal順・56件・重複なし、action invocation rosterとbundleの同arrayは`actionId`のUTF-8 byte順・54件・重複なしで各operation wrapperへ一対一対応させる。bundle preimageは完全な`PlanEmbeddedOperatorBundleIdentity/v2`を一fieldも省略せず包含し、その中のsection SHA-256、二つのroster SHA-256、bootstrap/program/argv/environment/command SHA-256、plan blob SHA-256を全てpreimageへ含める。commitmentの`operatorBundleIdentitySha256`だけはbundle identity型のfieldではないためpreimageへ入らず、自己参照しない。
+
+canonical JSON valueはRFC 8785/JCSのobject-key orderingとJSON string serializationを使い、入力stringを先にNFCへ固定し、unpaired surrogateを拒否する。keyはown enumerable data propertyだけ、numberはsafe integerだけをshortest decimal・非指数表記で表し、literal `true` / `false` / `null`以外のprimitive表現を持たない。JCS bytesへterminal LF一個を追加したものを本設計のcanonical bytesとし、UTF-8、BOM/生CRなし、solidusの任意escapeや非ASCIIの任意`\u` escapeを許可しない。accessor、`toJSON`、unknown/missing key、sparse array、非finite number、`-0`を拒否する。bundle identity preimage canonical bytesは1..262,144 bytesとする。
+
+完全な56-section / 54-action ledgerはcommitted plan blobと実行中のbounded memoryにだけ保持し、sidecar、self-test receipt、claimへ配列を再展開しない。外部recordへはplan identity、exact counts、二つのroster hash、完全bundle hashだけを持つ`PlanEmbeddedOperatorBundleCommitment`を保存する。capture、Task 0、claimの各境界はcaller提供のledger、commitment、hashまたは別bundle artifactを受理せず、exact committed plan blobから完全bundleを独立再構成した後にcommitmentの全fieldを照合する。
+
+各操作は、計画がmarker外へliteral固定した一つのaction-specific command-contract templateだけで起動する。templateはfuture plan commit用のmetavariable `PC`をrevision-bearing fieldだけに持ち、plan commit後に`operatorBundle.planIdentity.containingCommitSha`を一括substitutionして、選択済みwrapper section、raw plan blobを読むpinned executableとactual exact argv、最小bootstrap executableとprogram hash、pinned PowerShell executable、`-NoLogo` / `-NoProfile` / `-NonInteractive` / stdin executionを含むactual exact argv、canonical cwd、closed environment name/value manifest、stdin framingを持つ`PlanEmbeddedOperatorInvocationIdentity/v2`を構成する。`planRevision`と全revision-bearing argv itemは同じsubstituted PCへ一致し、template自身、PC occurrence locations、substitution countはplan blobがliteral固定する。action-specific launcherだけがcommitted `RepoObjectIdentity`とcapture時のprovider observationまたは後続の永久evidence chainからPCを再導出し、authorityではないequality guardとしてbootstrap argvへ渡す。CLI、user、generic caller、environmentからPCまたは別revisionを受け取らず、callerは値を入力・置換できない。
+
+`bootstrapProgramUtf8Sha256`は`UTF8('bob-builtin-analyze/wave0a-terminal-lf-bootstrap-program/v1') || 0x00 || exactProgramUtf8Bytes`、`exactArgvSha256`は`UTF8('bob-builtin-analyze/wave0a-terminal-lf-exact-argv/v1') || 0x00 || exactArgvPreimageCanonicalBytes`、`environmentNameValueManifestSha256`は`UTF8('bob-builtin-analyze/wave0a-terminal-lf-environment/v1') || 0x00 || environmentPreimageCanonicalBytes`、`commandContractSha256`は`UTF8('bob-builtin-analyze/wave0a-terminal-lf-command-contract/v1') || 0x00 || commandContractPreimageCanonicalBytes`の各SHA-256とする。exact programは7-bit ASCII、BOM/CR/NULなし、LF line ending、1..12,000 bytesとする。`bootstrap` argvはexact 4 items `['-e', exactProgramUtf8String, '--', PC]`で、index 1のUTF-8 bytesが`exactProgramUtf8Bytes`へbyte-identicalでなければならない。残る4 named arraysでchild-process引数境界を保持し、各arrayは1..32 items、各argumentはstrict UTF-8/NFC、NULなし、0..16,384 bytesとし、`exactArgvPreimageCanonicalBytes`全体を1..131,072 bytesに制限する。各processについて`2 * executablePathUtf16CodeUnits + 1 + Σ(2 * argumentUtf16CodeUnits + 3) <= 32,766`の保守的Windows command-line envelopeをspawn前に要求し、実際のargv item境界はshellを介さずprocess APIへ渡す。environmentは1..32 entries、canonical preimage全体1..65,536 bytesで、entry名はASCII uppercase `^[A-Z][A-Z0-9_]{0,63}$`、ASCII byte順、case-insensitive重複なし、valueはstrict UTF-8/NFC、NULなし、0..8,192 bytes、planがliteral固定するexact name/value集合とする。command contract preimageは`invocationSchemaVersion`を含み、`commandContractSha256`以外のinvocation semantic fieldsを上記closed型へ全て複製し、他の三hash、actual PC、全executable identity、cwd、stdin framingを含める。
+
+substitution後の`planRevisionBefore`と`planRevisionAfter` argvはexact `['rev-parse','--verify',PC + '^{commit}']`、`planBlobRead` argvはexact `['cat-file','blob',PC + ':docs/superpowers/plans/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception.md']`、`powershell` argvはexact `['-NoLogo','-NoProfile','-NonInteractive','-Command','-']`とする。bootstrapは前後revision outputが同じPCであること、raw blobから再導出したGit blob OIDとSHA-256が`operatorBundle.planIdentity`のPO/PSへ一致すること、captureではprovider approval triplet、以後は永久sidecar/claim/receipt/progress chainから再導出したPC/PO/PSへ一致することを、各operationの最初のauthority checkとして要求する。current HEADはTask 0/consumeまではPC、progress/completeではrow-specific repository stateが要求するPC descendantであり、PCとの同一性を要求しない。別revision、working-tree read、caller revision/path、HEAD-relative plan readを拒否する。bootstrapはこのraw blobから全section/action identityを検証し、固定libraryとcontractが選択した一つのwrapperだけを連結してPowerShell stdinへ渡す。operation selectorを受けるgeneric driverは作らず、caller argv/path/JSON/text、environment-selected mode、profile、network、script file、repository import、working-tree fallbackを全て拒否する。planから抽出・検証・連結・起動する主体もこのaction-specific contractであり、contract外の手作業または別bootstrapを許可しない。
 
 capture wrapperは固定archive rootへ触れる前に、planがliteral固定したarchive parentをstable held ancestorからno-followで開き、固定leaf `2026-08-29-wave0a-terminal-lf-operator-self-test`が存在しないことを確認してcreate-newする。全ancestorとroot handleを保持し、dev/ino/reparse、link count、canonical path、parent/root inventoryを固定する。corrected design fileの固定absolute pathとplan記載の完全な`ExternalFileIdentity`をread-only protected sentinelとしてheld handleで開き、before/afterのpath/dev/ino/size/time/link/reparse/hashを全て一致させる。callerはparent/root/sentinelを指定できない。
 
-test sectionを作成したroot内へ先にmaterializeしてlibrary不在のREDを観測し、次にcommitted planからlibrary bytesを同じrootへmaterializeして同じcase rosterをGREENにする。case rosterはportable schema/transcript testsとreal-Windows held-ancestor/create-new/reparse/hard-link/race/crash testsを含み、root内の固定relative-path allowlist以外を作成しない。GREEN後は保持中の同一root identity配下だけをallowlist照合して削除し、held parent相対の同一leaf/identity関係を再検証してrootだけを削除する。成功前のprocess crash、初回確認時にroot既存、identity/allowlist driftでは既存rootをadopt・repair・deleteせず、新しい明示承認まで停止する。case count、RED/GREEN raw receipt hashes、held ancestor、parent/root inventories、deletion proof、sentinelの完全identityをclosed self-test receiptへ固定し、全件pass、root absent、sentinel byte/identity不変の場合だけfixed evidence rootの作成へ進む。self-test receiptはsidecar内へ保存し、Task 0はplan blobからtool/test/command-contract bytesを再導出して独立再検証する。
+test sectionを作成したroot内へ先にmaterializeしてlibrary不在のREDを観測し、次にcommitted planからlibrary bytesを同じrootへmaterializeして同じcase rosterをGREENにする。case rosterはportable schema/transcript testsとreal-Windows held-ancestor/create-new/reparse/hard-link/race/crash testsを含み、root内の固定relative-path allowlist以外を作成しない。GREEN後は保持中の同一root identity配下だけをallowlist照合して削除し、held parent相対の同一leaf/identity関係を再検証してrootだけを削除する。成功前のprocess crash、初回確認時にroot既存、identity/allowlist driftでは既存rootをadopt・repair・deleteせず、新しい明示承認まで停止する。case count、RED/GREEN raw receipt hashes、held ancestor、parent/root inventories、deletion proof、sentinelの完全identityと完全bundle hashをclosed self-test receiptへ固定し、全件pass、root absent、sentinel byte/identity不変の場合だけfixed evidence rootの作成へ進む。self-test receiptは完全bundle配列を再掲せずtop-level commitmentと同じ`operatorBundleIdentitySha256`を保存する。Task 0はplan blobから56/54のtool/test/wrapper/command-contract台帳を再導出し、counts、両roster hash、完全bundle hashを独立再検証する。
 
 ```ts
 type TerminalLfComparisonExceptionRecord = {
   schemaVersion:
-    'bob-builtin-analyze/wave0a-composed-plan-terminal-lf-comparison-exception/v1'
+    'bob-builtin-analyze/wave0a-composed-plan-terminal-lf-comparison-exception/v2'
   purpose: 'compare_one_pinned_composed_plan_user_approval_only'
   mutationAuthority: false
   scope: 'one_time_local_comparison_only_no_campaign_repository_or_remote_mutation'
@@ -317,7 +406,7 @@ type TerminalLfComparisonExceptionRecord = {
     design: RepoObjectIdentity
     implementationPlan: RepoObjectIdentity
   }
-  operatorBundleIdentity: PlanEmbeddedOperatorBundleIdentity
+  operatorBundleCommitment: PlanEmbeddedOperatorBundleCommitment
   captureSelfTestReceipt: PlanEmbeddedOperatorSelfTestReceipt
   targetPlanIdentity: RepoObjectIdentity
   authoringProviderLogPrefix: ProviderLogPrefixIdentity
@@ -368,6 +457,8 @@ type TerminalLfComparisonExceptionRecord = {
   capturedAt: CanonicalUtc
 }
 ```
+
+`TerminalLfComparisonExceptionRecord/v1`、`PlanEmbeddedOperatorSelfTestReceipt/v1`、`TerminalLfImplementationConsumptionClaim/v1`と、外部record内へ完全な`PlanEmbeddedOperatorBundleIdentity`を展開する旧shapeは受理しない。これは未作成・未消費の外部証跡schemaを最初のcapture前に訂正するものであり、migration、dual parser、auto-upgradeを追加しない。top-level `operatorBundleCommitment.planIdentity`は`approvedExceptionIdentity.implementationPlan`へ完全一致し、self-test receiptとuse descriptorの`operatorBundleIdentitySha256`はそのcommitmentの同名fieldへ完全一致させる。
 
 `authoringProviderLogPrefix`は2節の固定値へ完全一致させる。`captureProviderLogPrefix`は後続user confirmation recordのterminal LFを含む行末までを覆い、同じcanonical path/dev/inoを持ち、authoring prefixをbyte-for-byte prefixとして含む。両prefixとも全fileの将来appendを権威にせず、指定prefixのexact bytes/hashだけを権威とする。
 
@@ -434,7 +525,7 @@ type TerminalLfImplementationUseDescriptor = {
     design: RepoObjectIdentity
     implementationPlan: RepoObjectIdentity
   }
-  operatorBundleIdentity: PlanEmbeddedOperatorBundleIdentity
+  operatorBundleIdentitySha256: LowercaseSha256
   targetPlanIdentity: RepoObjectIdentity
   repository: {
     worktree: ExternalDirectoryIdentity & {
@@ -466,7 +557,7 @@ type TerminalLfImplementationUseDescriptor = {
 
 type TerminalLfImplementationConsumptionClaim = {
   schemaVersion:
-    'bob-builtin-analyze/wave0a-terminal-lf-implementation-consumption-claim/v1'
+    'bob-builtin-analyze/wave0a-terminal-lf-implementation-consumption-claim/v2'
   mutationAuthority: false
   maxUses: 1
   useDescriptor: TerminalLfImplementationUseDescriptor
@@ -550,7 +641,7 @@ type TerminalLfImplementationCompletionRecord = {
 
 各roster rowのrequired-evidence rosterは、期待する`evidenceId`、kind、固定source pathまたは固定command/tool/argv/cwd/environment contract、commit parent/changed paths/tree contract、review source、receipt canonicalizationをliteralで列挙する。`TerminalLfPhaseEvidenceManifest.entries`は1..512件、ordinal sort・重複なしでそのrosterへbyte-for-byte対応し、各`sourceReceiptSha256`をheld repository/external handle、raw command receipt、またはtrusted review observationから独立再導出する。caller-provided entry/hashを受理しない。manifestはprogress leafより先に同rowのfixed leafへcanonical create-newし、その`ExternalFileIdentity`をprogress recordへ保存する。start manifest/progressは当該sliceの最初のrepository mutation前、complete manifest/progressは唯一のcommitとrequired gate/review成功後に作る。
 
-`useId`はdomain separator `bob-builtin-analyze/wave0a-terminal-lf-implementation-use/v1`と`useDescriptor`のcanonical JSON bytesからSHA-256で再導出し、caller値を受理しない。descriptorはsidecar/approvalのexact identity、exception plan/spec、plan-embedded operator bundle、target plan、固定worktree/git identities、exact Task 0 state、既知draft、purpose、scope、固定claim/receipt/completion paths、progress roster hashを全て結合する。claim作成時にこれらをheld handle、committed plan blob、raw Git outputから再導出し、receiptはclaim/sidecar/approvalの`ExternalFileIdentity`と同じ`useId`を保持する。
+`useId`は`UTF8('bob-builtin-analyze/wave0a-terminal-lf-implementation-use/v2') || 0x00 || useDescriptorCanonicalBytes`のSHA-256として再導出し、caller値を受理しない。descriptorはsidecar/approvalのexact identity、exception plan/spec、committed plan blobから再導出したplan-embedded operator bundleの完全hash、target plan、固定worktree/git identities、exact Task 0 state、既知draft、purpose、scope、固定claim/receipt/completion paths、progress roster hashを全て結合する。claim作成直前に完全な56-section / 54-action bundleを再構成し、top-level commitmentのcounts、両roster hash、`operatorBundleIdentitySha256`へ全て一致させる。claimは完全配列を複製せず同じ完全bundle hashだけをdescriptorへ保存し、receiptはclaim/sidecar/approvalの`ExternalFileIdentity`と同じ`useId`を保持する。
 
 first R1 repository mutationはreceiptのcreate-new・sync・reopen検証とR1 start manifest/progress作成後だけ許可する。crash recoveryは、claimあり/receiptなしなら同じclaimを再検証してreceiptを一度だけ作成する。receipt後はfixed leaf集合をenumerateし、存在するmanifest/progress recordsがrosterの唯一のcontiguous prefixで、全predecessor identity/useId/state/manifest identityが連鎖する場合だけ再開する。
 
@@ -596,7 +687,7 @@ assistant promptにLFを追加しない。user confirmationのraw/normalized bod
 | 61行と87行のprompt/user byte-identical比較 | 2節の固定tripletについてだけ4節のexact-one-LF比較を使う |
 | 65行と87行のapproval closed record | 5節の固定sidecar identityとcomparison operationを追加し、他のfield/安全条件を維持する |
 | Task 0より前のcapture実装ownership | identity固定済みimplementation plan blob内のsectioned operatorだけを使い、repository source/testを変更せずfixed sidecarとapprovalを作成する。Task 0は同じplan blobのread-only verify wrapperだけを使う |
-| Task 0 Step 1のHEAD chain | `HEAD=exception implementation plan commit`、`HEAD^=本訂正を含む最新設計書commit`、`HEAD^^=08a6540e5ad93e16aba21a69f9d47748c123d5ac`、`HEAD^^^=7383d96c...`、`HEAD^^^^=3f70335f...`を要求する |
+| Task 0 Step 1のHEAD chain | `HEAD=exception implementation plan commit`、`HEAD^=bundle commitment訂正を含む最新設計書commit`、`HEAD^^=e15b77aea11e11db165eff0670a29280c35b3c3c`、`HEAD^^^=08a6540e5ad93e16aba21a69f9d47748c123d5ac`、`HEAD^^^^=7383d96c...`、`HEAD^^^^^=3f70335f...`を要求する |
 | Task 0 Step 2の`C=HEAD`と動的`C/O/S` | `HEAD`はexception implementation plan identityの検証だけに使う。target approvalの`C/O/S`はsidecarの固定`targetPlanIdentity`=`7383d96c...` / `36f5377c...` / `e3cf6684...`から再導出し、固定target tripletへ照合する。exception design/implementation-plan identitiesと6節のaddendum approval tripletは別のclosed照合として検証する |
 | Task 6Cのclosed changed-path集合 | frozen 75 pathsと既存delta 6 pathsに次の2 pathsだけを加え、sort済み83 pathsへ訂正する |
 
@@ -637,10 +728,10 @@ terminal-LF比較と外部証跡操作の実装はcommitted plan blob内のpriva
 | text hashだけ一致しraw record hash/ordinal/time/role/phaseが不一致 | reject |
 | target/exception message recordが固定prefix内のrecord boundaryに存在しない、または複数回存在 | reject |
 | capture prefixがuser confirmationのdelimiter LF直後で終わらない、authoring prefixを含まない、path/dev/ino/hashが不一致 | reject |
-| committed plan blobの全marker/section/marker外identity宣言、ordinal/role/operation/predecessor roster、action-specific capture contract、pinned executables/argv/cwd/environment/stdin framing、RED/GREEN self-test、fixed temporary root/protected sentinel/cleanupが全て一致し、capture prefixとclosed recordもexact verification済み | admit that exact capture wrapper only |
+| committed plan blobのexact 56 sections / 54 action invocations、全marker/section/marker外identity宣言、ordinal/role/operation/predecessor roster、action-specific capture contract、pinned executables/argv/cwd/environment/stdin framingを再導出し、二つのroster hash、完全bundle hash、compact commitment、RED/GREEN self-test、fixed temporary root/protected sentinel/cleanupが全て一致し、capture prefixとclosed recordもexact verification済み | admit that exact capture wrapper only |
 | working-tree plan、duplicate/nested/overlapping marker、identity宣言がmarker interior内、section/roster drift、generic selector、別wrapper、script path/import、caller mode/argv/path/JSON、profile/network/cwd/environment variation/fallback | reject before archive access |
 | self-test root/sentinelがcaller指定、rootが事前に存在、held ancestor/root identityまたはallowlist不一致、RED未観測、GREEN一件でも失敗、temporary inventory/sentinel完全identity/deletion proof不一致 | reject before fixed evidence root creation; do not adopt, repair, or delete an existing root |
-| sidecar/approvalのextra/missing key、非canonical bytes、symlink/reparse、hard link、identity drift | reject |
+| sidecar/approvalのextra/missing key、非canonical bytes、symlink/reparse、hard link、identity drift、旧full-bundle shape、55/57 sections、53/55 actions、roster順序・count・hash・commitment drift | reject |
 | 上記全preconditionとexact selected capture wrapperだけが成功し、fixed evidence rootをheld archive parent相対でcreate-newしてempty/identity/syncを検証 | accept root creation once |
 | evidence root作成後・sidecar作成前のcrash、既存empty root、path-based directory create | reject pending new authorization |
 | 旧2026-08-23 exception artifact/fingerprintの流用 | reject |
@@ -663,7 +754,7 @@ terminal-LF比較と外部証跡操作の実装はcommitted plan blob内のpriva
 | completion後の再開、またはsidecar/approval/claim/receipt/manifest/progress/completionのdelete/rename/欠落 | reject |
 | capture/claim/receipt/manifest/progress/completion timestampが規定順序に反する | reject |
 
-後続実装計画はplan-embedded test sectionを先に固定temporary rootへmaterializeし、library不在のREDを観測してから固定library bytesをmaterializeする。case rosterはexact fingerprint/message IDs/hashes、0/1/2 LF、CRLF、別message、replay、section宣言のmarker内配置、wrapper取り違え、generic selector/caller input、argv/cwd/environment drift、external create-new/no-follow/sync/reopen、fixed root/sentinel ownership、race、全crash境界を固定する。repository側は通常のbyte-identical approval testと83-path policy testを元計画どおり維持し、この例外用source/test変更がなくgeneric pathへ到達しないことをdiff/source gateで確認する。
+後続実装計画はplan-embedded test sectionを先に固定temporary rootへmaterializeし、library不在のREDを観測してから固定library bytesをmaterializeする。case rosterはexact fingerprint/message IDs/hashes、0/1/2 LF、CRLF、別message、replay、section宣言のmarker内配置、wrapper取り違え、generic selector/caller input、argv/cwd/environment drift、external create-new/no-follow/sync/reopen、fixed root/sentinel ownership、race、全crash境界を固定する。さらにexact 56 sections / 54 action invocations、両roster hash、完全bundle hash、compact commitment、sidecarのactual 65,536-byte hard capを固定する。55/57 sections、53/55 actionsに加え、56/54を保った一件duplicate + 別一件omit、二actionの同一wrapper選択、operationまたはbound rowとsectionの不一致、同じprogress rowの二重bind、roster順序変更、一field/一byte置換を個別REDにする。section preimageだけを内部整合した別のschema-valid 56件へ置換してhashを再計算するsplit viewと、action preimageだけを内部整合した別のschema-valid 54件へ置換してhashを再計算するsplit viewも個別REDにする。各hash preimageのbare array化、wrapper schema変更、nested section/command/plan hashの省略、argv item境界の結合、bootstrap argv index 1とprogram bytesの不一致、environment名のcase crossing、PCのprogram bytesまたは非指定template fieldへの埋込み、PO/PSのprogram/argv埋込み、actual argvのPC不一致、current descendant HEADをPCと誤比較する実装も個別REDにする。PC templateは指定locationの一件欠落、一件重複、substitution count不一致、pre-substitution roster hashをactual hashとして流用するcaseを個別REDにする。RFC 8785/JCSのcross-runtime golden vectorsはcomposed/decomposed `é`、solidus、quote/backslash、U+0000..U+001F escape、non-ASCII、unpaired surrogate拒否、ASCII外keyを含むUTF-16 object-key ordering代表vectorを含め、NodeとPowerShell/.NETで同じcanonical bytes/hashを要求する。pre-root sidecar envelopeは65,535 / 65,536 / 65,537 bytes、bundle preimageは262,143 / 262,144 / 262,145 bytes、bootstrap programは11,999 / 12,000 / 12,001 bytes、argv preimageは131,071 / 131,072 / 131,073 bytes、Windows command-line envelopeは32,765 / 32,766 / 32,767 UTF-16 code unitsを固定する。post-root actual candidateは記録済みenvelope以下を受理し、envelope超過を独立したsize armではなくinternal consistency failureとしてroot保持・停止にする。comparison record `/v1`、self-test receipt `/v1`、claim `/v1`、`/v2`へのlegacy full bundle併記、別planのcompact commitment、caller commitmentを全てREDにする。repository側は通常のbyte-identical approval testと83-path policy testを元計画どおり維持し、この例外用source/test変更がなくgeneric pathへ到達しないことをdiff/source gateで確認する。
 
 ## 10. 文書作成ゲートと停止点
 
@@ -674,9 +765,9 @@ terminal-LF比較と外部証跡操作の実装はcommitted plan blob内のpriva
 ```powershell
 $TerminalLfSpec = 'docs/superpowers/specs/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception-design.md'
 $KnownDraft = 'tools/main-consolidation/test/featureIntegrationCampaignPolicy.test.mjs'
-$ExpectedHead = '08a6540e5ad93e16aba21a69f9d47748c123d5ac'
-$ExpectedOriginalSpecBlob = '3b3895cbe5843414636f045f124a24bb24ced7ae'
-$ExpectedOriginalSpecSha256 = '993e865d271b975103d91e22ec4b8cfdaf37bce5b2fdb05c0f2a8776ce9caa78'
+$ExpectedHead = 'e15b77aea11e11db165eff0670a29280c35b3c3c'
+$ExpectedOriginalSpecBlob = '20e0d77de4034ca4d2a66b89869ed1b7cc90865e'
+$ExpectedOriginalSpecSha256 = 'f9b82de9ba5c8a0f82f87e75f13fa6dd2ea663310e2c167bbe6c22e0335fa41e'
 $ExpectedDraftSha256 = '17234f43c7c264ff4d0c2abf04158c666fd81a0c434f88fcf6c5d3e11e1b877d'
 $ExpectedInitialStatus = @(
   ' M docs/superpowers/specs/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception-design.md'
@@ -732,7 +823,7 @@ $TerminalLfCachedPathsAfterTests = @(git diff --cached --name-only)
 if ($TerminalLfCachedPathsAfterTests.Count -ne 1 -or $TerminalLfCachedPathsAfterTests[0] -cne $TerminalLfSpec) { throw 'staged path set changed during tests' }
 Assert-TerminalLfStatus $ExpectedStagedStatus
 
-git commit --only -m 'docs: correct Wave 0A terminal-LF design' -- $TerminalLfSpec
+git commit --only -m 'docs: compact Wave 0A operator bundle evidence' -- $TerminalLfSpec
 if ($LASTEXITCODE -ne 0) { throw 'documentation commit failed' }
 if ((git rev-parse HEAD^).Trim() -cne $ExpectedHead) { throw 'unexpected documentation commit parent' }
 $TerminalLfCommitPaths = @(git diff-tree --no-commit-id --name-only -r HEAD)
@@ -753,4 +844,4 @@ $TerminalLfCommittedIdentity = [pscustomobject]@{
 $TerminalLfCommittedIdentity | Format-List
 ```
 
-このgateで本書一件だけをlocal correction commitに固定し、commit changed-path集合が本書だけ、parentが`08a6540e5ad93e16aba21a69f9d47748c123d5ac`、indexが空、既知draftだけが同じSHA-256のunstaged fileとして残ることを再検証する。訂正commit/blob/SHA-256を提示してwritten spec reviewを得る。その承認前に実装計画を書かない。実装計画commitの別exact approval前にsidecar、`approval.json`、claim/receipt、Task 0、source/test変更を行わない。
+このgateで本書一件だけをlocal bundle-commitment correction commitに固定し、commit changed-path集合が本書だけ、parentが`e15b77aea11e11db165eff0670a29280c35b3c3c`、indexが空、既知draftだけが同じSHA-256のunstaged fileとして残ることを再検証する。訂正commit/blob/SHA-256を提示してwritten spec reviewを得る。その承認前に実装計画を書かない。実装計画commitの別exact approval前にsidecar、`approval.json`、claim/receipt、Task 0、source/test変更を行わない。
