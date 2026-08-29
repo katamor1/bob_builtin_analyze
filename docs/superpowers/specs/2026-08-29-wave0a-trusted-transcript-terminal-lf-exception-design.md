@@ -1,11 +1,12 @@
 # Wave 0A trusted transcript terminal-LF 比較例外の限定設計追補
 
 - Addendum ID: `WAVE0A-TERMINAL-LF-COMPARISON-EXCEPTION-V1`
-- Status: 設計作成、訂正設計、bundle commitment限定訂正は承認済み。比較例外の適用、外部capture、Task 0、source/test実装の再開は、bundle commitment訂正後の本設計とidentity固定済み実装計画に対する各別承認待ち。
-- Date: 2026-08-29
+- Correction ID: `WAVE0A-PLAN-CONTEXT-INTERVAL-DEREFERENCE-CORRECTION-V1`
+- Status: terminal-LF比較例外の旧設計と旧実装計画は承認済みだが、旧plan-contextの区間比較が外部作成前に安全停止した。plan-context限定訂正設計は作成済みでwritten-spec review待ち。訂正plan、capture、Task 0、source/test実装は未承認・未実行。
+- Date: 2026-08-30
 - Repository: `katamor1/bob_builtin_analyze`
 - Base checkpoint: `7383d96c37b8a86cd32fe4114839ff3650a9280a`
-- Scope: composed-plan実装承認のうち、固定された一つのassistant promptと一つのuser approvalの本文比較だけ。
+- Scope: composed-plan実装承認のうち、固定された一つのassistant promptと一つのuser approvalの本文比較、および承認済みplan blob内で発見されたplan-context区間wrapper参照不整合の限定訂正。
 
 ## 1. 権威、作成許可、停止境界
 
@@ -845,3 +846,373 @@ $TerminalLfCommittedIdentity | Format-List
 ```
 
 このgateで本書一件だけをlocal bundle-commitment correction commitに固定し、commit changed-path集合が本書だけ、parentが`e15b77aea11e11db165eff0670a29280c35b3c3c`、indexが空、既知draftだけが同じSHA-256のunstaged fileとして残ることを再検証する。訂正commit/blob/SHA-256を提示してwritten spec reviewを得る。その承認前に実装計画を書かない。実装計画commitの別exact approval前にsidecar、`approval.json`、claim/receipt、Task 0、source/test変更を行わない。
+
+## 11. plan-context限定訂正の権威と停止観測
+
+本節以降は `WAVE0A-PLAN-CONTEXT-INTERVAL-DEREFERENCE-CORRECTION-V1` として、承認済み旧実装計画のcaptureが外部作成前に停止した事実だけを訂正する。旧commitをrewrite、amend、replace、deleteしない。以下では旧設計を`DC0/DO0/DS0`、旧planを`PC0/PO0/PS0`、本書の訂正commit後identityを`DC1/DO1/DS1`、後続訂正planのcommit後identityを`PC1/PO1/PS1`と呼ぶ。
+
+§§1–10は`DC0/PC0`を作成した時点のhistorical contractとして保持する。`DC1/PC1`については§§11–20が、§1の「比較規則とTask 0条件だけを置換する」という旧範囲制限と旧plan authoring permission、§7のTask 0 plan lineage、§9の95-case前提、§10の旧design authoring gateだけを限定的にsupersedeする。§1の旧permissionは`PC0`を作成して終了しており、`PC1`の作成を許可しない。§20が`DC1`に対する唯一のauthoring gateであり、HEAD=`e15b77a...`を要求する§10を再実行しない。四operand、exact two-version history、96-case roster、real-context gate以外の§§1–10契約は継承する。
+
+| Authority | Fixed identity |
+| --- | --- |
+| `DC0/DO0/DS0` | `613ff084f51340e7439f8adb2d26707a53d2e80a` / `4ad9d5ee074edaaeb8927311550c086c286a2d47` / `0e900bc12fd07c4d3947d5a3a99e8b803bc3d0f69657d879939c9b928a1846b0` |
+| `PC0/PO0/PS0` | `ea49f588c736e713125d03d774782b143c893091` / `2b4d83d483c36e81e2ea0581ce8e551f96495229` / `fa33f0cd719fb757d46e5f1043fb1d9083f50efb90e3089bd11a575a2663d682` |
+| branch/worktree | `codex/feature-integration-selection-design` / `C:/Users/stell/source/repos/bob_builtin_analyze/.worktrees/feature-integration-selection-design` |
+| known draft | `tools/main-consolidation/test/featureIntegrationCampaignPolicy.test.mjs`; SHA-256 `17234f43c7c264ff4d0c2abf04158c666fd81a0c434f88fcf6c5d3e11e1b877d` |
+
+`PC0`へのexact approval tripletは一意に成立した。trusted launch gateはaction `a0010-capture`、approval message `msg_01a04e69-4160-7960-b1cd-317a8f0dc0ce`、exact argv SHA-256 `59c0589cb6a23e6ba2659bc381c8156895341b97056a1d43ec5cbca8dec14a7a`、section roster SHA-256 `d9c3e5316a83e902ad053d3b2b1154234a6f4e13f6fa4121ad4df345ff9764fa`、static runtime-core SHA-256 `ff98151717555828221c49c23874ef58692dde870c475d445a43fb7a756cca31`を再構成して成功した。その直後、PowerShell wrapperが`Get-WavePlanContext -ExpectedRevision PC0`を呼んだ時点で次のerrorによりexit 1となった。
+
+```text
+Wave0A bootstrap: PowerShell operation failed: Get-WavePlanContext:
+The property 'FullCharEndExclusive' cannot be found on this object.
+```
+
+このfailure observationはprovider JSONL line `72722`、timestamp `2026-08-29T16:51:39.966Z`、output ID `ctco_01a04e6f-1d3e-7670-a8a6-8d5e8b4957f5`、call ID `call_wKWb8nLfX7U0gEjwEtU84U4j`、raw record 1,953 bytes / SHA-256 `8c4007673a3f57e89cd84113787689c2d5377277fb80a3079f9feb22a39d2d78`へ固定する。S0010 wrapperは`Initialize-WaveActionInvocation`でplan contextを構築してから`Invoke-Wave0ACapture`へ進むため、line 1693のfailure時点ではcapture function、archive access、self-test、evidence writeのいずれにも到達していない。
+
+停止後のread-only確認では、次の三rootはすべて不存在である。
+
+```text
+C:/Users/stell/source/archives/bob_builtin_analyze/2026-08-29-wave0a-composed-plan-terminal-lf-comparison-exception
+C:/Users/stell/source/archives/bob_builtin_analyze/2026-08-27-wave0a-approved-addenda-composed-plan-approval
+C:/Users/stell/source/archives/bob_builtin_analyze/2026-08-29-wave0a-terminal-lf-operator-self-test
+```
+
+sidecar、approval、claim、receipt、manifest、progress、completion、Task 0、source/test commitは一件も作成されていない。HEADは`PC0`、indexは空、porcelainは既知draft一件だけで、そのSHA-256も不変だった。`main == origin/main == c59db06ecb32eb7a57beeb3e932acdd5b4774de5`も不変である。したがって既存artifactのadopt、repair、rename、delete、migration、互換読込は設計しない。旧approval tripletは失敗した`PC0`に対する履歴証拠としてのみ残り、`PC1`を許可せず、useを消費した証拠にもならない。
+
+本訂正設計書の作成権限は同一trusted taskの次のprovider observationで確認した。
+
+| Role | Provider message ID | JSONL line / observedAt | decoded UTF-8 bytes / SHA-256 | raw record bytes / SHA-256 |
+| --- | --- | --- | --- | --- |
+| assistant correction request | `msg_05f07830af5cd031016a9311977d8c87d09e67ece63e54fe2a` | `73055` / `2026-08-29T17:06:30.362Z` | `406` / `90fe0b6dffcbe6d3ac15f8d27ca90ece951f8bd931103ca9928654c3bdff8bb6` | `782` / `939a47957dc12dc9b4abc3a5cebe478bb3f7804320972cf9dce4feeba4904d7d` |
+| user authoring approval | `msg_01a04f0b-f397-7490-ad8c-681a45dd096e` | `73061` / `2026-08-29T19:42:58.455Z` | `87` / `926c86bf0c078e1688b223ab4780992cd357a37fd6376a331d231398cd526a3f` | `450` / `0a5d66eb5e85fb36c7ca1a68483538a0378d27549caccd8f17c33c1b402ef9b6` |
+
+user decoded textはopening/closing backtick、closing backtick後のASCII space二つ、terminal LF一つを含み、CRを含まない。target phraseはUTF-8 byte offset 1にexactly once存在し、上記assistant requestより後の一件だけである。この権限は本書一件の編集、self-review、local commit、identity提示までに限る。訂正plan、外部root、capture、Task 0、source/test、remote、PR、main、cleanupを許可しない。
+
+## 12. root causeと訂正単位
+
+`Get-WaveDelimitedInterval`は単一の正常な`PSCustomObject`を返す。pipeline output混入、marker ambiguity、UTF-8 byte/character split、manifest overlapではない。実際の`PC0` section bytesによる最小再現では、最初のsection `s0001-library`を追加した後、二番目のsection `s0002-selftest`と比較する最初のcharacter armで同じ`PropertyNotFoundException`が発生した。
+
+`Get-WavePlanContext`は各過去sectionを次のwrapperとして保存する。
+
+```powershell
+[pscustomobject]@{
+  SectionId = [string]$Section.sectionId
+  MarkerCode = [string]$Section.markerCode
+  Interval = $Interval
+}
+```
+
+一方、四つのpairwise checkはwrapper自身を`Test-WaveIntervalsDisjoint`へ渡す。calleeが要求する`FullCharStart`、`FullCharEndExclusive`、`FullByteStart`、`FullByteEndExclusive`はwrapper直下ではなく`wrapper.Interval`にある。訂正対象は次の四operandだけである。
+
+| Unit / direction | `PC0` operand | corrected operand |
+| --- | --- | --- |
+| character / previous to current | `$Previous` | `$Previous.Interval` |
+| character / current to previous | `$Previous` | `$Previous.Interval` |
+| byte / previous to current | `$Previous` | `$Previous.Interval` |
+| byte / current to previous | `$Previous` | `$Previous.Interval` |
+
+`SectionIntervals`へraw intervalだけを保存する案は採用しない。下流`Get-WaveSectionBytes`は`SectionId`でwrapperを選択し、`Selected[0].Interval.BodyBytes`を読むため、wrapper shapeは正しい公開前private contractである。`Test-WaveIntervalsDisjoint`のgeneric property contract、marker抽出、section order、manifest shapeも変更しない。
+
+既存95-case self-testがGREENだったのは、S0002が既に構成済みの`$script:WaveSelfTestPlanContext`を受け取り、`Get-WavePlanContext`を一度も呼ばないためである。production captureはself-test context設定より先に`Get-WavePlanContext`を呼ぶので、failure時にはself-test sectionへ到達しない。この順序自体は安全なfail-closed境界であり変更しない。検出漏れは、S0002のactual interval comparison、decoded production loopのstatic source/shape guard、postcommitとtrusted launchでactual `PC1`を読むreal-context gateの三段で閉じる。
+
+## 13. 訂正方式の比較
+
+| Approach | Decision | Reason |
+| --- | --- | --- |
+| A. 既存design/plan pathを二つの新commitで順次訂正する | 採用 | 旧objectsを保持し、固定83-path集合、固定root名、既存外部schemaを維持できる。history guardを明示的な二version遷移へ変える必要があるが、変更範囲をauthority layer内に閉じられる |
+| B. 新しいdesign/plan pathを追加する | 不採用 | unique-add規則は単純になるが、base-to-final path集合が83から85へ増え、Task 6C/R4、completion verifier、policy/tests、evidence contractへ不要な変更を波及させる |
+| C. shim、profile、type adapter、stdin前置、decoded bytes patch、temporary scriptで`PC0`を通す | 禁止 | committed section hash、exact stdin framing、no-caller-input、pinned program/argv、bundle commitmentと旧approval identityを破る。旧tripletの権限では認証できない |
+
+採用案は旧commitを変更せず、同じ二pathに新しいhistoryを追加する。新しいgeneric correction framework、runtime flag、fallback、optional schema fieldは作らない。
+
+## 14. exact correction lineage
+
+`DC1`と`PC1`はcommit後に導出するlowercase 40-hexであり、本書bytesへ将来値を埋め込まない。後続planは次のhistoryをすべて固定値として検証する。
+
+```text
+PC1^  = DC1
+DC1^  = PC0
+PC0^  = DC0
+```
+
+full first-parent authority prefixは次へ一致させる。
+
+```text
+PC1 -> DC1 -> ea49f588c736e713125d03d774782b143c893091
+    -> 613ff084f51340e7439f8adb2d26707a53d2e80a
+    -> e15b77aea11e11db165eff0670a29280c35b3c3c
+    -> 08a6540e5ad93e16aba21a69f9d47748c123d5ac
+    -> 7383d96c37b8a86cd32fe4114839ff3650a9280a
+    -> 3f70335f96d7fb14dceab7f6d3e2d4b71f07f98f
+    -> 86670e2b7a76c9f866270314c000e1da9a8a43c2
+```
+
+各commitの変更pathはexactly oneである。
+
+```text
+DC1: docs/superpowers/specs/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception-design.md
+PC1: docs/superpowers/plans/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception.md
+```
+
+後続planとtrusted launcherは次を独立に要求する。
+
+1. design pathは`08a6540e5ad93e16aba21a69f9d47748c123d5ac`で一度だけaddされ、変更commit rosterはnewest-firstでexactly `[DC1, 613ff084f51340e7439f8adb2d26707a53d2e80a, e15b77aea11e11db165eff0670a29280c35b3c3c, 08a6540e5ad93e16aba21a69f9d47748c123d5ac]`、`DC1^`のblobが`DO0`、`DC1`のblobが`DO1`である。
+2. `DC1`はsingle-parent `PC0`で、diff-tree changed pathはdesign path一件だけである。
+3. plan pathは`PC0`で一度だけaddされ、`PC1^`のblobが`PO0`、`PC1`のblobが`PO1`である。
+4. `PC1`はsingle-parent `DC1`で、diff-tree changed pathはplan path一件だけである。
+5. plan pathを変更したcommit rosterはnewest-firstでexactly `[PC1, PC0]`、add-filter rosterはexactly `[PC0]`である。`HEAD`から導出しても同じrosterである。
+6. design/plan両pathのtouch rosterとadd-filter rosterをfixed argvから別々に再導出し、途中の別commit、replace ref、graft、shallow history、alternate object databaseを拒否する。
+7. `HEAD=PC1`、index/admin/common-dir/root contract、known draft、tracked inventory、object database leaseが後続planのTask 0条件へ一致する。
+
+`PC0`の「current plan revision自身がunique add commit」というguardは、上記のexact two-version transitionに限って置換する。任意のmodified plan、三version目、別add commit、同一blobの別commit、new path、working-tree fallbackを一般許可しない。PowerShell S0001、全54 action-specific Node bootstrap、trusted pre-bootstrap launcherの三境界で同じhistoryを別実装として再導出する。
+
+## 15. private operatorの訂正
+
+後続planは既存56 sections / 54 actions / 50 progress rowsを維持する。section追加、action追加、wrapper selector追加は行わない。
+
+S0001ではproduction loopの四operandだけを`$Previous.Interval`へ変更する。private helper、auto-unwrapping、wrapper shape validatorを追加せず、`Test-WaveIntervalsDisjoint`、`SectionIntervals` storage、既存の四overlap error semanticsをそのまま維持する。
+
+S0002へcase ID `bundle.section-wrapper-interval-dereference`を追加し、self-test rosterを95から96へ増やす。一つのcase内で次を固定する。
+
+- non-overlappingな二つのwrapped intervalを用意し、actual `Test-WaveIntervalsDisjoint`へ`.Interval`を渡すcharacter/byteの両方向が`true`になる。
+- current/previousをoverlapさせた四armでactual `Test-WaveIntervalsDisjoint`がそれぞれ`false`になり、production-shaped `Assert-Wave(...)`式が既存のexact message `plan bundle section intervals overlap in character space`、`plan bundle section intervals overlap bidirectionally in character space`、`plan bundle section intervals overlap in byte space`、`plan bundle section intervals overlap bidirectionally in byte space`をoperator prefix付きでthrowする。
+- decoded production `Get-WavePlanContext`のsource/shape contractがcorrected four call sitesをexactly one set持ち、bare `$Previous` operandの旧四callを0件にする。
+- `Get-WaveSectionBytes`が`SectionId`選択と`.Interval.BodyBytes`を引き続き使えることを確認する。
+
+S0002の実行前にcontext構築が必要という順序は変えないため、このcaseだけをcapture admission proofにしない。後述するpostcommit real-context gateが、actual `PC1` plan blob、actual 56-section manifest、actual production `Get-WavePlanContext`を先に実行して補完する。
+
+全54 Node bootstrapの`planGuard`は14節のhistoryへ更新する。action ID、selected wrapper、operation、bound row、exact argv item boundary、closed environment、pinned executable、stdin framing、program capは変更しない。action-specific Brotli payloadを再生成し、各payloadが同じ共通history guardと固有ACTION/WRAPPERだけを持つことをauthoring gateで比較する。
+
+## 16. preapproval regressionと生成ゲート
+
+訂正planのauthoringは、commit前static gate、commit後real-context gate、exact approval前trusted-launch gateの三段階とする。
+
+### 16.1 commit前static gate
+
+- decoded S0001に旧四callが0件、production loop内のcorrected four-arm codeがexactly one set存在する。
+- decoded S0002にcase IDがexactly once存在し、96件のsorted unique roster/hashへ一致する。
+- all 56 marker intervalsとmanifest intervalがcharacter/byteの両空間で非重複である。
+- 54 bootstrapをdecompressし、history guardが14節へ一致し、旧unique-current-add guardが0件である。
+- section 56、action 54、progress 50、finalChangedPaths 83、environment 26を維持する。
+- NodeとPowerShell/.NETのJCS golden、section/action/static-core/bundle preimage cross-runtime比較を再実行する。
+- root-cause/PowerShell semantics、history/authority、bundle/hash regenerationを別担当のread-only reviewとして三件実施し、critical findingが0件になるまでplan commitへ進まない。
+
+### 16.2 commit後real-context gate
+
+`PC1/PO1/PS1`導出後、trusted authoring taskはworking-tree planを読まず、pinned Gitで`PC1:<plan path>`をblobとして読む。canonical manifestとS0001をhash検証して抽出し、closed 26-entry environment、pinned PowerShell、fixed CWDでS0001だけをloadする。その後、design-approved fixed one-line read-only probeからproduction `Get-WavePlanContext -ExpectedRevision PC1`を呼ぶ。
+
+probeはpath、mode、JSON、selector、environment、networkを受け取らず、repository/evidence write APIを呼ばない。次を出力してexit 0とする。
+
+```text
+revision = PC1
+sectionIntervalCount = 56
+firstSectionId = s0001-library
+lastSectionId = s0999-complete
+manifestDisjoint = true
+allPairwiseDisjoint = true
+```
+
+probe bytes/hash、S0001 bytes/hash、exact argv、environment manifest、CWD、executablesをpostcommit gate invocation内で再構成して照合する。結果はそのprocessのexit/outputとして観測するだけで、repository file、external receipt、provider message、caller-supplied identityへ保存しない。
+
+negative variantはhash-verified actual `PC1` S0001からdecodeしたlibrary bytesだけを入力とする。authoring gateはcorrected four call-site byte patternsが各exactly once、bare-wrapper old patternsが0件であることを先に確認し、design-approved replacement tupleで`.Interval`を除くexactly four scoped replacements（character/byte × forward/reverse）だけを行う。置換前後のbyte diffがその四rangeだけであること、byte length/hash、re-encoding round tripを独立に検証し、後続planへnegative library hashを固定する。negative bytesは別closed PowerShell processへだけ渡し、actual `PC1`、同じfixed probe/CWD/environment/executablesでnonzero exit、second section、`PropertyNotFoundException`、`FullCharEndExclusive`を要求する。corrected actual S0001は同じ条件で56件完走しなければならない。両processの前後で三external root不存在とrepository state不変を再確認する。negative bytesをfile、receipt、provider messageへ保存せず、capture stdinへ決して渡さない。
+
+### 16.3 exact approval前trusted-launch gate
+
+trusted launcherは`PC1/PO1/PS1`と`DC1/DO1/DS1`をinert dataとして受け、14節のhistory、all manifest commitments、selected capture program、exact argvを再構成する。captureを開始せず、16.2のfixed read-only probeをactual `PC1`から独立に再実行し、current repository stateと同じidentitiesで56件完走することを確認する。その後にだけ新しいannouncement/promptを一回ずつ提示する。postcommit gateの過去outputやunspecified receiptをauthorityとして受け取らない。
+
+新しいuser confirmationは`PC1/PO1/PS1 + DC1/DO1/DS1`へbindしたdistinct exact tripletでなければならない。旧`PC0` triplet、同じ本文の別message、generic approval、assistant echo、0/2 LF、CR/CRLF、space suffix、別threadを拒否する。新triplet成立後もcapture action一件だけが許可され、remote/PR/main/cleanupは許可されない。
+
+## 17. identity再生成範囲
+
+future commitまたはfuture provider messageへ依存するidentityを先に要求しない。再生成を次の三phaseへ分け、各phaseで既知になったidentityだけをgateする。
+
+### 17.1 plan precommit template/static phase
+
+1. approved `DC1/DO1/DS1`とprotected design sentinelのsize/hash/time/object identity。
+2. decoded PowerShell library identity。
+3. S0001/S0002のUTF-8 byte lengthとSHA-256。
+4. 96-case self-test roster count/hash。
+5. static 56-section roster hashとstatic runtime-core hash。
+6. common history guardを含む54 action program templates、各program hash、PC metavariable cardinality、argv template identity。
+7. native source/assembly/reference roster、fixed executable/CWD/environment identity。
+
+このphaseはfuture `PC1/PO1/PS1`、PC substitution後hash、provider prefix、approval message identityを要求しない。template/static identityが内部整合して初めてplan pathをstage/commitできる。
+
+### 17.2 plan postcommit identity phase
+
+1. final `PC1/PO1/PS1`、postcommit plan byte length、terminal exactly one LF、CR/NUL absence。
+2. `PC1` substitution後の54 exact-argv hashesとcommand-contract hashes。
+3. 54 action-invocation roster hash、full operator-bundle identity hash、compact commitment。
+4. postcommit real-context probeのfixed bytes/hash、live exit/outputとcross-runtime golden identity。
+
+このphaseが全てGREENになって初めてplan identityをuserへ提示できる。失敗したplan commitをamendせず、新しい訂正設計権限まで停止する。
+
+### 17.3 pre-capture transcript phase
+
+1. new announcement/prompt/user confirmationのdistinct message identitiesとexact body/hash/order。
+2. user confirmation delimiter直後までのnew provider capture prefix identity。
+3. trusted-launch preflightのselected action、exact argv、actual `PC1`から独立再実行したreal-context probe結果。
+
+このphaseは`PC1` commitとpostcommit gateの後にだけ実行する。new exact triplet/prefixが成立して初めてcaptureを一回許可する。
+
+native C# source/assemblyはinterval dereferenceに関与しないためsemantic変更しない。後続plan生成時に現行source/assembly bytesとcompiler/reference rosterを再計測し、同一identityであることを証明する。差がある場合は本訂正へ混入させず停止する。
+
+## 18. 明示的に変更しないもの
+
+- fixed external root/leaf names、canonical JSON schema、self-bound envelope、size caps、no-follow/create-new/sync/reopen契約
+- provider prefix/triplet identity検証、terminal-LF限定比較、`maxUses: 1`、fixed purpose、`mutationAuthority: false`
+- 56 sections、54 actions、50 progress rows、83 final paths、26 environment entries
+- 42-schema registry、15-operation roster、20-node DAG、21 evidence-contract rows
+- Task 0以後の25 implementation slices、owned paths、RED/GREEN/review順序
+- public command/API、設定、保存schema、VSIX version、dependency、OOXML/XLSX/PDF fixtureと実機受入証跡
+- main、origin/main、remote、PR、campaign/control authority、protected clone、branch/worktree cleanup
+- known draftのbytes、stage状態、ownership
+- `.gitattributes`、generic normalizer、public export、runtime flag、environment-selected mode、fallback
+
+本訂正のrepository path deltaは0である。既存design pathとplan pathはすでに83-path集合に含まれ、同じpathの新commitはbase-to-final name集合を増やさない。
+
+## 19. correction acceptance matrix
+
+| Case | Expected |
+| --- | --- |
+| `DC1^=PC0`、design一path、`PC1^=DC1`、plan一path、plan touch history `[PC1,PC0]` | accept lineage |
+| old commitsのamend/rewrite、replace/graft/shallow、third plan version、別plan path | reject before section execution |
+| four armsが`Previous.Interval`を使い、real-context gateが56件完走 | accept context construction |
+| one armでもwrapper自身、direction/unit欠落、helperとloopのsplit view | reject before approval |
+| 96-case rosterとnew wrapper regressionがGREEN、old negative variantがexact failure | accept regression evidence |
+| embedded self-testだけGREENでreal-context gateなし | reject as insufficient |
+| section/action/progress/path/environment countが56/54/50/83/26以外 | reject |
+| 54 bootstrapの一件だけ旧history guard、program/argv/contract hash drift | reject |
+| old `PC0` tripletを`PC1`へ再利用 | reject |
+| fixed rootsのいずれか既存、またはfailed capture artifactをadopt/repair/delete | reject pending separate authority |
+| new exact triplet後、trusted gateがreal-context probeをactual `PC1`から再実行して56件完走 | admit capture action once |
+| correction design/plan approvalからremote/PR/main/cleanupへ進む | reject as out of scope |
+
+## 20. correction design authoring gateと停止点
+
+本訂正設計段階で変更するrepository fileは既存の本書一件だけである。`PC0` plan、known draft、source/test、manifest、external rootsを変更しない。次のgateは本書編集後に実行する。
+
+```powershell
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $true
+
+$CorrectionSpec = 'docs/superpowers/specs/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception-design.md'
+$ApprovedPlan = 'docs/superpowers/plans/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception.md'
+$KnownDraft = 'tools/main-consolidation/test/featureIntegrationCampaignPolicy.test.mjs'
+$ExpectedHead = 'ea49f588c736e713125d03d774782b143c893091'
+$ExpectedOriginalSpecBlob = '4ad9d5ee074edaaeb8927311550c086c286a2d47'
+$ExpectedOriginalSpecSha256 = '0e900bc12fd07c4d3947d5a3a99e8b803bc3d0f69657d879939c9b928a1846b0'
+$ExpectedPlanBlob = '2b4d83d483c36e81e2ea0581ce8e551f96495229'
+$ExpectedPlanSha256 = 'fa33f0cd719fb757d46e5f1043fb1d9083f50efb90e3089bd11a575a2663d682'
+$ExpectedDraftSha256 = '17234f43c7c264ff4d0c2abf04158c666fd81a0c434f88fcf6c5d3e11e1b877d'
+$ExpectedBranch = 'codex/feature-integration-selection-design'
+$ExpectedTopLevel = 'C:/Users/stell/source/repos/bob_builtin_analyze/.worktrees/feature-integration-selection-design'
+$ExpectedGitDir = 'C:/Users/stell/source/repos/bob_builtin_analyze/.git/worktrees/feature-integration-selection-design'
+$ExpectedCommonDir = 'C:/Users/stell/source/repos/bob_builtin_analyze/.git'
+$ExpectedInitialStatus = @(
+  ' M docs/superpowers/specs/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception-design.md'
+  ' M tools/main-consolidation/test/featureIntegrationCampaignPolicy.test.mjs'
+)
+$ExpectedStagedStatus = @(
+  'M  docs/superpowers/specs/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception-design.md'
+  ' M tools/main-consolidation/test/featureIntegrationCampaignPolicy.test.mjs'
+)
+$ExpectedCommittedStatus = @(
+  ' M tools/main-consolidation/test/featureIntegrationCampaignPolicy.test.mjs'
+)
+$ExternalRoots = @(
+  'C:/Users/stell/source/archives/bob_builtin_analyze/2026-08-29-wave0a-composed-plan-terminal-lf-comparison-exception'
+  'C:/Users/stell/source/archives/bob_builtin_analyze/2026-08-27-wave0a-approved-addenda-composed-plan-approval'
+  'C:/Users/stell/source/archives/bob_builtin_analyze/2026-08-29-wave0a-terminal-lf-operator-self-test'
+)
+
+function Assert-CorrectionStatus([string[]] $Expected) {
+  $Actual = @(git status --porcelain=v1 --untracked-files=all)
+  $Delta = @(Compare-Object -CaseSensitive -ReferenceObject $Expected -DifferenceObject $Actual)
+  if ($Actual.Count -ne $Expected.Count -or $Delta.Count -ne 0) { throw 'unexpected working tree status set' }
+}
+
+function Get-GitBlobSha256([string] $RevisionPath) {
+  return (node -e "const c=require('node:crypto'),p=require('node:child_process').spawnSync('git',['cat-file','blob',process.argv[1]],{encoding:null,maxBuffer:64*1024*1024});if(p.status!==0)process.exit(p.status??1);process.stdout.write(c.createHash('sha256').update(p.stdout).digest('hex'))" $RevisionPath).Trim()
+}
+
+function ConvertTo-CorrectionPath([string] $Value) {
+  $Normalized = [IO.Path]::GetFullPath($Value).Replace('\\', '/').TrimEnd('/')
+  if ($Normalized -match '^[a-z]:') { $Normalized = $Normalized.Substring(0, 1).ToUpperInvariant() + $Normalized.Substring(1) }
+  return $Normalized
+}
+
+function Assert-CorrectionWorktree {
+  $Branch = (@(git branch --show-current) -join '').Trim()
+  $TopLevel = (@(git rev-parse --show-toplevel) -join '').Trim()
+  $GitDir = (@(git rev-parse --absolute-git-dir) -join '').Trim()
+  $CommonDir = (@(git rev-parse --git-common-dir) -join '').Trim()
+  $Superproject = (@(git rev-parse --show-superproject-working-tree) -join '').Trim()
+  if ($Branch -cne $ExpectedBranch) { throw 'unexpected branch' }
+  if ((ConvertTo-CorrectionPath $TopLevel) -cne $ExpectedTopLevel) { throw 'unexpected worktree root' }
+  if ((ConvertTo-CorrectionPath $GitDir) -cne $ExpectedGitDir) { throw 'unexpected linked worktree git dir' }
+  if ((ConvertTo-CorrectionPath $CommonDir) -cne $ExpectedCommonDir) { throw 'unexpected git common dir' }
+  if (-not [string]::IsNullOrEmpty($Superproject)) { throw 'unexpected superproject' }
+}
+
+Assert-CorrectionWorktree
+if ((git rev-parse HEAD).Trim() -cne $ExpectedHead) { throw 'unexpected HEAD' }
+if ((git rev-parse "HEAD:$CorrectionSpec").Trim() -cne $ExpectedOriginalSpecBlob) { throw 'unexpected original spec blob' }
+if ((Get-GitBlobSha256 "HEAD:$CorrectionSpec") -cne $ExpectedOriginalSpecSha256) { throw 'unexpected original spec bytes' }
+if ((git rev-parse "HEAD:$ApprovedPlan").Trim() -cne $ExpectedPlanBlob) { throw 'unexpected approved plan blob' }
+if ((Get-GitBlobSha256 "HEAD:$ApprovedPlan") -cne $ExpectedPlanSha256) { throw 'unexpected approved plan bytes' }
+if (@(git diff --cached --name-only).Count -ne 0) { throw 'index must start empty' }
+if ((Get-FileHash -Algorithm SHA256 -LiteralPath $KnownDraft).Hash.ToLowerInvariant() -cne $ExpectedDraftSha256) { throw 'known draft changed' }
+if (@($ExternalRoots | Where-Object { Test-Path -LiteralPath $_ }).Count -ne 0) { throw 'external root unexpectedly exists' }
+Assert-CorrectionStatus $ExpectedInitialStatus
+
+git diff --check
+if ($LASTEXITCODE -ne 0) { throw 'unstaged diff check failed' }
+$UnfinishedTokenPattern = @((('TO' + 'DO')), (('TB' + 'D')), (('FIX' + 'ME')), (('PLACE' + 'HOLDER')), (('X' + 'XX'))) -join '|'
+$PSNativeCommandUseErrorActionPreference = $false
+try {
+  $UnfinishedTokenHits = @(rg -n -i -- $UnfinishedTokenPattern $CorrectionSpec)
+  $UnfinishedTokenExit = $LASTEXITCODE
+} finally {
+  $PSNativeCommandUseErrorActionPreference = $true
+}
+if ($UnfinishedTokenExit -gt 1 -or $UnfinishedTokenHits.Count -ne 0) { throw 'unfinished token scan failed' }
+
+git add -- $CorrectionSpec
+$CachedPaths = @(git diff --cached --name-only)
+if ($CachedPaths.Count -ne 1 -or $CachedPaths[0] -cne $CorrectionSpec) { throw 'unexpected staged path set' }
+Assert-CorrectionStatus $ExpectedStagedStatus
+git diff --cached --check
+if ($LASTEXITCODE -ne 0) { throw 'staged diff check failed' }
+node --test scripts/three-extension-documentation-contract.test.js
+if ($LASTEXITCODE -ne 0) { throw 'documentation contract failed' }
+if ((Get-FileHash -Algorithm SHA256 -LiteralPath $KnownDraft).Hash.ToLowerInvariant() -cne $ExpectedDraftSha256) { throw 'known draft changed during gate' }
+if ((git rev-parse "HEAD:$ApprovedPlan").Trim() -cne $ExpectedPlanBlob) { throw 'approved plan changed during gate' }
+if (@($ExternalRoots | Where-Object { Test-Path -LiteralPath $_ }).Count -ne 0) { throw 'external root created during gate' }
+Assert-CorrectionWorktree
+Assert-CorrectionStatus $ExpectedStagedStatus
+
+git commit --only -m 'docs: correct Wave 0A plan context interval dereference' -- $CorrectionSpec
+if ($LASTEXITCODE -ne 0) { throw 'correction design commit failed' }
+if ((git rev-parse HEAD^).Trim() -cne $ExpectedHead) { throw 'unexpected correction design parent' }
+$CommitPaths = @(git diff-tree --no-commit-id --name-only -r HEAD)
+if ($CommitPaths.Count -ne 1 -or $CommitPaths[0] -cne $CorrectionSpec) { throw 'unexpected correction design path set' }
+if (@(git diff --cached --name-only).Count -ne 0) { throw 'index not empty after commit' }
+if ((Get-FileHash -Algorithm SHA256 -LiteralPath $KnownDraft).Hash.ToLowerInvariant() -cne $ExpectedDraftSha256) { throw 'known draft changed after commit' }
+if ((git rev-parse "HEAD:$ApprovedPlan").Trim() -cne $ExpectedPlanBlob) { throw 'approved plan changed after commit' }
+if ((Get-GitBlobSha256 "HEAD:$ApprovedPlan") -cne $ExpectedPlanSha256) { throw 'approved plan bytes changed after commit' }
+if (@($ExternalRoots | Where-Object { Test-Path -LiteralPath $_ }).Count -ne 0) { throw 'external root created after commit' }
+Assert-CorrectionWorktree
+Assert-CorrectionStatus $ExpectedCommittedStatus
+
+$CommittedIdentity = [pscustomobject]@{
+  Commit = (git rev-parse HEAD).Trim()
+  Blob = (git rev-parse "HEAD:$CorrectionSpec").Trim()
+  Sha256 = Get-GitBlobSha256 "HEAD:$CorrectionSpec"
+  WorktreeSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $CorrectionSpec).Hash.ToLowerInvariant()
+}
+$CommittedIdentity | Format-List
+```
+
+commit後に`DC1/DO1/DS1`を提示し、user written-spec reviewを得る。その承認前に`superpowers:writing-plans`を開始せず、訂正planを編集しない。written-spec approval後に作る訂正planも別local commitとし、`PC1/PO1/PS1 + DC1/DO1/DS1`へbindした新しいexact plan approval前にcapture、外部artifact、Task 0、source/test mutationを行わない。
