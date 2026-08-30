@@ -1216,3 +1216,387 @@ $CommittedIdentity | Format-List
 ```
 
 commit後に`DC1/DO1/DS1`を提示し、user written-spec reviewを得る。その承認前に`superpowers:writing-plans`を開始せず、訂正planを編集しない。written-spec approval後に作る訂正planも別local commitとし、`PC1/PO1/PS1 + DC1/DO1/DS1`へbindした新しいexact plan approval前にcapture、外部artifact、Task 0、source/test mutationを行わない。
+
+## 21. provider-prefix/confirmation訂正の権威と停止観測
+
+本節以降は`WAVE0A-PROVIDER-PREFIX-CAP-AND-POST-PROMPT-CONFIRMATION-CORRECTION-V1`として、`PC1`のcommitted postcommit gate成功後、production captureが外部作成前に停止した二つの事実だけを訂正する。旧commitをrewrite、amend、replace、deleteしない。以下では本書の次の訂正commit後identityを`DC2/DO2/DS2`、そのwritten-spec approval後に作る訂正planのcommit後identityを`PC2/PO2/PS2`と呼ぶ。
+
+§§1–10は`DC0/PC0`、§§11–20は`DC1/PC1`作成時点のhistorical contractとして保持する。`DC2/PC2`については§§21–30が、§5の`captureProviderLogPrefix`終端とprovider observation occurrence、§9の対応するcapture-prefix/message-boundary rows、§14のlineage、§16の96-case/PC1生成前提、§17.3のconfirmation delimiter直後prefix前提、§18のprovider triplet不変指定、§19のtriplet acceptance、§20のdesign authoring gateだけを限定的にsupersedeする。§5のexternal schema、one-use、filesystem safety、crash recoveryは継承する。§20のpermissionは`PC1`を作成して終了しており、`PC2`を許可しない。§30が`DC2`に対する唯一のauthoring gateである。
+
+| Authority | Fixed identity |
+| --- | --- |
+| `PC1/PO1/PS1` | `77a4b1f9bacc928cf34d93d3f92b18b4e616e734` / `07b506553a7ef1a56bfce184634d4c244b9b737f` / `de4fd4f8a4a93651e84aaaa21a7294c678e87b5022801a7867108eace1645a03` |
+| `DC1/DO1/DS1` | `19268981aecedc9f5f7b957cee01b5666f24fbfa` / `100ec4acdf34a1b809957f2d42060852d6e377a3` / `85109778fab5b580919bfe1ac6382c3eb891accc3e5d71b2b703a259f9cc6f61` |
+| `PC0/PO0/PS0` | `ea49f588c736e713125d03d774782b143c893091` / `2b4d83d483c36e81e2ea0581ce8e551f96495229` / `fa33f0cd719fb757d46e5f1043fb1d9083f50efb90e3089bd11a575a2663d682` |
+| `DC0/DO0/DS0` | `613ff084f51340e7439f8adb2d26707a53d2e80a` / `4ad9d5ee074edaaeb8927311550c086c286a2d47` / `0e900bc12fd07c4d3947d5a3a99e8b803bc3d0f69657d879939c9b928a1846b0` |
+| branch/worktree | `codex/feature-integration-selection-design` / `C:/Users/stell/source/repos/bob_builtin_analyze/.worktrees/feature-integration-selection-design` |
+| known draft | `tools/main-consolidation/test/featureIntegrationCampaignPolicy.test.mjs`; SHA-256 `17234f43c7c264ff4d0c2abf04158c666fd81a0c434f88fcf6c5d3e11e1b877d` |
+
+`PC1`のactual-blob real-context gateはproduction `Get-WavePlanContext -ExpectedRevision PC1`で56 sectionsを完走した。新しいexact approval tripletを含むprovider prefixは195,564,314 bytes、SHA-256 `9282e8b0bd8340f86fdf71d3619ca48421ac69ad91929bf838af376d784f3436`、75,271 complete JSONL records、1,876 message ordinals、terminal LF exactly one、CRなしである。held provider file identityはdev `2248873766`、ino `27303072741156331`である。
+
+production `Get-WaveProviderRecords`はmessage selectionより前に次の一件を旧1 MiB record capで拒否した。
+
+| Field | Fixed observation |
+| --- | --- |
+| JSONL line / byte interval | `74651` / `[191918149,194173431)`。endはLF直後のexclusive offset |
+| record bytes / SHA-256 | LFを除く`2255281` / `c17c399e4b43af645248dfce6b049c44aec86ba2f2b067f2524b9875154e2610` |
+| timestamp / type | `2026-08-30T07:41:54.682Z` / `event_msg` |
+| payload type | `patch_apply_end` |
+| production error | `Wave0A terminal-LF operator: provider record size rejected` |
+
+同じfixed prefixをraw bytesで独立走査すると、最大recordは上記一件で、1 MiB超はexactly one、4 MiB超は0であり、全recordがJSONとして完走する。したがってmalformed JSON、invalid UTF-8、record truncation、prefix cap超過ではない。
+
+capだけを訂正した場合も現行selectorは次の三件をすべて`$Confirmation`へ入れ、global count=`3`で拒否する。
+
+| Relation | Ordinal / message ID | observedAt | JSONL line |
+| --- | --- | --- | --- |
+| announcement前 | `1863` / `msg_01a051f1-e2ad-7af1-bba8-5aedd988f25a` | `2026-08-30T09:13:21.837Z` | `75124` |
+| announcement後・prompt前 | `1865` / `msg_01a051f2-c90b-7422-9f4e-92550d1877ee` | `2026-08-30T09:14:20.811Z` | `75151` |
+| prompt後 | `1867` / `msg_01a051f3-001f-7aa3-bb19-1276072161e0` | `2026-08-30T09:14:34.911Z` | `75162` |
+
+unique announcementはordinal `1864`、ID `msg_05f07830af5cd031016a93f44b345487d0be49c1168daf58c9`、observedAt `2026-08-30T09:13:49.784Z`、line `75145`である。unique promptはordinal `1866`、ID `msg_05f07830af5cd031016a93f46f598887d0817be937d2612c48`、observedAt `2026-08-30T09:14:25.979Z`、line `75156`である。ordinalとcanonical UTCの両方でpromptより後なのはordinal `1867`の一件だけである。
+
+failureは`Get-WaveApprovalTranscript`内のpure read/parse/selection境界であり、sidecar、approval、claim、receipt、manifest、progress、completion、Task 0、source/test commitは一件も作成されていない。failed `PC1` gateをamendせず、`PC1/PO1/PS1 + DC1/DO1/DS1`と旧tripletはpredecessor/failure evidenceとしてのみ保持する。承認やuseとして再利用しない。
+
+本訂正設計書の作成権限は同一trusted taskの次のprovider observationsで確認した。
+
+| Role | Provider message ID | JSONL line / observedAt | decoded UTF-8 bytes / SHA-256 | raw record bytes / SHA-256 |
+| --- | --- | --- | --- | --- |
+| assistant correction request | `msg_05f07830af5cd031016a93f6477ce887d0b8ff9592f116a7f0` | `75326` / `2026-08-30T09:22:19.081Z` | `1010` / `2878668851cbb9bbb8f5c3116b38f61545001bd383ee020c3eec2ab4428f4b5b` | `1397` / `f51467f0d3e47f1d927c3ac36ea91d7399747facd0408bad4707ecd3e453c524` |
+| user authoring approval | `msg_01a05278-3b20-7ba2-9669-0ca219f86193` | `75332` / `2026-08-30T11:40:06.304Z` | `98` / `85c8f5d1a58c5d09b9cb289ad7495c975acc7db367064ab3564c2abc551b5db6` | `461` / `ad72a60023b1ed54c15866433be299e6842763179c9eec99238b1209ce654525` |
+
+user bodyは`WAVE0A-PROVIDER-PREFIX-CAP-AND-POST-PROMPT-CONFIRMATION-CORRECTION-V1 の設計書作成を承認`にterminal LF exactly oneを付けたbytesで、CR、backtick、prefix/suffix textを含まない。user record直後までのauthoring prefixは195,646,354 bytes、SHA-256 `2060496d0be86474f873ee58e531941b45bf40f02859db09c64735bc94c000bb`、terminal LFである。この権限は本書一件の編集、review、local commit、identity提示までに限る。訂正plan、capture、外部root、Task 0、source/test、remote、PR、main、branch/worktree/artifact cleanupを許可しない。
+
+## 22. root causeと訂正単位
+
+第一のroot causeはprefix全体のcapではなく、S0001 `Get-WaveProviderRecords`の各`LineBytes.Length`に置かれたinclusive 1,048,576-byte capである。prefix全体は既存のinclusive 536,870,912-byte cap内であり、recordはcomplete、strict UTF-8、JSON valid、LF境界内にある。messageでない大きなeventをskip、substring parse、hashだけで特認してはならない。approval identityを読む前にfixed prefixの全recordを同じ規則で検証する。
+
+第二のroot causeは`Get-WaveExceptionApprovalTriplet`が、unique promptより前の同文user recordsもfuture confirmation候補へ含めていることである。confirmationはpromptに対する応答なので、promptより前のrecordは承認候補ではない。一方、prompt後に同文が二件以上ある場合はreplayであり、first/last/latestを選んではならない。
+
+訂正単位は次の三つだけである。
+
+1. per-record capをraw UTF-8 4,194,304 bytes inclusiveへ置換する。
+2. candidate-independentなfull scan prefixを先に固定し、その全recordからunique announcement/promptとexactly one eligible post-prompt confirmationを選ぶ。
+3. external closed recordが参照するprovider prefix identityを、selected confirmation endではなくselectionに使ったfull scan prefixへ一致させる。
+
+三つ目はschema追加ではない。既存`ProviderLogPrefixIdentity.prefixByteLength/prefixSha256`へselection universeそのものを保存する意味訂正である。pre-prompt recordsをpersistent recordへ追加せず、selected tripletのclosed shapeも変えない。
+
+## 23. 訂正方式の比較
+
+| Approach | Decision | Reason |
+| --- | --- | --- |
+| A. 512 MiB prefix capを維持し、全record検証のper-record capだけを4 MiBへ上げ、post-prompt集合を厳密選択する | 採用 | 観測済み2,255,281-byte recordを受理しつつ、全体・各recordをboundedに保ち、replay拒否を弱めない |
+| B. `event_msg`、non-message、target外recordをparse前にskipする | 禁止 | malformed/oversized recordを隠し、whole-prefix validation、byte offset、message ordinalの信頼境界を分割する |
+| C. 観測record hash/typeだけをallowlistする | 禁止 | provider implementation detailへ特例を固定し、同程度のvalid recordを再び不必要に拒否する |
+| D. first/last/latest matching confirmationを選ぶ | 禁止 | prompt後replayを曖昧にし、二件以上をfail closedにできない |
+| E. confirmation textのglobal occurrenceをexactly oneのままにする | 不採用 | promptより前の同文を未来の承認として扱い、実際のconversation orderと一致しない |
+| F. 今回S0001をincremental streaming parserへ全面置換する | 今回は不採用 | 512 MiB total capの下でcorrectnessに不要であり、UTF-8 chunk、raw LF、offset、incremental hash、held-handle検証の別設計を要する |
+
+streaming化はworst-case peak memoryを下げる将来の可用性hardening候補である。本訂正planへ混ぜず、現行のsame-handle snapshot、strict decoder、full-prefix parseを維持する。
+
+## 24. bounded full-prefix parse契約
+
+S0001はprovider contentを参照する前にfresh/resume armを確定し、次の順序を変えずに実行する。
+
+1. fresh armではfixed sidecar/approvalが不存在であることを既存held-root contractで確認した後、`Get-WaveProviderPrefix $null`が一つのno-follow held handleを開き、content selection前のfile sizeを`ScanPrefixLength`として固定する。
+2. resume/read-only verification armでは既存canonical sidecar chainを先にheld handleで再検証し、そこに保存済みの`captureProviderLogPrefix.prefixByteLength/prefixSha256/path/dev/ino`だけを境界として`Get-WaveProviderPrefix $ExactLength`を呼ぶ。current EOF、caller length、latest messageから境界を再導出せず、固定range後のtail appendをselection universeへ加えない。
+3. identity before/read/identity afterを既存native contractで照合し、exactly `ScanPrefixLength` bytesを読む。resume armは保存済みSHA-256も照合する。後続appendは固定prefixを変更しないが、固定rangeのsubstitution、truncation、identity driftは拒否する。
+4. `1 <= ScanPrefixLength <= 536870912`をinclusiveで要求し、SHA-256を同じbytesから導出する。
+5. last byte=`0x0A`、raw `0x0D`なし、BOMなし、strict UTF-8を要求する。raw `0x0A`だけでsplitし、empty/truncated recordを拒否する。
+6. delimiter LFを除く各record `R`について`2 <= |R| <= 4194304` raw UTF-8 bytes inclusiveを要求する。UTF-16 character count、JSON string length、decoded property lengthで判定しない。
+7. 各`R`のcomplete bytesをexactly one JSON documentとしてparseし、既存のtimestamp/type/payload/message shape規則を適用する。trailing JSON token、invalid UTF-8、malformed unrelated recordもtarget recordと同じく拒否する。
+8. prefix順に全recordを検証してからだけmessage selectionを開始する。non-message、non-target、大きなunrelated eventもskipしない。
+
+message ordinalは既存どおり、valid `response_item` / `message`ごとにprefix先頭から再計算する。record start/end byte offset、raw-record SHA-256、ID、role、phase、timestamp、text semanticsを維持する。internal recordにはfixed provider pathから導出した`ThreadId`と、payloadに`phase` keyが存在したかを示す`PhasePresent`を保持するが、persistent schemaへfieldを追加しない。4 MiB capはLFを含まず、observed record interval `[191918149,194173431)`の差2,255,282 bytesのうち最後の1 byteがdelimiter LFである。
+
+`Get-WaveApprovalTranscript`はfresh armで固定した、またはresume armでcanonical sidecarから復元した`ScanPrefix`全体のrecordsをselection universeとする。announcement、prompt、confirmationの候補を見てからprefix endを決めてはならない。fresh selection成功後、closed recordへ渡す`CaptureLength/CaptureSha256`相当値は`ScanPrefix.Length/ScanPrefix.Sha256`そのものとし、selected confirmationの`EndByteOffset`へtruncateしない。selected confirmation後かつfixed boundary以前のunrelated valid recordsはprefix identityへ含める。fixed boundary内のsecond eligible confirmationは必ず見えて拒否される。fixed boundary後のappendは別bytesであり、resume時も同じone-use approvalを再選択・拡張しない。
+
+## 25. post-prompt confirmation選択契約
+
+`ScanRecords`は24節を完走したfull scan prefixのmessage recordsである。全recordの`ThreadId`は固定canonical provider pathに対応する`019f89ad-da0a-7103-9224-c5dbb2c320ba`でなければならず、別provider path/threadからrecordを混入、結合、caller inputしてはならない。`AnnouncementText`と`PromptText`はfuture `PC2/PO2/PS2 + DC2/DO2/DS2`から再構成したexact UTF-8 literalsであり、trim、case folding、Unicode normalization、substring、regexを使わない。
+
+1. `Announcements = ScanRecords`のうちfixed `ThreadId`、role=`assistant`、`PhasePresent=true`、phase=`final_answer`、text=`AnnouncementText`のrecordsとし、countをexactly oneとする。
+2. `Prompts = ScanRecords`のうちfixed `ThreadId`、role=`assistant`、`PhasePresent=true`、phase=`final_answer`、text=`PromptText`のrecordsとし、countをexactly oneとする。
+3. unique announcementを`A`、unique promptを`P`とし、`A.Ordinal < P.Ordinal`かつ`Get-WaveCanonicalUtc`でparseしたinstantsについて`A.Timestamp < P.Timestamp`を要求する。timestamp文字列のlexical比較を使わない。
+4. `EligibleConfirmations`はfixed `ThreadId`、role=`user`、provider payloadで`PhasePresent=false`、canonical observationでphase=`null`、text=`PromptText || 0x0A exactly once`であり、さらに`record.Ordinal > P.Ordinal`かつ`Get-WaveCanonicalUtc`でparseしたinstantsについて`record.Timestamp > P.Timestamp`を同時に満たすrecordsだけとする。実際のtrusted user recordsと同じくphase key absentを要求し、明示的JSON `null`または別値を受理しない。
+5. `EligibleConfirmations.Count`をexactly oneとする。0または2以上は拒否し、first/last/latestを選ばない。
+6. selected confirmationを`C`とし、`A/P/C`のmessage IDsをpairwise distinctとする。各selected IDは`ScanRecords`内でexactly one message recordへ解決し、三つのprovider observationsのthread IDはfixed trusted threadへ一致しなければならない。
+7. existing `Assert-WaveExactTerminalLfPair`を`P.Text/C.Text`へ適用し、0/2 LF、CR、CRLF、space suffix、second line、wrong identityを拒否する。
+
+`P`より前にあるexact user textは`EligibleConfirmations`へ入らない。これはそのrecordを削除、正規化、承認として保存するという意味ではなく、full prefix内でparse済みのhistorical user inputとして残すだけである。ordinalとtimestampの片方だけがprompt後の場合もeligibleではない。selected tripletのprovider observationsだけを既存closed recordへ保存し、ignored count/ordinals用のfieldを追加しない。
+
+fixed failed prefixでは`A=1864`、`P=1866`、`EligibleConfirmations=[1867]`となる。ただしこの結果でfailed `PC1`を再実行しない。future `PC2`はfresh design/plan identitiesとfresh announcement/prompt/confirmationを要求し、旧三件はregression inputとfailure evidenceにのみ使用する。
+
+## 26. exact DC2/PC2 lineage
+
+`DC2`と`PC2`はcommit後に導出するlowercase 40-hexであり、本書bytesへ将来値を埋め込まない。後続planは次のsingle-parent chainを固定値として検証する。
+
+```text
+PC2^  = DC2
+DC2^  = 77a4b1f9bacc928cf34d93d3f92b18b4e616e734
+PC1^  = 19268981aecedc9f5f7b957cee01b5666f24fbfa
+DC1^  = ea49f588c736e713125d03d774782b143c893091
+PC0^  = 613ff084f51340e7439f8adb2d26707a53d2e80a
+```
+
+full first-parent authority prefixは次へ一致させる。
+
+```text
+PC2 -> DC2
+    -> 77a4b1f9bacc928cf34d93d3f92b18b4e616e734
+    -> 19268981aecedc9f5f7b957cee01b5666f24fbfa
+    -> ea49f588c736e713125d03d774782b143c893091
+    -> 613ff084f51340e7439f8adb2d26707a53d2e80a
+    -> e15b77aea11e11db165eff0670a29280c35b3c3c
+    -> 08a6540e5ad93e16aba21a69f9d47748c123d5ac
+    -> 7383d96c37b8a86cd32fe4114839ff3650a9280a
+    -> 3f70335f96d7fb14dceab7f6d3e2d4b71f07f98f
+    -> 86670e2b7a76c9f866270314c000e1da9a8a43c2
+```
+
+各新commitのchanged pathはexactly oneである。
+
+```text
+DC2: docs/superpowers/specs/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception-design.md
+PC2: docs/superpowers/plans/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception.md
+```
+
+後続plan、all 54 Node bootstraps、trusted launcherは次を独立に要求する。
+
+1. design path touch rosterはnewest-first exactly `[DC2, DC1, DC0, e15b77aea11e11db165eff0670a29280c35b3c3c, 08a6540e5ad93e16aba21a69f9d47748c123d5ac]`、add-filter rosterはexactly `[08a6540e5ad93e16aba21a69f9d47748c123d5ac]`である。
+2. `DC2`はsingle-parent `PC1`、design一pathだけを変更し、`DC2^`のdesign blobは`DO1`、`DC2`のdesign blobは`DO2`である。
+3. plan path touch rosterはnewest-first exactly `[PC2, PC1, PC0]`、add-filter rosterはexactly `[PC0]`である。
+4. `PC2`はsingle-parent `DC2`、plan一pathだけを変更し、`PC2^`のplan blobは`PO1`、`PC2`のplan blobは`PO2`である。
+5. shallow history、replace ref、graft、alternate object database、intermediate commit、third unlisted design/plan version、same blob別commitを拒否する。
+6. `HEAD=PC2`、empty index、known draftだけのtracked worktree差分、83-path inventory、worktree/admin/common-dir/object-database leaseを維持する。
+
+## 27. PC2生成・回帰・trusted launch契約
+
+written-spec approval後の`PC2`は既存plan path一件だけを更新する。S0001で24–25節のprovider reader/selector/full-prefix identity semanticsと26節のhistoryを実装し、S0002で回帰を追加する。他の54 sections、action/wrapper/operation/bound-row、external schema/root/leaf、Task 0以後の25 slicesを変更しない。
+
+S0002へsorted unique case IDs `provider.record-size-cap-boundaries`と`transcript.post-prompt-confirmation-selection`を追加し、self-test rosterを96から98へ増やす。existing `transcript.replayed-confirmation-reject`は「prompt後のeligible confirmationが二件なら拒否」を明示する内容へ更新する。
+
+`provider.record-size-cap-boundaries`は一つのcaseで次を固定する。
+
+- raw record size guardは1 byteを拒否し、2 bytesをJSON/schema validationへ渡す。schema不一致の2-byte JSONを最終provider recordとして受理しない。
+- valid raw UTF-8 JSON records 4,194,303 / 4,194,304 bytesを受理し、4,194,305 bytesをJSON interpretation前に拒否する。
+- old capを一byte超える1,048,577-byte recordと、observed-shape 2,255,281-byte `event_msg/patch_apply_end`を受理する。
+- multibyte UTF-8でcharacter countではなくraw bytesが境界を決める。
+- large unrelated valid eventをannouncement/prompt間に置いてもmessage ordinalを変えず完走する。
+- malformed unrelated JSON、trailing token、invalid UTF-8、CR/CRLF、missing terminal LF、empty record、oversized target/non-targetを同じく拒否する。
+- UTF-8 BOMをprefix先頭またはrecord先頭に置いたcaseを拒否する。
+- full prefix cap 536,870,912 inclusiveと536,870,913 rejectionをallocationに依存しないlength guardで検証する。
+
+`transcript.post-prompt-confirmation-selection`は次を固定する。
+
+- announcement前とannouncement後/prompt前に同文user recordsがあっても、unique post-prompt record一件を選ぶ。
+- pre-prompt matchesだけ、ordinalだけpost-prompt、timestampだけpost-promptはいずれもeligible count 0で拒否する。
+- full scan prefix内でprompt後二件なら、異なるIDsでも同一ID replayでも拒否し、latest/first selectionを行わない。
+- duplicate announcement、duplicate prompt、wrong role/phase、user phase keyの明示的null/別値、cross-thread input、selected ID reuse、0/2 LF、CR/CRLF、space/second-lineを拒否する。
+- selection前に固定したfull prefix identityが保存値と一致し、selected confirmation endへtruncateされない。selected confirmation後のunrelated valid recordもidentityへ残る。
+- sidecar作成後・approval作成前のresumeでは保存済みprefix length/hashを再利用し、provider tail append後もcurrent EOFへ拡張せず同じtripletを再検証する。
+
+S0001/S0002変更と26節のhistory guardにより、全54 action-specific Brotli bootstrap、56-section metadata、section roster、static runtime-core、54 program hashes、exact argv/command contracts、action roster、operator bundle identity、compact commitmentをfinal bytesから再生成する。immutable countsはsections/actions/progress/final paths/environment=`56/54/50/83/26`、implementation slices=`25`であり、self-testだけをexactly `98`へ更新する。
+
+plan precommitではdecoded S0001/S0002、raw cap boundary、selector cardinality/order、full-prefix non-circularity、all markers/manifest intervals、all 54 bootstraps/history guards、cross-runtime JCS/preimagesを検証する。provider parsing/security、PowerShell selection semantics、Git history/regenerationを三つのread-only independent reviewへ分け、Critical/Important findingを0にする。
+
+`PC2/PO2/PS2`導出後、actual committed blobからS0001をloadするread-only gateは、production `Get-WaveApprovalTranscript`をfixed historical prefixへ適用しない。代わりに、design-fixed historical PC1 announcement/prompt literalsをinert regression constantsとしてprivate `Get-WaveProviderRecords`と`Get-WaveExceptionApprovalTriplet`へ直接渡す、caller inputなし・capture authorityなしのfixed in-memory probeを実行し、次を要求する。
+
+```text
+prefixByteLength = 195564314
+prefixSha256 = 9282e8b0bd8340f86fdf71d3619ca48421ac69ad91929bf838af376d784f3436
+recordCount = 75271
+messageOrdinalCount = 1876
+maximumRecordBytes = 2255281
+announcementOrdinal = 1864
+promptOrdinal = 1866
+eligibleConfirmationOrdinals = [1867]
+```
+
+probeはproviderとrepositoryをread-only held handlesで読み、fixed PC1 literalsをregression fixtureとしてselector semanticsへ与えるだけで、`Get-WaveApprovalTranscript`、capture、persistent observation、external write、Task 0へ進まない。PC1 text/recordsへapproval/use authorityを与えず、PC2-bound production selectorはhistorical prefixにauthorizationが存在しないことを別negative armで要求する。旧1 MiB constantまたはglobal confirmation countへ戻したnegative in-memory variantはそれぞれexactly既知errorで失敗し、corrected actual S0001のprivate parser/selectorだけが上記regression resultへ一致しなければならない。
+
+postcommit gate成功後、trusted launcherはactual `PC2`からlineage、bundle、real-context、authorityを持たないfixed failed-prefix regressionを独立再実行する。その後にだけlowercase `PC2/PO2/PS2 + DC2/DO2/DS2`を次の二bodyへ置換してdistinct assistant messagesを提示する。
+
+```text
+Wave 0A provider prefix cap and post-prompt confirmation correction committed correctionPlanCommit=PC2 correctionPlanBlob=PO2 correctionPlanSha256=PS2 correctionDesignCommit=DC2 correctionDesignBlob=DO2 correctionDesignSha256=DS2
+```
+
+```text
+WAVE0A-PROVIDER-PREFIX-CAP-AND-POST-PROMPT-CONFIRMATION-CORRECTION-V1 を承認 correctionPlanCommit=PC2 correctionPlanBlob=PO2 correctionPlanSha256=PS2 correctionDesignCommit=DC2 correctionDesignBlob=DO2 correctionDesignSha256=DS2
+```
+
+user confirmationはsecond bodyのexact UTF-8 bytesにterminal LF exactly oneを付けたものとする。そのfresh user recordが存在して初めて、trusted captureは候補抽出前にfull scan prefixを固定し、production `Get-WaveApprovalTranscript`で25節を適用する。旧PC1 triplet、generic approval、assistant echo、wrong identity、別thread、prefix/suffix、CR/CRLF、space、0/2 LFは拒否する。fresh exact triplet成立後もcapture action一件だけを許可し、remote/PR/main/cleanupを許可しない。
+
+## 28. 明示的に変更しないもの
+
+- provider prefix total cap 536,870,912 bytes、same-handle/no-follow/identity/hash/terminal-LF/CR/strict UTF-8契約
+- raw prefix全recordをparseしてからmessageを選ぶfail-closed順序
+- target composed-plan identity、terminal-LF comparison operation、`maxUses: 1`、fixed purpose、`mutationAuthority: false`
+- external root/leaf names、closed canonical JSON key集合、schema versions、create-new/sync/reopen/crash recovery
+- 56 sections、54 actions、50 progress rows、83 final paths、26 environment entries、25 implementation slices
+- 42-schema registry、15-operation roster、20-node DAG、21 evidence-contract rows
+- public command/API、設定、保存schema、VSIX version、dependency、XLSX/OOXML/PDF codeと実機受入証跡
+- main、origin/main、remote、PR、campaign/control authority、protected clone、branch/worktree/artifact cleanup
+- known draftのbytes、stage状態、ownership
+- `.gitattributes`、generic normalizer、public export、runtime flag、environment-selected mode、fallback
+
+本訂正のrepository path deltaは0である。既存design/plan pathsは83-path集合に含まれ、同じpathの新commitはbase-to-final name集合を増やさない。per-record 4 MiB capとpost-prompt selectorはplan-embedded private operatorだけの変更であり、repository source/testやpublic保存schemaへ昇格させない。
+
+## 29. provider/confirmation correction acceptance matrix
+
+| Case | Expected |
+| --- | --- |
+| full prefix 536,870,912 bytes、各record 2..4,194,304 bytes、全record valid | accept bounded parse |
+| prefix 536,870,913、record 1または4,194,305、invalid UTF-8/JSON、BOM、CR、missing LF | reject before transcript selection |
+| observed 2,255,281-byte `patch_apply_end`を含むfixed prefix | accept parse; continue to selection |
+| non-message/target外recordをskipまたはhash allowlist | reject implementation |
+| unique A/P、pre-prompt同文二件、eligible post-prompt C一件 | accept selected A/P/C |
+| confirmationがpre-promptだけ、ordinal/timeの片方だけpost-prompt | reject eligible count 0 |
+| prompt後exact confirmation二件以上 | reject replay; never select first/latest |
+| duplicate A/P、selected ID ambiguity、wrong role/phase/body/thread/order | reject |
+| selection universeをcandidate前にfixed full prefixへbindし、そのidentityを保存 | accept non-circular proof |
+| selected confirmation endへprefixをtruncate、candidateからprefix endを導出 | reject |
+| canonical sidecar resumeで保存済みprefixをexact再読込し、tail appendを無視 | accept same crash-recovery use |
+| resume時にcurrent EOFへ拡張、caller prefix、latest messageから境界を再導出 | reject |
+| `DC2^=PC1`、`PC2^=DC2`、design/plan各一path、exact touch/add rosters | accept lineage |
+| old commit amend/rewrite、unlisted third version、old PC1 triplet reuse | reject |
+| counts `56/54/50/83/26`、self-test 98、all 54 commitments regenerated | accept bundle |
+| correction approvalからcapture以外のexternal action、Task 0、source/test、remote/PR/main/cleanupへ進む | reject as out of scope |
+
+## 30. DC2 design authoring gateと停止点
+
+本段階で変更するrepository fileは既存の本書一件だけである。`PC1` plan、known draft、source/test、manifest、external rootsを変更しない。次のgateは本書編集後に実行する。
+
+```powershell
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $true
+
+$CorrectionSpec = 'docs/superpowers/specs/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception-design.md'
+$ApprovedPlan = 'docs/superpowers/plans/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception.md'
+$KnownDraft = 'tools/main-consolidation/test/featureIntegrationCampaignPolicy.test.mjs'
+$ExpectedHead = '77a4b1f9bacc928cf34d93d3f92b18b4e616e734'
+$ExpectedOriginalSpecBlob = '100ec4acdf34a1b809957f2d42060852d6e377a3'
+$ExpectedOriginalSpecSha256 = '85109778fab5b580919bfe1ac6382c3eb891accc3e5d71b2b703a259f9cc6f61'
+$ExpectedPlanBlob = '07b506553a7ef1a56bfce184634d4c244b9b737f'
+$ExpectedPlanSha256 = 'de4fd4f8a4a93651e84aaaa21a7294c678e87b5022801a7867108eace1645a03'
+$ExpectedDraftSha256 = '17234f43c7c264ff4d0c2abf04158c666fd81a0c434f88fcf6c5d3e11e1b877d'
+$ExpectedMain = 'c59db06ecb32eb7a57beeb3e932acdd5b4774de5'
+$ExpectedBranch = 'codex/feature-integration-selection-design'
+$ExpectedTopLevel = 'C:/Users/stell/source/repos/bob_builtin_analyze/.worktrees/feature-integration-selection-design'
+$ExpectedGitDir = 'C:/Users/stell/source/repos/bob_builtin_analyze/.git/worktrees/feature-integration-selection-design'
+$ExpectedCommonDir = 'C:/Users/stell/source/repos/bob_builtin_analyze/.git'
+$ExpectedInitialStatus = @(
+  ' M docs/superpowers/specs/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception-design.md'
+  ' M tools/main-consolidation/test/featureIntegrationCampaignPolicy.test.mjs'
+)
+$ExpectedStagedStatus = @(
+  'M  docs/superpowers/specs/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception-design.md'
+  ' M tools/main-consolidation/test/featureIntegrationCampaignPolicy.test.mjs'
+)
+$ExpectedCommittedStatus = @(
+  ' M tools/main-consolidation/test/featureIntegrationCampaignPolicy.test.mjs'
+)
+$ExternalRoots = @(
+  'C:/Users/stell/source/archives/bob_builtin_analyze/2026-08-29-wave0a-composed-plan-terminal-lf-comparison-exception'
+  'C:/Users/stell/source/archives/bob_builtin_analyze/2026-08-27-wave0a-approved-addenda-composed-plan-approval'
+  'C:/Users/stell/source/archives/bob_builtin_analyze/2026-08-29-wave0a-terminal-lf-operator-self-test'
+)
+
+function Assert-CorrectionStatus([string[]] $Expected) {
+  $Actual = @(git status --porcelain=v1 --untracked-files=all)
+  $Delta = @(Compare-Object -CaseSensitive -ReferenceObject $Expected -DifferenceObject $Actual)
+  if ($Actual.Count -ne $Expected.Count -or $Delta.Count -ne 0) { throw 'unexpected working tree status set' }
+}
+
+function Get-GitBlobSha256([string] $RevisionPath) {
+  return (node -e "const c=require('node:crypto'),p=require('node:child_process').spawnSync('git',['cat-file','blob',process.argv[1]],{encoding:null,maxBuffer:64*1024*1024});if(p.status!==0)process.exit(p.status??1);process.stdout.write(c.createHash('sha256').update(p.stdout).digest('hex'))" $RevisionPath).Trim()
+}
+
+function ConvertTo-CorrectionPath([string] $Value) {
+  $Normalized = [IO.Path]::GetFullPath($Value).Replace('\', '/').TrimEnd('/')
+  if ($Normalized -match '^[a-z]:') { $Normalized = $Normalized.Substring(0, 1).ToUpperInvariant() + $Normalized.Substring(1) }
+  return $Normalized
+}
+
+function Assert-CorrectionWorktree {
+  $Branch = (@(git branch --show-current) -join '').Trim()
+  $TopLevel = (@(git rev-parse --show-toplevel) -join '').Trim()
+  $GitDir = (@(git rev-parse --absolute-git-dir) -join '').Trim()
+  $CommonDir = (@(git rev-parse --git-common-dir) -join '').Trim()
+  $Superproject = (@(git rev-parse --show-superproject-working-tree) -join '').Trim()
+  if ($Branch -cne $ExpectedBranch) { throw 'unexpected branch' }
+  if ((ConvertTo-CorrectionPath $TopLevel) -cne $ExpectedTopLevel) { throw 'unexpected worktree root' }
+  if ((ConvertTo-CorrectionPath $GitDir) -cne $ExpectedGitDir) { throw 'unexpected linked worktree git dir' }
+  if ((ConvertTo-CorrectionPath $CommonDir) -cne $ExpectedCommonDir) { throw 'unexpected git common dir' }
+  if (-not [string]::IsNullOrEmpty($Superproject)) { throw 'unexpected superproject' }
+}
+
+Assert-CorrectionWorktree
+if ((git rev-parse HEAD).Trim() -cne $ExpectedHead) { throw 'unexpected HEAD' }
+if ((git rev-parse main).Trim() -cne $ExpectedMain -or (git rev-parse origin/main).Trim() -cne $ExpectedMain) { throw 'main refs changed' }
+if ((git rev-parse "HEAD:$CorrectionSpec").Trim() -cne $ExpectedOriginalSpecBlob) { throw 'unexpected original spec blob' }
+if ((Get-GitBlobSha256 "HEAD:$CorrectionSpec") -cne $ExpectedOriginalSpecSha256) { throw 'unexpected original spec bytes' }
+if ((git rev-parse "HEAD:$ApprovedPlan").Trim() -cne $ExpectedPlanBlob) { throw 'unexpected approved plan blob' }
+if ((Get-GitBlobSha256 "HEAD:$ApprovedPlan") -cne $ExpectedPlanSha256) { throw 'unexpected approved plan bytes' }
+if (@(git diff --cached --name-only).Count -ne 0) { throw 'index must start empty' }
+if ((Get-FileHash -Algorithm SHA256 -LiteralPath $KnownDraft).Hash.ToLowerInvariant() -cne $ExpectedDraftSha256) { throw 'known draft changed' }
+if (@($ExternalRoots | Where-Object { Test-Path -LiteralPath $_ }).Count -ne 0) { throw 'external root unexpectedly exists' }
+Assert-CorrectionStatus $ExpectedInitialStatus
+
+git diff --check
+if ($LASTEXITCODE -ne 0) { throw 'unstaged diff check failed' }
+$UnfinishedTokenPattern = @((('TO' + 'DO')), (('TB' + 'D')), (('FIX' + 'ME')), (('PLACE' + 'HOLDER')), (('X' + 'XX'))) -join '|'
+$PSNativeCommandUseErrorActionPreference = $false
+try {
+  $UnfinishedTokenHits = @(rg -n -i -- $UnfinishedTokenPattern $CorrectionSpec)
+  $UnfinishedTokenExit = $LASTEXITCODE
+} finally {
+  $PSNativeCommandUseErrorActionPreference = $true
+}
+if ($UnfinishedTokenExit -gt 1 -or $UnfinishedTokenHits.Count -ne 0) { throw 'unfinished token scan failed' }
+
+git add -- $CorrectionSpec
+$CachedPaths = @(git diff --cached --name-only)
+if ($CachedPaths.Count -ne 1 -or $CachedPaths[0] -cne $CorrectionSpec) { throw 'unexpected staged path set' }
+Assert-CorrectionStatus $ExpectedStagedStatus
+git diff --cached --check
+if ($LASTEXITCODE -ne 0) { throw 'staged diff check failed' }
+node --test scripts/three-extension-documentation-contract.test.js
+if ($LASTEXITCODE -ne 0) { throw 'documentation contract failed' }
+if ((Get-FileHash -Algorithm SHA256 -LiteralPath $KnownDraft).Hash.ToLowerInvariant() -cne $ExpectedDraftSha256) { throw 'known draft changed during gate' }
+if ((git rev-parse "HEAD:$ApprovedPlan").Trim() -cne $ExpectedPlanBlob) { throw 'approved plan changed during gate' }
+if (@($ExternalRoots | Where-Object { Test-Path -LiteralPath $_ }).Count -ne 0) { throw 'external root created during gate' }
+Assert-CorrectionWorktree
+Assert-CorrectionStatus $ExpectedStagedStatus
+
+git commit --only -m 'docs: design Wave 0A provider transcript correction' -- $CorrectionSpec
+if ($LASTEXITCODE -ne 0) { throw 'correction design commit failed' }
+if ((git rev-parse HEAD^).Trim() -cne $ExpectedHead) { throw 'unexpected correction design parent' }
+$CommitPaths = @(git diff-tree --no-commit-id --name-only -r HEAD)
+if ($CommitPaths.Count -ne 1 -or $CommitPaths[0] -cne $CorrectionSpec) { throw 'unexpected correction design path set' }
+if (@(git diff --cached --name-only).Count -ne 0) { throw 'index not empty after commit' }
+if ((Get-FileHash -Algorithm SHA256 -LiteralPath $KnownDraft).Hash.ToLowerInvariant() -cne $ExpectedDraftSha256) { throw 'known draft changed after commit' }
+if ((git rev-parse "HEAD:$ApprovedPlan").Trim() -cne $ExpectedPlanBlob) { throw 'approved plan changed after commit' }
+if ((Get-GitBlobSha256 "HEAD:$ApprovedPlan") -cne $ExpectedPlanSha256) { throw 'approved plan bytes changed after commit' }
+if ((git rev-parse main).Trim() -cne $ExpectedMain -or (git rev-parse origin/main).Trim() -cne $ExpectedMain) { throw 'main refs changed during gate' }
+if (@($ExternalRoots | Where-Object { Test-Path -LiteralPath $_ }).Count -ne 0) { throw 'external root created after commit' }
+Assert-CorrectionWorktree
+Assert-CorrectionStatus $ExpectedCommittedStatus
+
+$CommittedIdentity = [pscustomobject]@{
+  Commit = (git rev-parse HEAD).Trim()
+  Blob = (git rev-parse "HEAD:$CorrectionSpec").Trim()
+  Sha256 = Get-GitBlobSha256 "HEAD:$CorrectionSpec"
+  WorktreeSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $CorrectionSpec).Hash.ToLowerInvariant()
+}
+$CommittedIdentity | Format-List
+```
+
+commit後に`DC2/DO2/DS2`を提示し、次のexact written-spec reviewを得る。
+
+```text
+WAVE0A-PROVIDER-PREFIX-CAP-AND-POST-PROMPT-CONFIRMATION-CORRECTION-V1 設計書を承認 commit=DC2 blob=DO2 sha256=DS2
+```
+
+その承認前に`superpowers:writing-plans`を開始せず、planを編集しない。written-spec approval後の`PC2`も別local commitとし、27節のfresh exact plan approval前にcapture、external artifact、Task 0、source/test mutation、remote/PR/main、cleanupを行わない。
