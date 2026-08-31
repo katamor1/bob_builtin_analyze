@@ -10,6 +10,19 @@ const GENERATOR = fileURLToPath(new URL('../create-feature-integration-program-i
 const INDEX = fileURLToPath(new URL('../feature-integration-program-index.json', import.meta.url))
 const canonical = canonicalJson(buildProgramIndex())
 const rejected = /exactly one|unknown|duplicate|positional|flag|argument/i
+const ALLOWED_IMPORTS = [
+  "import { readFile } from 'node:fs/promises'",
+  "import { fileURLToPath } from 'node:url'",
+  "import { buildProgramIndex, canonicalJson, validateProgramIndex } from './featureIntegrationProgramPolicy.mjs'"
+]
+
+function assertFixedLocalSourceBoundary(source) {
+  assert.deepEqual(source.match(/^import .+$/gmu) ?? [], ALLOWED_IMPORTS)
+  assert.doesNotMatch(source, /\b(?:import|require)\s*\(/u)
+  assert.doesNotMatch(source, /\b(?:appendFile|copyFile|createWriteStream|mkdir|rename|rm|rmdir|symlink|truncate|unlink|writeFile)\b/u)
+  assert.doesNotMatch(source, /\b(?:child_process|exec(?:File|Sync)?|fork|spawn|git|native(?:Bridge)?|bridge|powershell)\b/iu)
+  assert.doesNotMatch(source, /\b(?:approval|transcript|provider|private)\b|process\.env|\bGIT_[A-Z_]*\b/u)
+}
 
 test('exports only the fixed local generator APIs', () => {
   assert.deepEqual(Object.keys(generator).sort(), ['parseArguments', 'renderProgramIndex', 'runGenerator'])
@@ -69,11 +82,18 @@ test('check reads only the fixed sibling index and compares bytes without writin
   }), /drift/i)
 })
 
-test('source has no executor, provider, authorization, or filesystem-write boundary', () => {
-  const source = readFileSync(GENERATOR, 'utf8')
-  assert.doesNotMatch(source, /node:child_process/u)
-  assert.doesNotMatch(source, /\b(?:spawn|execFile|writeFile|renderAuthenticated|collectExitedProcess)\b/u)
-  assert.doesNotMatch(source, /\b(?:approval|transcript|provider|private)\b/iu)
+test('source has only readFile filesystem access and no mutable or dynamic import boundary', () => {
+  assertFixedLocalSourceBoundary(readFileSync(GENERATOR, 'utf8'))
+  for (const api of ['appendFile', 'copyFile', 'createWriteStream', 'mkdir', 'rename', 'rm', 'rmdir', 'symlink', 'truncate', 'unlink', 'writeFile']) {
+    assert.throws(() => assertFixedLocalSourceBoundary(`${ALLOWED_IMPORTS.join('\n')}\nimport { ${api} } from 'node:fs/promises'`), api)
+  }
+  assert.throws(() => assertFixedLocalSourceBoundary(`${ALLOWED_IMPORTS.join('\n')}\nawait import('node:fs')`), /import/u)
+})
+
+test('source boundary rejects execution, authority, and environment selectors', () => {
+  for (const unsafe of ["import { spawn } from 'node:child_process'", "const command = 'git status'", 'const nativeBridge = true', 'const approval = process.env.APPROVAL', 'const selector = process.env.GIT_DIR']) {
+    assert.throws(() => assertFixedLocalSourceBoundary(`${ALLOWED_IMPORTS.join('\n')}\n${unsafe}`))
+  }
 })
 
 test('CLI print and check are read-only and match the checked-in canonical bytes', () => {
