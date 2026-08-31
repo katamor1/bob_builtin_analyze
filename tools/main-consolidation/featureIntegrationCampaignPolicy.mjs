@@ -1329,11 +1329,12 @@ const operationCleanupProgressLocator = value => {
   shape({ owner: literal('operation'), journal: enumeration(cleanupJournals), operationInstanceId: literal('cleanup-generated-paths'), path: 'SafeOperationCleanupProgressPath', byteSize: 'PositiveSafeInteger', sha256: 'LowercaseSha256' })(value)
 }
 const cleanupJournalProgress = value => {
-  const common = { authoritySha256: 'LowercaseSha256', deletionPlanSha256: 'LowercaseSha256', journal: enumeration(cleanupJournals), completedPrefixCount: value?.completedPrefixCount === 0 ? literal(0) : 'PositiveSafeInteger', rollingPrefixSha256: 'LowercaseSha256' }
+  const common = { authoritySha256: 'LowercaseSha256', deletionPlanSha256: 'LowercaseSha256', journal: enumeration(cleanupJournals), completedPrefixCount: value?.completedPrefixCount === 0 ? literal(0) : integer(1, 98), rollingPrefixSha256: 'LowercaseSha256' }
   if (value?.completedPrefixCount === 0) shape({ ...common, lastProgressLocator: literal(null) })(value)
   else {
     shape({ ...common, lastProgressLocator: operationCleanupProgressLocator })(value)
     requireThat(value.lastProgressLocator.journal === value.journal, 'cleanup progress journal binding')
+    requireThat(Number(value.lastProgressLocator.path.split('/').at(-1).slice(0, 4)) === value.completedPrefixCount, 'cleanup progress contiguous prefix')
   }
 }
 const attemptEvidenceWithSchema = expectedSchema => value => {

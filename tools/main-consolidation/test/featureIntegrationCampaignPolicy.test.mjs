@@ -1070,6 +1070,21 @@ test('campaign attachment: recovery checkpoint closes cleanup progress and recon
   }
 })
 
+test('campaign attachment: cleanup checkpoint prefix count is capped and equals locator ordinal', () => {
+  const checkpointAt = (completedPrefixCount, locatorOrdinal) => {
+    const value = clone(A_CHECKPOINT)
+    const locator = { owner: 'operation', journal: 'main_only_cleanup', operationInstanceId: 'cleanup-generated-paths', path: `operations/${ATTEMPT}/cleanup-generated-paths/cleanup-progress/${String(locatorOrdinal).padStart(4, '0')}.json`, byteSize: 1, sha256: HASH }
+    Object.assign(value, { checkpointProfile: 'partial_cleanup', failureCode: 'generated_cleanup_failed', cleanupJournalProgress: { authoritySha256: HASH, deletionPlanSha256: HASH, journal: 'main_only_cleanup', completedPrefixCount, rollingPrefixSha256: HASH, lastProgressLocator: locator } })
+    value.attachments.diagnostics = [checkpointDiagnostic('cleanup-progress-inspection')]
+    return value
+  }
+  const inclusiveCap = checkpointAt(98, 98)
+  assert.deepEqual(validateAttachment('feature-integration-recovery-checkpoint', inclusiveCap), inclusiveCap)
+  for (const [completedPrefixCount, locatorOrdinal] of [[99, 1], [2, 1], [1, 2]]) {
+    assert.throws(() => validateAttachment('feature-integration-recovery-checkpoint', checkpointAt(completedPrefixCount, locatorOrdinal)), TypeError)
+  }
+})
+
 test('campaign attachment: supervised progress locators close every program arm', () => {
   const base = A_ATTACHMENT_FIXTURES.get('wave0a-supervised-operation-result')
   const cases = [
