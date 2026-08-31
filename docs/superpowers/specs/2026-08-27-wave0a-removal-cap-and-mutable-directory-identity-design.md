@@ -1,5 +1,7 @@
 # Wave 0A 削除境界の限定設計追補
 
+> **Current scope note:** Removal cap、mutable-directory identity、path safetyの技術要件はcurrent referenceとして保持する。この文書に記録した承認・実行方式だけは `docs/superpowers/specs/2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md` に置換され、ここでexecution permitを与えない。
+
 - Addendum ID: `WAVE0A-REMOVAL-BOUNDARIES-ADDENDUM-V1`
 - Status: 提案。設計案の作成のみ承認済み。設計変更、実装計画、ソース・テスト変更は別途承認待ち。
 - Date: 2026-08-27

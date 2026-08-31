@@ -1,5 +1,7 @@
 # Wave 0A ルート表現の限定設計追補
 
+> **Current scope note:** Root identity、no-follow、cap、TOCTOUの技術要件はcurrent referenceとして保持する。この文書に記録した承認・実行方式だけは `docs/superpowers/specs/2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md` に置換され、ここでexecution permitを与えない。
+
 - Addendum ID: `WAVE0A-ROOT-PATH-CONTRACT-ADDENDUM-V1`
 - Status: 提案。文書作成のみ承認済み。設計変更・実装再開は別途承認待ち。
 - Date: 2026-08-27
