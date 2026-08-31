@@ -50,8 +50,10 @@ function assertEndpoint(value, label) {
   let parsed
   try { parsed = new URL(value) } catch { fail(`invalid ${label}`) }
   const host = parsed.hostname.toLowerCase()
+  const ipv6 = host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : null
   const privateIpv4 = /^(?:127\.|10\.|0\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[0-1])\.)/u.test(host)
-  if (parsed.protocol !== 'https:' || parsed.origin !== value || parsed.username || parsed.password || host === 'localhost' || privateIpv4 || host.includes('*')) fail(`non-public ${label}`)
+  const privateIpv6 = ipv6 !== null && (ipv6 === '::' || ipv6 === '::1' || /^fe[89ab][0-9a-f]*:/u.test(ipv6) || /^f[cd][0-9a-f]*:/u.test(ipv6) || ipv6.startsWith('::ffff:'))
+  if (parsed.protocol !== 'https:' || parsed.origin !== value || parsed.username || parsed.password || host === 'localhost' || privateIpv4 || privateIpv6 || host.includes('*')) fail(`non-public ${label}`)
 }
 function tierAtLeast(current, candidate) { return TIER_VALUE[candidate] > TIER_VALUE[current] ? candidate : current }
 
@@ -134,13 +136,17 @@ function validateScope(input) {
     if (value.source === null || value.targetSet === null || value.impact === null || value.rollback === null) fail('missing Tier C binding')
     validateSource(value.source); validateTargetSet(value.targetSet); validateImpact(value.impact, value.allowedActions); validateRollback(value.rollback, value.impact.irreversible)
   } else if (value.source !== null || value.targetSet !== null || value.impact !== null || value.rollback !== null) fail('unexpected Tier C binding')
-  return { value, tier }
+  return { value: retainedScope(value), tier }
 }
 
 function presentationScope(scope) {
   const copy = structuredClone(scope)
-  if (copy.source) delete copy.source.canonicalId
-  if (copy.targetSet) delete copy.targetSet.canonicalIds
+  return copy
+}
+function retainedScope(scope) {
+  const copy = structuredClone(scope)
+  if (copy.source) copy.source = { kind: copy.source.kind, displayFingerprint: copy.source.displayFingerprint, verification: copy.source.verification }
+  if (copy.targetSet) copy.targetSet = { kind: copy.targetSet.kind, displayExpectedVersions: copy.targetSet.displayExpectedVersions, targetCount: copy.targetSet.targetCount }
   return copy
 }
 function snapshot(proposal) {

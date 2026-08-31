@@ -52,10 +52,10 @@ function eventFor(modelSnapshot, proposalScope, action, overrides = {}) {
     outputRoots: proposalScope.outputRoots,
     freshResources: proposalScope.freshResources,
     finalPublicEndpoints: proposalScope.allowedPublicEndpoints,
-    observedSource: proposalScope.source,
-    observedTargetSet: proposalScope.targetSet,
-    observedImpact: proposalScope.impact,
-    observedRollback: proposalScope.rollback,
+    observedSource: modelSnapshot.scope.source,
+    observedTargetSet: modelSnapshot.scope.targetSet,
+    observedImpact: modelSnapshot.scope.impact,
+    observedRollback: modelSnapshot.scope.rollback,
     checks: checks(),
     ...structuredClone(overrides)
   }
@@ -97,6 +97,12 @@ test('Tier B scopes pin fresh targets and public endpoints before classification
   assert.throws(() => policy.classifyRisk(scope({ allowedActions: ['create_local_branch'], freshResources: { ...fresh.freshResources, requireAbsent: false } })), TypeError)
   assert.throws(() => policy.classifyRisk(scope({ allowedActions: ['public_dependency_read'], allowedPublicEndpoints: ['https://*.example.test'] })), TypeError)
   assert.throws(() => policy.classifyRisk(scope({ allowedActions: ['public_dependency_read'], allowedPublicEndpoints: ['http://127.0.0.1'] })), TypeError)
+})
+
+test('Tier B public reads reject private IPv6 literal endpoints', () => {
+  for (const endpoint of ['https://[::1]', 'https://[::]', 'https://[fe80::1]', 'https://[fc00::1]']) {
+    assert.throws(() => policy.classifyRisk(scope({ allowedActions: ['public_dependency_read'], allowedPublicEndpoints: [endpoint] })), TypeError, endpoint)
+  }
 })
 
 test('Tier C scopes require every closed binding and coherent counts, bytes, and rollback', () => {
@@ -154,6 +160,27 @@ test('Tier C consumes applied operations but returns to approved after confirmed
   const second = model.beginOperation(eventFor(pending, candidate, 'update_main', { operationId: 'operation-2', idempotencyKey: null, checks: checks(['leaseSatisfied']) }))
   assert.equal(second.state, 'executing')
   assert.equal(model.recordOutcome({ operationId: 'operation-2', idempotencyKey: null, outcome: 'applied' }).state, 'consumed')
+})
+
+test('Tier C preflight uses only retained display bindings after full identities are supplied', () => {
+  const candidate = tierCScope({
+    source: { kind: 'artifact', canonicalId: 'sha256:full-host-only-digest', displayFingerprint: 'candidate-7f3a', verification: 'verified' },
+    targetSet: { kind: 'git_refs', canonicalIds: ['refs/heads/main@host-evidence'], displayExpectedVersions: ['main@display-1'], targetCount: 1 },
+    impact: { ...tierCScope().impact, affectedCount: 1 }
+  })
+  const model = policy.createTaskProposalModel({ taskId: 'task-1' })
+  const pending = model.open(candidate)
+  model.recordDecision({ taskId: 'task-1', proposalId: pending.proposalId, decision: 'approved' })
+  const preflight = eventFor(pending, candidate, 'update_main', {
+    observedSource: pending.scope.source,
+    observedTargetSet: pending.scope.targetSet,
+    observedImpact: pending.scope.impact,
+    observedRollback: pending.scope.rollback,
+    checks: checks(['leaseSatisfied'])
+  })
+  assert.equal(Object.hasOwn(preflight.observedSource, 'canonicalId'), false)
+  assert.equal(Object.hasOwn(preflight.observedTargetSet, 'canonicalIds'), false)
+  assert.equal(model.beginOperation(preflight).state, 'executing')
 })
 
 test('reconciliation follows tier transitions and unknown outcomes block further events', () => {
