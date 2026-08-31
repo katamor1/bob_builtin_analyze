@@ -1,5 +1,7 @@
 # Wave 0A Root Path Contract Addendum Implementation Plan
 
+> **Historical plan — do not execute or create its approval artifacts.** Root identity、no-follow、cap、TOCTOUの技術要件は参考として保持する。文書identity、exact approval、外部evidence、段階実行の方式は `docs/superpowers/specs/2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md` が置換する。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 元の非空相対パス規則を維持し、root materialization と worktree removal のルート境界を一意に表現・検証できるようにする。

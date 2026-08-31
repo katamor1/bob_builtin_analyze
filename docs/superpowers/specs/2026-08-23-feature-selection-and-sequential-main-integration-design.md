@@ -1,5 +1,7 @@
 # 機能取捨選択とmain逐次統合の回復設計
 
+> **Current scope note:** 機能取捨選択、逐次PR、exact-head CI、main-only完了という製品・統合目標は引き続き参照する。承認、provider transcript、実行証跡の方式は `docs/superpowers/specs/2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md` が置換する。
+
 - Status: written spec review pending
 - In-chat design baseline approved: 2026-08-23
 - Date: 2026-08-23

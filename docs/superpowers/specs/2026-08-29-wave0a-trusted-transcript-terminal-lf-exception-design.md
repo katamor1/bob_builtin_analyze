@@ -1,5 +1,7 @@
 # Wave 0A trusted transcript terminal-LF 比較例外の限定設計追補
 
+> **Historical evidence — do not continue this correction chain.** Provider transcript、terminal-LF、exact approval、operator bundleの方式は `docs/superpowers/specs/2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md` が置換する。旧commitと本文は履歴参照に限り、PC2、capture、Task 0、外部artifactを新規作成しない。
+
 - Addendum ID: `WAVE0A-TERMINAL-LF-COMPARISON-EXCEPTION-V1`
 - Correction ID: `WAVE0A-PLAN-CONTEXT-INTERVAL-DEREFERENCE-CORRECTION-V1`
 - Status: terminal-LF比較例外の旧設計と旧実装計画は承認済みだが、旧plan-contextの区間比較が外部作成前に安全停止した。plan-context限定訂正設計は作成済みでwritten-spec review待ち。訂正plan、capture、Task 0、source/test実装は未承認・未実行。

@@ -1,5 +1,7 @@
 # Wave 0A Approved Root and Removal Addenda Composed Implementation Plan
 
+> **Historical plan — do not execute or create its approval artifacts.** Technical root/removal safety requirements remain reference material. Its exact approval, transcript, external-evidence, and per-step execution model is superseded by `docs/superpowers/specs/2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 文書identityが承認・固定済みで実装は未承認の root-path contract と removal cap / mutable-directory identity の二追補を、停止中の Wave 0A Task 6A phase 2B から元の依存順へ合成し、root materialization と worktree removal を同じ検証済み契約で producer・campaign publication・Windows native consumer・recoveryまで閉じる。

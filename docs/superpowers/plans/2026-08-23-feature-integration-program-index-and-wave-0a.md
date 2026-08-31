@@ -1,5 +1,7 @@
 # Feature Selection and Sequential Main Integration Program Plan with Wave 0A Exact-Head CI Detail
 
+> **Historical plan — do not execute or capture approvals from this document.** The product-selection and sequential-main goals remain reference material, but its approval, transcript, operator, and progress-record model is superseded by `docs/superpowers/specs/2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md`. A new implementation plan will replace this executable plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 承認済みの機能取捨選択設計を静的Program indexへ固定し、Wave 0A control planeをmainへ統合した後、全source itemを一意に採否分類し、mandatory capabilityを一つずつexact PR head／exact merged mainで検証してmainへ統合し、最終的にremote/localとも`main`一本へ収束させる。

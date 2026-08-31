@@ -1,5 +1,7 @@
 # Wave 0A trusted transcript terminal-LF comparison exception / plan-context correction Implementation Plan
 
+> **Historical plan — do not execute.** Its provider-log capture, terminal-LF exception, embedded bootstrap bundle, approval/claim/progress/completion artifacts, Task 0, and commit-slice instructions are superseded by `docs/superpowers/specs/2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 承認済みterminal-LF限定比較を、committed plan blobからだけ復元できる一回限りのoperator、永久外部evidence chain、25個の直列repository commitとして実装し、remote／PR／main／cleanupへ進まずlocal candidateを閉じる。
