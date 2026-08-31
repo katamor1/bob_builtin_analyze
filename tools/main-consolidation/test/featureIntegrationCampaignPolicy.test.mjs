@@ -593,6 +593,31 @@ const A_ARCHIVE = {"schemaVersion":"bob-builtin-analyze/feature-integration-arch
 A_ATTACHMENT_FIXTURES.set('feature-integration-archive-preflight', A_ARCHIVE)
 
 const packObjectHeader = (type, byteSize) => { let n = byteSize; const out = [(type << 4) | (n & 15)]; n >>>= 4; while (n) { out[out.length - 1] |= 128; out.push(n & 127); n >>>= 7 } return Buffer.from(out) }
+const packHeader = count => { const header = Buffer.alloc(12); header.write('PACK'); header.writeUInt32BE(2, 4); header.writeUInt32BE(count, 8); return header }
+const packBaseObject = (type, data) => Buffer.concat([packObjectHeader(type, data.length), deflateSync(data)])
+const deltaSize = value => { const out = []; do { let byte = value % 128; value = Math.floor(value / 128); if (value > 0) byte |= 128; out.push(byte) } while (value > 0); return Buffer.from(out) }
+const copyWholeBaseDelta = (byteSize, appendByte) => {
+  let command = 0x80
+  const sizeBytes = []
+  for (const [mask, shift] of [[0x10, 0], [0x20, 8], [0x40, 16]]) if (((byteSize >>> shift) & 0xff) !== 0) { command |= mask; sizeBytes.push((byteSize >>> shift) & 0xff) }
+  const resultByteSize = byteSize + (appendByte === undefined ? 0 : 1)
+  return Buffer.concat([deltaSize(byteSize), deltaSize(resultByteSize), Buffer.from([command, ...sizeBytes]), ...(appendByte === undefined ? [] : [Buffer.from([1, appendByte])])])
+}
+const offsetDeltaDistance = value => { const out = [value & 0x7f]; while ((value = Math.floor(value / 128)) > 0) { value--; out.unshift(0x80 | (value & 0x7f)) } return Buffer.from(out) }
+const retainedBudgetPack = (rawCommit, blobByteSize, useOffsetDelta, finalExtraByte) => {
+  const commitEntry = packBaseObject(1, rawCommit)
+  const blob = Buffer.alloc(blobByteSize, 0x61)
+  const blobEntry = packBaseObject(3, blob)
+  const blobOffset = 12 + commitEntry.length
+  let finalEntry
+  if (useOffsetDelta) {
+    const delta = copyWholeBaseDelta(blobByteSize, finalExtraByte)
+    const deltaOffset = blobOffset + blobEntry.length
+    finalEntry = Buffer.concat([packObjectHeader(6, delta.length), offsetDeltaDistance(deltaOffset - blobOffset), deflateSync(delta)])
+  } else finalEntry = packBaseObject(3, finalExtraByte === undefined ? blob : Buffer.concat([blob, Buffer.from([finalExtraByte])]))
+  return Buffer.concat([packHeader(3), commitEntry, blobEntry, finalEntry])
+}
+const bundleWithPack = pack => Buffer.concat([Buffer.from(`# v2 git bundle\n-${B} test-owned prerequisite\n${A_COMMIT_PLAN.expectedMergeSha} refs/heads/${A_BRANCH}\n\n`), pack, createHash('sha1').update(pack).digest()])
 const packForCommit = rawCommit => Buffer.concat([Buffer.from('5041434b0000000200000001', 'hex'), packObjectHeader(1, rawCommit.length), deflateSync(rawCommit)])
 const bundleForCommit = (baseSha, branch, rawCommit) => {
   const headSha = createHash('sha1').update(`commit ${rawCommit.length}\0`).update(rawCommit).digest('hex')
@@ -914,6 +939,31 @@ test('campaign attachment: raw candidate diagnostic secrets and binary patch tra
   for (const value of ['token=ghp_secret\n', `headSha=${H}\n`, 'message=arbitrary free text\n']) { const raw = Buffer.from(value); assert.throws(() => policy.validateRawCandidatePayload(raw, { ...A_PRESERVATION.diagnosticLog, byteSize: raw.length, sha256: digest(raw) }, A_PRESERVATION), TypeError) }
   const bad = Buffer.from(A_PATCH_BYTES.toString().replaceAll('b/fixture.txt', 'b/../escape')); assert.throws(() => policy.validateRawCandidatePayload(bad, { ...A_PRESERVATION.patch, byteSize: bad.length, sha256: digest(bad) }, A_PRESERVATION), TypeError)
 })
+const validatePatchFixture = raw => {
+  const manifest = clone(A_PRESERVATION)
+  manifest.patch = { ...manifest.patch, byteSize: raw.length, sha256: digest(raw) }
+  return policy.validateRawCandidatePayload(raw, manifest.patch, manifest)
+}
+test('campaign attachment: raw patch accepts closed rename and copy path pairs', () => {
+  const rename = Buffer.from('diff --git a/old-name.txt b/new-name.txt\nsimilarity index 100%\nrename from old-name.txt\nrename to new-name.txt\n')
+  const copy = Buffer.from('diff --git a/source.txt b/copied.txt\nsimilarity index 100%\ncopy from source.txt\ncopy to copied.txt\n')
+  const binary = Buffer.from('diff --git a/image.bin b/image.bin\nGIT binary patch\nliteral 1\nIc${MZ000310RR91\n\n')
+  assert.equal(validatePatchFixture(rename).kind, 'git_binary_patch')
+  assert.equal(validatePatchFixture(copy).kind, 'git_binary_patch')
+  assert.equal(validatePatchFixture(binary).kind, 'git_binary_patch')
+})
+test('campaign attachment: raw patch rejects marker-only and truncated binary sections', () => {
+  const markerOnly = Buffer.from('diff --git a/image.bin b/image.bin\nGIT binary patch\n')
+  const truncatedBlock = Buffer.from('diff --git a/image.bin b/image.bin\nGIT binary patch\nliteral 3\n')
+  const truncatedSecondBlock = Buffer.from('diff --git a/image.bin b/image.bin\nGIT binary patch\nliteral 1\nIc${MZ000310RR91\n\nliteral 1\n\n')
+  const invalidCompressedData = Buffer.from('diff --git a/image.bin b/image.bin\nGIT binary patch\nliteral 1\nA00000\n\n')
+  const wrongLiteralSize = Buffer.from('diff --git a/image.bin b/image.bin\nGIT binary patch\nliteral 2\nIc${MZ000310RR91\n\n')
+  assert.throws(() => validatePatchFixture(markerOnly), TypeError)
+  assert.throws(() => validatePatchFixture(truncatedBlock), TypeError)
+  assert.throws(() => validatePatchFixture(truncatedSecondBlock), TypeError)
+  assert.throws(() => validatePatchFixture(invalidCompressedData), TypeError)
+  assert.throws(() => validatePatchFixture(wrongLiteralSize), TypeError)
+})
 test('campaign attachment: raw manifest and reference coordinated tampering fails closed', () => {
   for (const change of [
     ref => { ref.unrecognized = true },
@@ -963,6 +1013,79 @@ test('campaign attachment: raw bundle parses declared pack objects and binds com
     const manifest = manifestFor(B, TREE, rawCommit, built.bytes)
     assert.throws(() => policy.validateRawCandidatePayload(built.bytes, manifest.gitBundle, manifest), TypeError)
   }
+})
+test('campaign attachment: raw pack aggregate retained bytes cap includes resolved deltas once', () => {
+  assert.equal(A_RAW_COMMIT.length, 338)
+  const retainedBaseCap = 8388439
+  const manifestFor = bundle => {
+    const manifest = clone(A_PRESERVATION)
+    manifest.gitBundle = { ...manifest.gitBundle, byteSize: bundle.length, sha256: digest(bundle) }
+    return manifest
+  }
+  const baseOverflow = bundleWithPack(retainedBudgetPack(A_RAW_COMMIT, retainedBaseCap, false, 0x62))
+  assert.throws(() => policy.validateRawCandidatePayload(baseOverflow, manifestFor(baseOverflow).gitBundle, manifestFor(baseOverflow)), TypeError)
+  const exactDelta = bundleWithPack(retainedBudgetPack(A_RAW_COMMIT, retainedBaseCap, true))
+  assert.deepEqual(policy.validateRawCandidatePayload(exactDelta, manifestFor(exactDelta).gitBundle, manifestFor(exactDelta)), manifestFor(exactDelta).gitBundle)
+  const deltaOverflow = bundleWithPack(retainedBudgetPack(A_RAW_COMMIT, retainedBaseCap, true, 0x62))
+  assert.throws(() => policy.validateRawCandidatePayload(deltaOverflow, manifestFor(deltaOverflow).gitBundle, manifestFor(deltaOverflow)), TypeError)
+})
+
+test('campaign attachment: mergeability result is a closed exact union', () => {
+  const drift = clone(A_MERGEABILITY); drift.result = 'identity_drift'; drift.driftReason = 'pr_head'
+  assert.deepEqual(validateAttachment('pull-request-mergeability', drift), drift)
+  const unknown = clone(A_MERGEABILITY); unknown.result = 'caller_selected'
+  assert.throws(() => validateAttachment('pull-request-mergeability', unknown), TypeError)
+  const extra = clone(A_MERGEABILITY); extra.driftReason = 'pr_head'
+  assert.throws(() => validateAttachment('pull-request-mergeability', extra), TypeError)
+  const missing = clone(drift); delete missing.driftReason
+  assert.throws(() => validateAttachment('pull-request-mergeability', missing), TypeError)
+})
+
+const checkpointDiagnostic = label => ({ ...clone(A_CHECKPOINT.attachments.diagnostics[0]), label, path: `attachments/0005-${label}.json` })
+const checkpointEvidence = (label, schemaVersion, ordinal) => ({ owner: 'attempt', attemptId: ATTEMPT, label, path: `attachments/${String(ordinal).padStart(4, '0')}-${label}.json`, schemaVersion, byteSize: 1, sha256: HASH })
+test('campaign attachment: recovery checkpoint closes cleanup progress and reconciliation origins', () => {
+  const locator = { owner: 'operation', journal: 'main_only_cleanup', operationInstanceId: 'cleanup-generated-paths', path: `operations/${ATTEMPT}/cleanup-generated-paths/cleanup-progress/0001.json`, byteSize: 1, sha256: HASH }
+  const partial = clone(A_CHECKPOINT)
+  Object.assign(partial, { checkpointProfile: 'partial_cleanup', failureCode: 'generated_cleanup_failed', cleanupJournalProgress: { authoritySha256: HASH, deletionPlanSha256: HASH, journal: 'main_only_cleanup', completedPrefixCount: 1, rollingPrefixSha256: HASH, lastProgressLocator: locator } })
+  partial.attachments.diagnostics = [checkpointDiagnostic('cleanup-progress-inspection')]
+  assert.deepEqual(validateAttachment('feature-integration-recovery-checkpoint', partial), partial)
+  for (const change of [v => { delete v.cleanupJournalProgress.authoritySha256 }, v => { v.cleanupJournalProgress.extra = true }, v => { delete v.cleanupJournalProgress.lastProgressLocator.owner }, v => { v.cleanupJournalProgress.lastProgressLocator.extra = true }, v => { v.cleanupJournalProgress.lastProgressLocator.schemaVersion = `${S}root-fast-forward-progress/v1` }]) {
+    const bad = clone(partial); change(bad); assert.throws(() => validateAttachment('feature-integration-recovery-checkpoint', bad), TypeError)
+  }
+
+  const controllerOrigin = { kind: 'controller_preclaim_spawn_failure', operationInstanceId: 'publish-branch', intentSha256: HASH, failedSupervisorLaunch: checkpointEvidence('failed-supervisor-launch', `${S}wave0a-supervised-operation-result/v1`, 6), authorizedAction: 'observe_only_no_spawn' }
+  const mutation = clone(A_CHECKPOINT)
+  Object.assign(mutation, { checkpointProfile: 'mutation_reconciliation', failureCode: 'mutation_reconciliation_required', reconciliationOrigin: controllerOrigin })
+  mutation.attachments.diagnostics = [checkpointDiagnostic('operation-inspection')]
+  assert.deepEqual(validateAttachment('feature-integration-recovery-checkpoint', mutation), mutation)
+  for (const change of [v => { delete v.reconciliationOrigin.authorizedAction }, v => { v.reconciliationOrigin.extra = true }, v => { v.reconciliationOrigin.failedSupervisorLaunch.schemaVersion = `${S}wave0a-local-gates/v1` }]) {
+    const bad = clone(mutation); change(bad); assert.throws(() => validateAttachment('feature-integration-recovery-checkpoint', bad), TypeError)
+  }
+
+  const historical = clone(mutation)
+  historical.reconciliationOrigin = { kind: 'historical_precheckpoint', historicalBootstrapSha256: HASH, sourceHandoffSha256: HASH, intentSha256: HASH, historicalValidation: checkpointEvidence('historical-validation', `${S}wave0a-historical-precheckpoint-validation/v1`, 7), window: 'operation_precheckpoint', operationClass: 'observe_only', operationInstanceId: 'publish-branch', program: 'observe_only_no_spawn', ownerState: 'unclaimed', authorizedAction: 'observe_only_no_spawn' }
+  assert.deepEqual(validateAttachment('feature-integration-recovery-checkpoint', historical), historical)
+  for (const change of [v => { delete v.reconciliationOrigin.window }, v => { v.reconciliationOrigin.extra = true }, v => { v.reconciliationOrigin.program = 'generated_cleanup' }]) {
+    const bad = clone(historical); change(bad); assert.throws(() => validateAttachment('feature-integration-recovery-checkpoint', bad), TypeError)
+  }
+})
+
+test('campaign attachment: supervised progress locators close every program arm', () => {
+  const base = A_ATTACHMENT_FIXTURES.get('wave0a-supervised-operation-result')
+  const cases = [
+    ['generated_cleanup', 'cleanup-generated-paths', { owner: 'operation', journal: 'main_only_cleanup', operationInstanceId: 'cleanup-generated-paths', path: `operations/${ATTEMPT}/cleanup-generated-paths/cleanup-progress/0001.json`, byteSize: 1, sha256: HASH }],
+    ['root_fast_forward', 'fast-forward-root', { path: `operations/${ATTEMPT}/fast-forward-root/program-progress/0001.json`, schemaVersion: `${S}root-fast-forward-progress/v1`, byteSize: 1, sha256: HASH }],
+    ['worktree_removal', 'remove-feature-worktree', { path: `operations/${ATTEMPT}/remove-feature-worktree/worktree-progress/0001.json`, schemaVersion: `${S}worktree-removal-progress/v1`, byteSize: 1, sha256: HASH }]
+  ]
+  for (const [program, operationInstanceId, locator] of cases) {
+    const value = clone(base); Object.assign(value, { program, operationInstanceId, progress: [locator], claim: claim(operationInstanceId) })
+    assert.deepEqual(validateAttachment('wave0a-supervised-operation-result', value), value, program)
+    for (const change of [v => { delete v.progress[0].sha256 }, v => { v.progress[0].extra = true }, v => { v.progress[0].path = v.progress[0].path.replace('0001.json', '0002.json') }]) {
+      const bad = clone(value); change(bad); assert.throws(() => validateAttachment('wave0a-supervised-operation-result', bad), TypeError, program)
+    }
+  }
+  const ordinary = clone(base); ordinary.progress = [{}]
+  assert.throws(() => validateAttachment('wave0a-supervised-operation-result', ordinary), TypeError)
 })
 test('campaign attachment: full archive fixture preserves actual bytes membership and all endpoint observations', () => {
   const fixture = policy.buildFullArchivePreflightFixture()

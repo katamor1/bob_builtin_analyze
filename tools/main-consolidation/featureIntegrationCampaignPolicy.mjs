@@ -1204,7 +1204,9 @@ attachmentUnion('exact-head-ci-evidence', value => {
 })
 const mergeabilityObservation = shape({ pullRequest: namedPrObservation, liveMainSha: 'LowercaseSha', mergeable: enumeration(['UNKNOWN', 'MERGEABLE', 'CONFLICTING']), observedAt: 'CanonicalUtc' })
 attachmentUnion('pull-request-mergeability', value => {
-  const base = { schemaVersion: literal(`${S}pull-request-mergeability/v1`), pullRequest: pullRequestIdentity, observations: array(mergeabilityObservation, 1, 120), observedAt: 'CanonicalUtc', diagnostics, pollCount: integer(1, 120), result: literal(value.result) }
+  const result = value?.result
+  requireThat(['mergeable', 'poll_exhausted', 'identity_drift'].includes(result), 'mergeability result arm')
+  const base = { schemaVersion: literal(`${S}pull-request-mergeability/v1`), pullRequest: pullRequestIdentity, observations: array(mergeabilityObservation, 1, 120), observedAt: 'CanonicalUtc', diagnostics, pollCount: integer(1, 120), result: literal(result) }
   if (value.result === 'identity_drift') base.driftReason = enumeration(['pr_absent', 'pr_state', 'pr_head', 'pr_branch', 'pr_base', 'live_main', 'conflicting'])
   shape(base)(value)
   requireThat(value.pollCount === value.observations.length, 'mergeability poll count')
@@ -1322,15 +1324,57 @@ const checkpointAttachments = value => {
   requireThat(value.candidatePreservation.label === 'candidate-preservation' && value.candidatePreservation.schemaVersion === `${S}candidate-preservation-manifest/v1`, 'checkpoint preservation identity')
   requireThat(value.failure.label === 'failure' && value.failure.schemaVersion === `${S}feature-integration-failure/v1`, 'checkpoint failure identity')
 }
+const cleanupJournals = Object.freeze(['pre_merge_abort_cleanup', 'main_only_cleanup', 'post_merge_failure_cleanup'])
+const operationCleanupProgressLocator = value => {
+  shape({ owner: literal('operation'), journal: enumeration(cleanupJournals), operationInstanceId: literal('cleanup-generated-paths'), path: 'SafeOperationCleanupProgressPath', byteSize: 'PositiveSafeInteger', sha256: 'LowercaseSha256' })(value)
+}
+const cleanupJournalProgress = value => {
+  const common = { authoritySha256: 'LowercaseSha256', deletionPlanSha256: 'LowercaseSha256', journal: enumeration(cleanupJournals), completedPrefixCount: value?.completedPrefixCount === 0 ? literal(0) : 'PositiveSafeInteger', rollingPrefixSha256: 'LowercaseSha256' }
+  if (value?.completedPrefixCount === 0) shape({ ...common, lastProgressLocator: literal(null) })(value)
+  else {
+    shape({ ...common, lastProgressLocator: operationCleanupProgressLocator })(value)
+    requireThat(value.lastProgressLocator.journal === value.journal, 'cleanup progress journal binding')
+  }
+}
+const attemptEvidenceWithSchema = expectedSchema => value => {
+  attemptEvidenceRef(value)
+  requireThat(value.schemaVersion === `${S}${expectedSchema}/v1`, 'checkpoint origin evidence schema')
+}
+const reconciliationOrigin = value => {
+  if (value?.kind === 'controller_preclaim_spawn_failure') {
+    shape({ kind: literal('controller_preclaim_spawn_failure'), operationInstanceId: 'Wave0aOperationInstanceId', intentSha256: 'LowercaseSha256', failedSupervisorLaunch: attemptEvidenceWithSchema('wave0a-supervised-operation-result'), authorizedAction: literal('observe_only_no_spawn') })(value)
+    return
+  }
+  requireThat(value?.kind === 'historical_precheckpoint', 'reconciliation origin kind')
+  const program = value?.program
+  const specialOperation = Object.freeze({ generated_cleanup: 'cleanup-generated-paths', root_fast_forward: 'fast-forward-root', worktree_removal: 'remove-feature-worktree' })
+  requireThat(program === 'observe_only_no_spawn' || Object.hasOwn(specialOperation, program), 'historical reconciliation program')
+  const ownerState = value?.ownerState
+  requireThat(['unclaimed', 'terminated_without_result', 'result_durable'].includes(ownerState), 'historical reconciliation owner state')
+  const resumable = program !== 'observe_only_no_spawn'
+  const expectedAction = ownerState === 'result_durable' ? 'reconcile_durable_result' : resumable ? 'execute_same_intent_suffix' : 'observe_only_no_spawn'
+  const fields = {
+    kind: literal('historical_precheckpoint'), historicalBootstrapSha256: 'LowercaseSha256', sourceHandoffSha256: 'LowercaseSha256', intentSha256: 'LowercaseSha256', historicalValidation: attemptEvidenceWithSchema('wave0a-historical-precheckpoint-validation'),
+    window: literal('operation_precheckpoint'), operationClass: literal(resumable ? 'resumable_suffix' : 'observe_only'), operationInstanceId: resumable ? literal(specialOperation[program]) : 'Wave0aOperationInstanceId', program: literal(program), ownerState: literal(ownerState), authorizedAction: literal(expectedAction)
+  }
+  shape(fields)(value)
+  if (!resumable) requireThat(!Object.values(specialOperation).includes(value.operationInstanceId), 'historical observe-only operation')
+}
 attachmentUnion('feature-integration-recovery-checkpoint', value => {
   const fields = { schemaVersion: literal(`${S}feature-integration-recovery-checkpoint/v1`), attemptId: 'SafeAttemptId', currentEventSha256: 'LowercaseSha256', operationProgress: array(operationRecordLocator, 0, 15), latestTopology: campaignEvidenceRef, recordedAt: 'CanonicalUtc', expectedState: enumeration(['READY', 'LOCAL', 'PR_ACTIVE', 'MERGED', 'POST_MERGE_VERIFIED', 'MAIN_ONLY']), resumeProfile: 'SafeId', checkpointProfile: enumeration(['normal', 'mutation_reconciliation', 'partial_cleanup']), failureCode: enumeration(failureCodes), attachments: checkpointAttachments }
-  if (Object.hasOwn(value ?? {}, 'cleanupJournalProgress')) fields.cleanupJournalProgress = object => requireThat(object !== null && typeof object === 'object' && !Array.isArray(object), 'cleanup journal progress')
-  if (Object.hasOwn(value ?? {}, 'reconciliationOrigin')) fields.reconciliationOrigin = object => requireThat(object !== null && typeof object === 'object' && !Array.isArray(object), 'reconciliation origin')
+  if (value?.checkpointProfile === 'partial_cleanup') fields.cleanupJournalProgress = cleanupJournalProgress
+  if (value?.checkpointProfile === 'mutation_reconciliation') fields.reconciliationOrigin = reconciliationOrigin
   shape(fields)(value)
   requireThat(value.latestTopology.schemaVersion === `${S}slice-topology-evidence/v1` && value.latestTopology.attemptId === value.attemptId, 'checkpoint topology owner')
   for (const ref of [value.attachments.candidatePreservation, value.attachments.failure, ...value.attachments.diagnostics]) requireThat(ref.attemptId === value.attemptId, 'checkpoint attachment owner')
   requireThat(equal(value.attachments.diagnostics.map(ref => ref.label), checkpointDiagnosticLabels[value.failureCode]), 'checkpoint diagnostic labels')
   requireThat((value.failureCode === 'mutation_reconciliation_required') === (value.checkpointProfile === 'mutation_reconciliation'), 'checkpoint mutation profile')
+  if (value.checkpointProfile === 'partial_cleanup') {
+    requireThat(value.failureCode === 'generated_cleanup_failed', 'checkpoint partial cleanup failure')
+    const locator = value.cleanupJournalProgress.lastProgressLocator
+    if (locator !== null) requireThat(locator.path.split('/')[1] === value.attemptId, 'checkpoint cleanup progress owner')
+  }
+  if (value.checkpointProfile === 'mutation_reconciliation') requireThat((value.reconciliationOrigin.failedSupervisorLaunch ?? value.reconciliationOrigin.historicalValidation).attemptId === value.attemptId, 'checkpoint reconciliation evidence owner')
 })
 
 const operationIds = Object.freeze({
@@ -1453,11 +1497,18 @@ const commandTermination = value => {
   if ((outcome === 'timeout' || outcome === 'overflow') && Object.hasOwn(value ?? {}, 'treeTermination')) fields.treeTermination = enumeration(['job_closed_and_empty', 'termination_failed'])
   shape(fields)(value)
 }
+const rootFastForwardProgressLocator = shape({ path: 'SafeOperationProgramProgressPath', schemaVersion: literal(`${S}root-fast-forward-progress/v1`), byteSize: 'PositiveSafeInteger', sha256: 'LowercaseSha256' })
+const worktreeRemovalProgressLocator = shape({ path: 'SafeOperationWorktreeProgressPath', schemaVersion: literal(`${S}worktree-removal-progress/v1`), byteSize: 'PositiveSafeInteger', sha256: 'LowercaseSha256' })
 attachmentUnion('wave0a-supervised-operation-result', value => {
-  const fields = { schemaVersion: literal(`${S}wave0a-supervised-operation-result/v1`), attemptId: 'SafeAttemptId', intentSha256: 'LowercaseSha256', reservationSha256: 'LowercaseSha256', observedAt: 'CanonicalUtc', program: enumeration(['ordinary', 'generated_cleanup', 'root_fast_forward', 'worktree_removal']), operationInstanceId: 'Wave0aOperationInstanceId', progress: array(value => { requireThat(value !== null && typeof value === 'object' && !Array.isArray(value), 'progress locator') }, 0, 18), outcome: literal(value?.outcome), claim: value?.claim === null ? literal(null) : 'OperationClaimLink', processResult: value?.processResult === null ? literal(null) : 'FileIdentity', termination: commandTermination }
+  const expectedProgram = value?.operationInstanceId === 'cleanup-generated-paths' ? 'generated_cleanup' : value?.operationInstanceId === 'fast-forward-root' ? 'root_fast_forward' : value?.operationInstanceId === 'remove-feature-worktree' ? 'worktree_removal' : 'ordinary'
+  const progressValidator = expectedProgram === 'generated_cleanup' ? array(operationCleanupProgressLocator, 0, 98) : expectedProgram === 'root_fast_forward' ? array(rootFastForwardProgressLocator, 0, 18) : expectedProgram === 'worktree_removal' ? array(worktreeRemovalProgressLocator, 0, 16) : tuple([])
+  const fields = { schemaVersion: literal(`${S}wave0a-supervised-operation-result/v1`), attemptId: 'SafeAttemptId', intentSha256: 'LowercaseSha256', reservationSha256: 'LowercaseSha256', observedAt: 'CanonicalUtc', program: enumeration(['ordinary', 'generated_cleanup', 'root_fast_forward', 'worktree_removal']), operationInstanceId: 'Wave0aOperationInstanceId', progress: progressValidator, outcome: literal(value?.outcome), claim: value?.claim === null ? literal(null) : 'OperationClaimLink', processResult: value?.processResult === null ? literal(null) : 'FileIdentity', termination: commandTermination }
   shape(fields)(value)
-  const expectedProgram = value.operationInstanceId === 'cleanup-generated-paths' ? 'generated_cleanup' : value.operationInstanceId === 'fast-forward-root' ? 'root_fast_forward' : value.operationInstanceId === 'remove-feature-worktree' ? 'worktree_removal' : 'ordinary'
   requireThat(value.program === expectedProgram, 'supervised program operation')
+  for (const [index, locator] of value.progress.entries()) {
+    const parts = locator.path.split('/')
+    requireThat(parts[1] === value.attemptId && Number(parts.at(-1).slice(0, 4)) === index + 1, 'supervised progress owner/order')
+  }
   if (value.outcome === 'settled_with_result') requireThat(value.claim !== null && value.processResult !== null && !['spawn_error'].includes(value.termination.outcome) && value.termination.treeTermination !== 'termination_failed', 'settled supervised result')
   else if (value.outcome === 'preclaim_spawn_failed') requireThat(value.claim === null && value.processResult === null && value.progress.length === 0 && value.termination.outcome === 'spawn_error', 'preclaim supervised result')
   else { requireThat(value.outcome === 'owner_unavailable_without_result' && value.claim !== null && value.processResult === null && value.termination.treeTermination === 'termination_failed', 'unavailable supervised result') }
@@ -1532,7 +1583,7 @@ const PACK_OBJECT_TYPES = Object.freeze(Object.assign(Object.create(null), { 1: 
 function packObjectId(type, data) {
   return createHash('sha1').update(`${type} ${data.length}\0`).update(data).digest('hex')
 }
-function applyGitDelta(base, delta) {
+function applyGitDelta(base, delta, maxResultBytes = RAW_CANDIDATE_CAP) {
   let cursor = 0
   const readSize = () => {
     let result = 0, shift = 0, byte
@@ -1547,6 +1598,7 @@ function applyGitDelta(base, delta) {
   }
   requireThat(readSize() === base.length, 'git pack delta base size')
   const resultSize = readSize()
+  requireThat(resultSize <= maxResultBytes, 'git pack aggregate retained byte cap')
   const chunks = []
   let produced = 0
   while (cursor < delta.length) {
@@ -1571,7 +1623,7 @@ function parseGitPack(pack) {
   requireThat([2, 3].includes(pack.readUInt32BE(4)), 'git bundle pack version')
   const count = pack.readUInt32BE(8)
   requireThat(count > 0 && count <= pack.length - 12, 'git bundle pack object count')
-  let cursor = 12
+  let cursor = 12, retainedByteSize = 0
   const byOffset = new Map(), byOid = new Map()
   for (let index = 0; index < count; index++) {
     const objectOffset = cursor
@@ -1597,6 +1649,7 @@ function parseGitPack(pack) {
       requireThat(cursor + 20 <= pack.length, 'git pack reference delta base')
       baseOid = pack.subarray(cursor, cursor + 20).toString('hex'); cursor += 20
     }
+    if (Object.hasOwn(PACK_OBJECT_TYPES, typeCode)) requireThat(size <= RAW_CANDIDATE_CAP - retainedByteSize, 'git pack aggregate retained byte cap')
     let inflated
     try { inflated = inflateSync(pack.subarray(cursor), { info: true, maxOutputLength: RAW_CANDIDATE_CAP }) } catch { fail('invalid git pack compressed object') }
     const data = Buffer.from(inflated.buffer)
@@ -1607,9 +1660,11 @@ function parseGitPack(pack) {
     if (Object.hasOwn(PACK_OBJECT_TYPES, typeCode)) object = { type: PACK_OBJECT_TYPES[typeCode], data }
     else {
       const base = typeCode === 6 ? byOffset.get(baseOffset) : byOid.get(baseOid)
-      if (base !== undefined && base !== null) object = { type: base.type, data: applyGitDelta(base.data, data) }
+      if (base !== undefined && base !== null) object = { type: base.type, data: applyGitDelta(base.data, data, RAW_CANDIDATE_CAP - retainedByteSize) }
     }
     if (object !== null) {
+      retainedByteSize += object.data.length
+      requireThat(retainedByteSize <= RAW_CANDIDATE_CAP, 'git pack aggregate retained byte cap')
       object.oid = packObjectId(object.type, object.data)
       byOid.set(object.oid, object)
     }
@@ -1662,31 +1717,124 @@ function validateGitPatchBytes(raw) {
   const text = fatalUtf8(raw, 'git patch')
   requireThat(text.endsWith('\n') && !text.includes('\r') && !text.includes('\0'), 'git patch line endings')
   const lines = text.slice(0, -1).split('\n')
-  let currentPath = null, sectionHasContent = false, sections = 0
-  const finishSection = () => { if (currentPath !== null) requireThat(sectionHasContent, 'git patch empty section') }
+  const base85Alphabet = new Set("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+-;<=>?@^_`{|}~")
+  const base85Index = new Map([...base85Alphabet].map((character, index) => [character, index]))
+  let section = null, sections = 0
+  const binaryDataLine = line => {
+    requireThat(/^[A-Za-z][!-~]+$/u.test(line), 'git binary patch data line')
+    const decodedBytes = line.charCodeAt(0) <= 90 ? line.charCodeAt(0) - 64 : line.charCodeAt(0) - 70
+    requireThat(decodedBytes >= 1 && decodedBytes <= 52 && line.length === 1 + Math.ceil(decodedBytes / 4) * 5 && [...line.slice(1)].every(character => base85Alphabet.has(character)), 'git binary patch data encoding')
+    const encoded = line.slice(1), decoded = Buffer.alloc(encoded.length / 5 * 4)
+    for (let offset = 0; offset < encoded.length; offset += 5) {
+      let word = 0
+      for (const character of encoded.slice(offset, offset + 5)) word = word * 85 + base85Index.get(character)
+      requireThat(word <= 0xffffffff, 'git binary patch base85 word')
+      decoded.writeUInt32BE(word, offset / 5 * 4)
+    }
+    return decoded.subarray(0, decodedBytes)
+  }
+  const validateBinaryDelta = (delta, declaredSize) => {
+    let cursor = 0
+    const readSize = () => {
+      let result = 0, shift = 0, byte
+      do {
+        requireThat(cursor < delta.length && shift <= 28, 'git binary patch delta size')
+        byte = delta[cursor++]; result += (byte & 0x7f) * (2 ** shift); shift += 7
+        requireThat(result <= RAW_CANDIDATE_CAP, 'git binary patch delta byte cap')
+      } while (byte & 0x80)
+      return result
+    }
+    const baseSize = readSize(), resultSize = readSize()
+    requireThat(resultSize === declaredSize, 'git binary patch delta declared size')
+    let produced = 0
+    while (cursor < delta.length) {
+      const command = delta[cursor++]
+      if (command & 0x80) {
+        let offset = 0, size = 0
+        for (const [mask, shift] of [[0x01, 0], [0x02, 8], [0x04, 16], [0x08, 24]]) if (command & mask) { requireThat(cursor < delta.length, 'git binary patch delta copy offset'); offset += delta[cursor++] * (2 ** shift) }
+        for (const [mask, shift] of [[0x10, 0], [0x20, 8], [0x40, 16]]) if (command & mask) { requireThat(cursor < delta.length, 'git binary patch delta copy size'); size += delta[cursor++] * (2 ** shift) }
+        if (size === 0) size = 0x10000
+        requireThat(offset + size <= baseSize && produced + size <= resultSize, 'git binary patch delta copy range')
+        produced += size
+      } else {
+        requireThat(command > 0 && cursor + command <= delta.length && produced + command <= resultSize, 'git binary patch delta insert range')
+        cursor += command; produced += command
+      }
+    }
+    requireThat(produced === resultSize, 'git binary patch delta result size')
+  }
+  const startBinaryBlock = line => {
+    const match = /^(literal|delta) (0|[1-9][0-9]{0,7})$/u.exec(line)
+    requireThat(match !== null && Number(match[2]) <= RAW_CANDIDATE_CAP, 'git binary patch block header')
+    section.binaryBlockKind = match[1]; section.binaryDeclaredSize = Number(match[2]); section.binaryChunks = []; section.binaryState = 'data'; section.binaryBlockLines = 0
+  }
+  const finishBinaryBlock = () => {
+    requireThat(section.binaryBlockLines > 0, 'git binary patch empty block')
+    let expanded
+    try { expanded = inflateSync(Buffer.concat(section.binaryChunks), { maxOutputLength: RAW_CANDIDATE_CAP }) } catch { fail('invalid git binary patch compressed block') }
+    if (section.binaryBlockKind === 'literal') requireThat(expanded.length === section.binaryDeclaredSize, 'git binary patch literal declared size')
+    else validateBinaryDelta(expanded, section.binaryDeclaredSize)
+    section.binaryExpandedBytes += section.binaryDeclaredSize
+    requireThat(section.binaryExpandedBytes <= RAW_CANDIDATE_CAP, 'git binary patch aggregate expanded byte cap')
+    section.binaryBlocks++; section.binaryState = 'complete'
+  }
+  const finishSection = () => {
+    if (section === null) return
+    const transformed = section.changeKind !== null && section.fromPath !== null && section.toPath !== null
+    requireThat(section.changeKind === null || transformed, 'git patch incomplete rename/copy')
+    requireThat(section.oldPath === section.newPath ? section.changeKind === null : transformed, 'git patch path pair')
+    if (transformed) requireThat(section.fromPath === section.oldPath && section.toPath === section.newPath, 'git patch rename/copy binding')
+    if (section.hasHunk) requireThat(section.oldMarker && section.newMarker, 'git patch hunk markers')
+    if (section.binary) requireThat(section.binaryState === 'complete' && section.binaryBlocks > 0, 'git patch incomplete binary section')
+    requireThat(section.hasHunk || section.binaryBlocks > 0 || transformed, 'git patch empty section')
+  }
   for (const line of lines) {
     if (line.startsWith('diff --git ')) {
       finishSection()
       const match = /^diff --git a\/(.+) b\/(.+)$/u.exec(line)
-      requireThat(match !== null && match[1] === match[2], 'git patch diff path')
-      check('SafeRepositoryPath', match[1])
-      currentPath = match[1]; sectionHasContent = false; sections++
+      requireThat(match !== null, 'git patch diff path')
+      check('SafeRepositoryPath', match[1]); check('SafeRepositoryPath', match[2])
+      section = { oldPath: match[1], newPath: match[2], oldMarker: false, newMarker: false, changeKind: null, fromPath: null, toPath: null, hasHunk: false, binary: false, binaryState: null, binaryBlockKind: null, binaryDeclaredSize: 0, binaryChunks: [], binaryBlockLines: 0, binaryBlocks: 0, binaryExpandedBytes: 0 }
+      sections++
       continue
     }
-    requireThat(currentPath !== null, 'git patch content before diff')
+    requireThat(section !== null, 'git patch content before diff')
+    if (section.binary) {
+      if (section.binaryState === 'header') {
+        startBinaryBlock(line)
+      } else if (section.binaryState === 'data') {
+        if (line === '') finishBinaryBlock()
+        else { section.binaryChunks.push(binaryDataLine(line)); section.binaryBlockLines++ }
+      } else if (/^(literal|delta) /u.test(line)) {
+        startBinaryBlock(line)
+      } else requireThat(line === '', 'git binary patch trailing content')
+      continue
+    }
     if (line.startsWith('--- ') || line.startsWith('+++ ')) {
       const path = line.slice(4)
       if (path !== '/dev/null') {
         const match = /^[ab]\/(.+)$/u.exec(path)
-        requireThat(match !== null && match[1] === currentPath, 'git patch marker path')
+        const expected = line.startsWith('--- ') ? section.oldPath : section.newPath
+        requireThat(match !== null && match[1] === expected, 'git patch marker path')
         check('SafeRepositoryPath', match[1])
       }
+      if (line.startsWith('--- ')) { requireThat(!section.oldMarker, 'git patch duplicate old marker'); section.oldMarker = true }
+      else { requireThat(!section.newMarker, 'git patch duplicate new marker'); section.newMarker = true }
     } else if (/^(rename|copy) (from|to) /u.test(line)) {
-      const match = /^(?:rename|copy) (?:from|to) (.+)$/u.exec(line)
+      const match = /^(rename|copy) (from|to) (.+)$/u.exec(line)
       requireThat(match !== null, 'git patch rename/copy path')
-      check('SafeRepositoryPath', match[1])
+      check('SafeRepositoryPath', match[3])
+      requireThat(section.changeKind === null || section.changeKind === match[1], 'git patch rename/copy kind')
+      section.changeKind = match[1]
+      const key = match[2] === 'from' ? 'fromPath' : 'toPath'
+      requireThat(section[key] === null, 'git patch duplicate rename/copy path')
+      section[key] = match[3]
+    } else if (line.startsWith('@@ ')) {
+      section.hasHunk = true
+    } else if (line === 'GIT binary patch') {
+      section.binary = true
+      section.binaryState = 'header'
     }
-    if (line.startsWith('@@ ') || line === 'GIT binary patch') sectionHasContent = true
   }
   finishSection()
   requireThat(sections > 0, 'git patch section count')
