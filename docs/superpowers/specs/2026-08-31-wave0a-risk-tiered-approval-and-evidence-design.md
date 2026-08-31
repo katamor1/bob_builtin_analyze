@@ -1,6 +1,6 @@
 # Wave 0A リスク段階別承認・証跡簡素化設計
 
-- Status: written spec review pending
+- Status: approved for implementation planning on 2026-08-31
 - In-chat direction approved: 2026-08-31
 - Date: 2026-08-31
 - Repository: `katamor1/bob_builtin_analyze`
