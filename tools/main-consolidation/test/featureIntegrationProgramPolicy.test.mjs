@@ -87,18 +87,18 @@ const EXPECTED_STATIC_PATHS = [
 const EXPECTED_GOVERNANCE = { designSpecPath: 'docs/superpowers/specs/2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md', riskModelSchemaVersion: 'bob-builtin-analyze/feature-integration-risk-model/v1', legacyAuthorization: 'historical_only', localMutationTier: 'B', protectedMutationTier: 'C' }
 const LEGACY_AUTHORIZATION_TOKENS = ['authorityDocuments', 'requiredApprovals', 'requiredApprovalsWhenPresent', 'PLAN_AUTHORING_REQUEST_HASH_APPROVAL_PER_SLICE', 'IMPLEMENTATION_REQUEST_HASH_APPROVAL_PER_SLICE', 'requiresSeparateCampaignApproval', 'separate_plan_implementation_campaign', 'campaignAuthoritySchemaVersion', 'externalCampaignRoot', 'operatorHandoffSchemaVersion', 'verifiedHandoffSchemaVersion']
 const NO_EFFECTS = { repository: 'none', filesystem: 'none', network: 'none', credentials: 'none', publication: 'none', cost: 'none', nonPublicData: 'none' }
-function riskScope(overrides = {}) {
+function riskScope(deferredCapability, overrides = {}) {
   return {
-    purpose: 'Program index governance test', repository: 'C:/repos/project', worktree: 'C:/repos/project/.worktrees/program-index', branch: 'feature/program-index', allowedActions: ['run_local_test'], allowedPaths: ['C:/repos/project/.worktrees/program-index/tools'], outputRoots: [], freshResources: { branches: [], worktrees: [], fixtureRoots: [], requireAbsent: false, requireIsolated: false }, allowedPublicEndpoints: [], effects: { ...NO_EFFECTS }, exclusions: ['No remote publication'], source: null, targetSet: null, impact: null, rollback: null,
+    purpose: `Implement and validate ${deferredCapability.id}`, repository: 'C:/repos/project', worktree: 'C:/repos/project/.worktrees/program-index', branch: 'feature/program-index', allowedActions: ['edit_scoped_files', 'run_local_test'], allowedPaths: [`C:/repos/project/.worktrees/program-index/deferred/${deferredCapability.id}`], outputRoots: [], freshResources: { branches: [], worktrees: [], fixtureRoots: [], requireAbsent: false, requireIsolated: false }, allowedPublicEndpoints: [], effects: { ...NO_EFFECTS }, exclusions: [`No remote publication for ${deferredCapability.id}`], source: null, targetSet: null, impact: null, rollback: null,
     ...structuredClone(overrides)
   }
 }
-function protectedRiskScope(effects) {
-  return riskScope({
+function protectedRiskScope(deferredCapability, effects) {
+  return riskScope(deferredCapability, {
     effects,
-    source: { kind: 'artifact', canonicalId: 'artifact:final-validation', displayFingerprint: 'final-validation', verification: 'verified' },
-    targetSet: { kind: 'external_resources', canonicalIds: ['final-validation:catalog-row'], displayExpectedVersions: ['catalog-row@1'], targetCount: 1 },
-    impact: { operations: ['run_local_test'], primaryDiffSummary: 'final validation effect', primaryDiffFingerprint: 'effect-1', affectedCount: 1, totalBytes: '1', byteCap: '1', irreversible: false },
+    source: { kind: 'artifact', canonicalId: `deferred-capability:${deferredCapability.id}`, displayFingerprint: deferredCapability.id, verification: 'verified' },
+    targetSet: { kind: 'external_resources', canonicalIds: [`deferred-capability:${deferredCapability.id}`], displayExpectedVersions: [`${deferredCapability.id}@1`], targetCount: 1 },
+    impact: { operations: ['edit_scoped_files', 'run_local_test'], primaryDiffSummary: `final validation effect for ${deferredCapability.id}`, primaryDiffFingerprint: `effect-${deferredCapability.id}`, affectedCount: 1, totalBytes: '1', byteCap: '1', irreversible: false },
     rollback: { mode: 'direct', summary: 'restore prior state' }
   })
 }
@@ -121,15 +121,27 @@ test('program index has no legacy authorization keys or tokens at any depth', ()
   assertNoLegacyAuthorization(validateProgramIndex(validIndex()))
   for (const token of LEGACY_AUTHORIZATION_TOKENS) expectReject((index) => { index.governance[token] = token })
 })
-test('program catalog mutations are Tier B locally and final validation effects escalate to Tier C', () => {
-  assert.equal(classifyRisk(riskScope()), 'B')
+test('one deferred catalog row is Tier B locally and effect-based final validation escalates it to Tier C', () => {
+  const deferredCapability = validateProgramIndex(validIndex()).deferredCapabilities.find(({ id }) => id === 'WF2-R4-EXECUTOR')
+  assert.ok(deferredCapability)
+  const localScope = riskScope(deferredCapability)
+  assert.match(localScope.purpose, new RegExp(deferredCapability.id, 'u'))
+  assert.equal(classifyRisk(localScope), 'B')
   for (const effects of [
     { ...NO_EFFECTS, network: 'external_write' },
     { ...NO_EFFECTS, publication: 'publish' },
     { ...NO_EFFECTS, credentials: 'use_secret' },
     { ...NO_EFFECTS, filesystem: 'existing_external_write' },
     { ...NO_EFFECTS, filesystem: 'existing_external_delete' }
-  ]) assert.equal(classifyRisk(protectedRiskScope(effects)), 'C')
+  ]) {
+    const protectedScope = protectedRiskScope(deferredCapability, effects)
+    assert.equal(protectedScope.purpose, localScope.purpose)
+    assert.deepEqual(protectedScope.allowedActions, localScope.allowedActions)
+    assert.deepEqual(protectedScope.allowedPaths, localScope.allowedPaths)
+    assert.equal(protectedScope.source.canonicalId, `deferred-capability:${deferredCapability.id}`)
+    assert.deepEqual(protectedScope.targetSet.canonicalIds, [`deferred-capability:${deferredCapability.id}`])
+    assert.equal(classifyRisk(protectedScope), 'C')
+  }
 })
 test('program index has every mandatory boundary, safety constraint, completion gate, scope, and final policy exactly', () => {
   const validated = validateProgramIndex(validIndex()); assert.deepEqual(validated.planBoundaries, EXPECTED_BOUNDARIES); assert.ok(validated.planBoundaries.every(({ classification }) => classification === 'mandatory'))
