@@ -582,14 +582,44 @@ const attachmentLiteralCorpus = (() => {
   try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) } catch { fail('invalid attachment literal corpus') }
 })()
 const attachmentFixtures = Object.create(null)
-const attachmentProfileJson = Object.create(null)
-const rawCandidateLiterals = Object.create(null)
 for (const [name, value] of attachmentLiteralCorpus.fixtureEntries) attachmentFixtures[name] = value
-for (const [name, values] of attachmentLiteralCorpus.profileEntries) attachmentProfileJson[name] = new Set(values.map(value => renderJson(value)))
-for (const [kind, value] of attachmentLiteralCorpus.rawEntries) rawCandidateLiterals[kind] = Buffer.from(value, 'base64')
+{
+  // The compressed corpus remains fixture construction data only. These two
+  // independently validated, nonempty technical fixtures supersede its older
+  // empty-plan examples without becoming validation allowlists.
+  const materialization = attachmentFixtures['root-materialization-plan']
+  const rootPath = materialization.rootWorktree.canonicalPath
+  const oldFileSha = 'ff6986819bd3579898aa009ff7053e27e0afe44e3211f42dd8c002918ea175ba'
+  const changedFileSha = 'f28d6cfd0ebc466e6358e1f4f90edc071d0ba3d413255cdc0ec7917189033ad8'
+  materialization.actions = [
+    { actionOrdinal: 1, chunkOrdinal: 1, repositoryPath: 'keep', leaf: 'keep', depth: 1, parentActionOrdinal: 0, rootAnchor: 'root_worktree', kind: 'retain_directory', sourceTreeOid: '1111111111111111111111111111111111111111', targetTreeOid: '2222222222222222222222222222222222222222', expectedTarget: { canonicalPath: `${rootPath}/keep`, dev: '1', ino: '201', attributes: '16', reparseTag: '0' } },
+    { actionOrdinal: 2, chunkOrdinal: 1, repositoryPath: 'obsolete/old.txt', parentRelativePath: 'obsolete', leaf: 'old.txt', depth: 2, parentActionOrdinal: 3, kind: 'delete_regular_file', sourceObjectOid: '1111111111111111111111111111111111111111', sourceGitMode: '100644', sourceByteSize: 5, sourceBlobSha256: oldFileSha, expectedTarget: { canonicalPath: `${rootPath}/obsolete/old.txt`, dev: '1', ino: '143', size: '5', mtimeNs: '1', ctimeNs: '1', sha256: oldFileSha } },
+    { actionOrdinal: 3, chunkOrdinal: 1, repositoryPath: 'obsolete', leaf: 'obsolete', depth: 1, parentActionOrdinal: 0, rootAnchor: 'root_worktree', kind: 'delete_empty_directory', sourceTreeOid: '1111111111111111111111111111111111111111', expectedTarget: { canonicalPath: `${rootPath}/obsolete`, dev: '1', ino: '202', attributes: '16', reparseTag: '0' }, expectedEmptyAtDeleteOrdinal: true },
+    { actionOrdinal: 4, chunkOrdinal: 1, repositoryPath: 'newdir', leaf: 'newdir', depth: 1, parentActionOrdinal: 0, rootAnchor: 'root_worktree', kind: 'create_directory', targetTreeOid: '2222222222222222222222222222222222222222', expectedAbsent: true },
+    { actionOrdinal: 5, chunkOrdinal: 1, repositoryPath: 'newdir/new.txt', parentRelativePath: 'newdir', leaf: 'new.txt', depth: 2, parentActionOrdinal: 4, kind: 'install_regular_file', targetObjectOid: '2222222222222222222222222222222222222222', targetGitMode: '100644', targetByteSize: 6, targetBlobSha256: '1d9a520656d322f1cc47d082c5654cf5372b21926bce322d803de12fc38e412d', expectedAbsent: true, scratchLeaf: '0005-new.txt' },
+    { actionOrdinal: 6, chunkOrdinal: 1, repositoryPath: 'keep/change.txt', parentRelativePath: 'keep', leaf: 'change.txt', depth: 2, parentActionOrdinal: 1, kind: 'delete_regular_file', sourceObjectOid: '1111111111111111111111111111111111111111', sourceGitMode: '100644', sourceByteSize: 4, sourceBlobSha256: changedFileSha, expectedTarget: { canonicalPath: `${rootPath}/keep/change.txt`, dev: '1', ino: '144', size: '4', mtimeNs: '1', ctimeNs: '1', sha256: changedFileSha } },
+    { actionOrdinal: 7, chunkOrdinal: 1, repositoryPath: 'keep/change.txt', parentRelativePath: 'keep', leaf: 'change.txt', depth: 2, parentActionOrdinal: 1, kind: 'install_regular_file', targetObjectOid: '2222222222222222222222222222222222222222', targetGitMode: '100755', targetByteSize: 7, targetBlobSha256: 'd67e2e944994496c8d8ec76eed0cf9f09679448d584b532bebf941852a37f5ed', expectedAbsent: true, scratchLeaf: '0007-change.txt' }
+  ]
+  Object.assign(materialization, { actionCount: 7, maxDepth: 2, totalPathBytes: 100, maxFileBytes: 7, totalBlobBytes: '22', chunkCount: 1, actionsSha256: hash(materialization.actions) })
+
+  const removal = attachmentFixtures['worktree-removal-plan']
+  const fileEntry = (ordinal, deleteOrdinal, owner, relativePath, parentOrdinal, fileId, byteSize, sha256) => ({ ordinal, deleteOrdinal, owner, entryScope: 'descendant', parentOrdinal, relativePath, ...(parentOrdinal === 0 ? {} : { parentRelativePath: relativePath.slice(0, relativePath.lastIndexOf('/')) }), leaf: relativePath.split('/').at(-1), depth: relativePath.split('/').length, volumeSerial: '1', fileId, attributes: '128', reparseTag: '0', kind: 'file', byteSize, sha256 })
+  const rootEntry = (ordinal, deleteOrdinal, owner, identity, leaf) => ({ ordinal, deleteOrdinal, owner, entryScope: 'owner_root', leaf, volumeSerial: identity.dev, fileId: identity.ino, attributes: identity.attributes, reparseTag: '0', kind: 'directory', depth: 0, byteSize: 0, sha256: null })
+  removal.entries = [
+    rootEntry(1, 5, 'target', removal.featureWorktree, removal.featureRootLeaf),
+    fileEntry(2, 2, 'target', '.git', 0, removal.gitFile.ino, Number(removal.gitFile.size), removal.gitFile.sha256),
+    fileEntry(3, 3, 'target', 'package.json', 0, '149', 3, 'ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356'),
+    { ordinal: 4, deleteOrdinal: 4, owner: 'target', entryScope: 'descendant', parentOrdinal: 0, relativePath: 'src', leaf: 'src', depth: 1, volumeSerial: '1', fileId: '121', attributes: '16', reparseTag: '0', kind: 'directory', byteSize: 0, sha256: null },
+    fileEntry(5, 1, 'target', 'src/rule.md', 4, '150', 5, '6b79867175a1f0160044a8adb8b1b4f7a7e6f3ef76efeeaa633191f1f6c83d7d'),
+    rootEntry(6, 9, 'admin', removal.adminDirectory, removal.adminRootLeaf),
+    fileEntry(7, 6, 'admin', 'HEAD', 0, '103', 15, 'e2dbfe68423abd2a4aae75a697a9f47ef0298a44f8b40def76f878ee228a9e8d'),
+    fileEntry(8, 7, 'admin', 'gitdir', 0, removal.adminGitdirBackpointer.ino, Number(removal.adminGitdirBackpointer.size), removal.adminGitdirBackpointer.sha256),
+    fileEntry(9, 8, 'admin', 'index', 0, '151', 5, '1bc04b5291c26a46d918139138b992d2de976d6851d0893b0476b85bfbdfc6e6')
+  ]
+  Object.assign(removal, { entryCount: 9, maxDepth: 2, totalFileBytes: '58', tupleSha256: hash(removal.entries) })
+  attachmentFixtures['worktree-removal-observation'].planSha256 = hash(removal)
+}
 Object.freeze(attachmentFixtures)
-Object.freeze(attachmentProfileJson)
-Object.freeze(rawCandidateLiterals)
 
 function attachmentRow(schemaVersion) {
   const row = typeof schemaVersion === 'string' ? attachmentSchemaByVersion[schemaVersion] : undefined
@@ -597,6 +627,854 @@ function attachmentRow(schemaVersion) {
   return row
 }
 function cloneJson(value) { return JSON.parse(JSON.stringify(value)) }
+
+const attachmentValidators = Object.create(null)
+const attachmentType = (name, fields, semantic) => {
+  requireThat(!Object.hasOwn(attachmentValidators, name), 'duplicate attachment validator')
+  attachmentValidators[name] = shape({ schemaVersion: literal(`${S}${name}/v1`), ...fields }, semantic)
+}
+const attachmentUnion = (name, validator) => {
+  requireThat(!Object.hasOwn(attachmentValidators, name), 'duplicate attachment validator')
+  attachmentValidators[name] = value => {
+    requireThat(value?.schemaVersion === `${S}${name}/v1`, 'attachment schema discriminator')
+    validator(value)
+  }
+}
+const branchOrMain = value => { if (value !== 'main') check('SafeBranch', value) }
+const optionalBranchOrMain = value => { if (value !== null) branchOrMain(value) }
+const nonnegativeDecimal = value => { check('DecimalString', value); requireThat(BigInt(value) >= 0n, 'negative decimal') }
+const boundedDiagnostic = shape({ code: 'SafeReasonCode', message: boundedText(1, 4096) })
+const diagnostics = value => {
+  array(boundedDiagnostic, 0, 50)(value)
+  for (let index = 1; index < value.length; index++) requireThat(codePointCompare(`${value[index - 1].code}\0${value[index - 1].message}`, `${value[index].code}\0${value[index].message}`) < 0, 'diagnostics order')
+}
+const repositoryState = shape({ headSha: 'LowercaseSha', treeOid: 'LowercaseSha', statusSha256: 'LowercaseSha256' })
+const gitRefObservation = shape({ ref: branchOrMain, sha: 'LowercaseSha' })
+const gitRefObservations = value => {
+  array(gitRefObservation, 0, 8192)(value)
+  requireThat(new Set(value.map(row => ordinalFold(row.ref))).size === value.length, 'duplicate ref')
+}
+const statusObservation = shape({ lines: array('BoundedString', 0, 8192), normalizedUtf8Sha256: 'LowercaseSha256' }, value => {
+  requireThat(value.normalizedUtf8Sha256 === digest(Buffer.from(value.lines.length === 0 ? '' : `${value.lines.join('\n')}\n`)), 'status digest')
+})
+const worktreeObservation = shape({ canonicalPath: 'AbsolutePath', headSha: 'LowercaseSha', branch: optionalBranchOrMain, detached: 'Boolean', bare: 'Boolean', locked: 'Boolean', prunable: 'Boolean' })
+const worktreeObservations = value => {
+  array(worktreeObservation, 1, 32)(value)
+  requireThat(new Set(value.map(row => ordinalFold(pathKey(row.canonicalPath)))).size === value.length, 'duplicate worktree path')
+}
+const repositorySettings = shape({ nameWithOwner: literal('katamor1/bob_builtin_analyze'), defaultBranchRef: shape({ name: literal('main') }), deleteBranchOnMerge: literal(false) })
+const pullRequestIdentity = shape({ repository: literal('katamor1/bob_builtin_analyze'), number: 'PositiveSafeInteger', headRepository: literal('katamor1/bob_builtin_analyze'), isCrossRepository: literal(false), headRef: 'SafeBranch', headSha: 'LowercaseSha', baseRef: literal('main'), baseSha: 'LowercaseSha' })
+const prObservation = value => {
+  const state = value?.state
+  const base = { repository: literal('katamor1/bob_builtin_analyze'), number: 'PositiveSafeInteger', headRepository: literal('katamor1/bob_builtin_analyze'), isCrossRepository: literal(false), headRefName: 'SafeBranch', headRefOid: 'LowercaseSha', baseRefName: literal('main'), originalBaseSha: 'LowercaseSha', observedBaseRefOid: 'LowercaseSha', state: literal(state) }
+  if (state === 'MERGED') shape({ ...base, mergeCommitOid: 'LowercaseSha', mergedAt: 'CanonicalUtc' })(value)
+  else { requireThat(state === 'OPEN' || state === 'CLOSED', 'PR state'); shape(base)(value) }
+}
+const namedPrObservation = value => {
+  if (value?.observation === 'absent') shape({ observation: literal('absent'), pullRequest: literal(null) })(value)
+  else shape({ observation: literal('present'), pullRequest: prObservation })(value)
+}
+const externalAttachmentRef = expectedSchema => shape({ canonicalPath: 'AbsolutePath', byteSize: 'PositiveSafeInteger', sha256: 'LowercaseSha256', schemaVersion: literal(`${S}${expectedSchema}/v1`) })
+const attemptEvidenceRef = value => {
+  shape({ owner: literal('attempt'), attemptId: 'SafeAttemptId', label: 'SafeLabel', path: 'SafeAttemptEvidencePath', schemaVersion: 'KnownAttachmentSchema', byteSize: 'PositiveSafeInteger', sha256: 'LowercaseSha256' })(value)
+}
+const operationEvidenceRef = value => {
+  shape({ owner: literal('operation'), attemptId: 'SafeAttemptId', operationInstanceId: 'Wave0aOperationInstanceId', recordKind: enumeration(['request', 'precondition', 'intent', 'claim', 'process_result', 'termination_proof', 'postcondition', 'receipt']), label: 'SafeLabel', path: 'SafeOperationEvidencePath', schemaVersion: 'KnownAttachmentSchema', byteSize: 'PositiveSafeInteger', sha256: 'LowercaseSha256' })(value)
+  const parts = value.path.split('/')
+  requireThat(parts[1] === value.attemptId && parts[2] === value.operationInstanceId, 'operation evidence owner')
+  const kindByLeaf = { 'request.json': 'request', 'intent.json': 'intent', 'process-result.json': 'process_result', 'receipt.json': 'receipt' }
+  const expectedKind = kindByLeaf[parts.at(-1)] ?? ({ claims: 'claim', 'termination-proofs': 'termination_proof', preconditions: 'precondition', postconditions: 'postcondition' })[parts[3]]
+  requireThat(expectedKind === value.recordKind, 'operation evidence kind/path')
+  if (value.recordKind === 'precondition' || value.recordKind === 'postcondition') requireThat(parts.at(-1).endsWith(`-${value.label}.json`), 'operation evidence label/path')
+}
+const campaignEvidenceRef = value => { if (value?.owner === 'attempt') attemptEvidenceRef(value); else operationEvidenceRef(value) }
+const operationRecordLocator = value => {
+  const common = { operationInstanceId: 'Wave0aOperationInstanceId', intentPath: 'SafeRepositoryPath', intentSha256: 'LowercaseSha256' }
+  if (value?.status === 'receipted') shape({ status: literal('receipted'), ...common, receiptPath: 'SafeRepositoryPath', receiptSha256: 'LowercaseSha256' })(value)
+  else shape(common)(value)
+  requireThat(value.intentPath === `operations/${value.intentPath.split('/')[1]}/${value.operationInstanceId}/intent.json`, 'intent locator path')
+  if (value.receiptPath) requireThat(value.receiptPath === `operations/${value.receiptPath.split('/')[1]}/${value.operationInstanceId}/receipt.json`, 'receipt locator path')
+}
+const runSelection = value => {
+  const common = { runId: 'PositiveSafeInteger', workflowPath: 'SafeRepositoryPath', headSha: 'LowercaseSha', runAttempt: literal(1), createdAt: 'CanonicalUtcSecond', displayTitle: 'BoundedString', event: literal(value?.event), headBranch: branchOrMain }
+  if (value?.event === 'workflow_dispatch') shape({ ...common, dispatchNonce: 'SafeDispatchNonce' })(value)
+  else { requireThat(value?.event === 'pull_request', 'run event'); shape({ ...common, headBranch: 'SafeBranch' })(value) }
+}
+const jobEvidence = value => {
+  const common = { runId: 'PositiveSafeInteger', jobId: 'PositiveSafeInteger', name: 'BoundedString', labels: tuple([enumeration(['ubuntu-latest', 'windows-latest'])]), headSha: 'LowercaseSha', conclusion: literal(value?.conclusion) }
+  if (value?.conclusion === 'success') shape({ ...common, verificationStep: shape({ name: literal('Verify exact checked-out commit'), conclusion: literal('success') }) })(value)
+  else { requireThat(value?.conclusion === 'skipped' && value?.name === 'Extension source metrics', 'job conclusion'); shape(common)(value) }
+}
+const generatedRootIdentity = value => {
+  const common = { repositoryPath: 'SafeRepositoryPath', kind: literal(value?.kind), entryCount: 'NonnegativeSafeInteger', totalBytes: nonnegativeDecimal }
+  if (value?.kind === 'absent') shape({ ...common, entryCount: literal(0), totalBytes: literal('0') })(value)
+  else { requireThat(value?.kind === 'file' || value?.kind === 'directory', 'generated root kind'); shape({ ...common, ...(value.kind === 'file' ? { entryCount: literal(1) } : {}), treeSha256: 'LowercaseSha256' })(value) }
+}
+
+attachmentType('feature-integration-archive-preflight', {
+  repository: literal('katamor1/bob_builtin_analyze'), programIndexBlobSha256: 'LowercaseSha256', observedAt: 'CanonicalUtc',
+  archives: array(shape({ rootLeaf: 'SafeLeaf', manifestSha256: 'LowercaseSha256', exactTreeVerified: literal(true) }), 1, 32),
+  bundles: array(shape({ archiveRootLeaf: 'SafeLeaf', relativePath: 'SafeRelativePath', sha256: 'LowercaseSha256', bundleVerify: literal('passed'), headsSha256: 'LowercaseSha256' }), 1, 32),
+  carrierPatches: array(shape({ id: 'SafeId', sha256: 'LowercaseSha256' }), 1, 32),
+  dualBundleObjects: array(shape({ objectSha: 'LowercaseSha', originalRepositoryBundle: literal(true), remoteRecoveryBundle: literal(true) }), 1, 8192)
+}, value => {
+  for (const rows of [value.archives, value.bundles, value.carrierPatches, value.dualBundleObjects]) requireThat(new Set(rows.map(renderJson)).size === rows.length, 'duplicate archive evidence')
+  requireThat(value.bundles.every(bundle => value.archives.some(archive => archive.rootLeaf === bundle.archiveRootLeaf)), 'bundle archive owner')
+})
+attachmentType('protected-clone-baseline', {
+  literalPath: literal('C:\\Users\\stell\\source\\repos\\bob_builtin_analyze\\.integration-xlsx-on-prereq'),
+  canonicalPath: literal('C:/Users/stell/source/repos/bob_builtin_analyze/.integration-xlsx-on-prereq'),
+  lstat: shape({ dev: 'DecimalString', ino: 'DecimalString', size: 'DecimalString', mtimeNs: 'DecimalString', ctimeNs: 'DecimalString', attributes: 'DecimalString', reparseTag: literal('0') }),
+  tree: shape({ algorithm: literal('sha256-canonical-no-follow-v1'), entryCount: integer(1, 100000), regularFileCount: integer(1, 100000), totalRegularFileBytes: nonnegativeDecimal, canonicalTupleStreamSha256: 'LowercaseSha256' }),
+  capturedAt: 'CanonicalUtc'
+}, value => requireThat(value.tree.regularFileCount <= value.tree.entryCount && BigInt(value.tree.totalRegularFileBytes) <= 17179869184n, 'protected tree aggregate'))
+attachmentType('wave0a-capacity-observation', { phase: enumeration(['pre_main_closure', 'post_main_failure_entry', 'post_main_failure_cleanup']), attemptId: 'SafeAttemptId', currentEventSha256: 'LowercaseSha256', requiredProjectionSha256: 'LowercaseSha256', limitingCounters: array('SafeId', 0, 64), canProceed: 'Boolean', observedAt: 'CanonicalUtc', diagnostics }, value => {
+  requireThat(new Set(value.limitingCounters).size === value.limitingCounters.length, 'duplicate limiting counter')
+  requireThat(value.canProceed === (value.limitingCounters.length === 0), 'capacity consequence')
+})
+attachmentType('remote-ref-observation', { refs: gitRefObservations, observedAt: 'CanonicalUtc' })
+attachmentType('pull-request-observation', { observedAt: 'CanonicalUtc', observation: value => literal(value)(value), pullRequest: value => value }, value => {
+  namedPrObservation({ observation: value.observation, pullRequest: value.pullRequest })
+  if (value.observation === 'present') requireThat(value.pullRequest.observedBaseRefOid === (value.pullRequest.state === 'MERGED' ? value.pullRequest.mergeCommitOid : value.pullRequest.originalBaseSha), 'pull-request observation main crossing')
+})
+attachmentType('feature-integration-independent-review', {
+  baseSha: 'LowercaseSha', headSha: 'LowercaseSha', treeOid: 'LowercaseSha', changedPathsSha256: 'LowercaseSha256', exactHeadCiSha256: 'LowercaseSha256', exactHeadCiObservedAt: 'CanonicalUtc', reviewRequestSha256: 'LowercaseSha256', reviewAttestationSha256: 'LowercaseSha256', reviewerTaskId: 'SafeId', reviewerIdentity: 'SafeId', reviewMessageSha256: 'LowercaseSha256', reviewedAt: 'CanonicalUtc', result: enumeration(['approved_zero', 'changes_requested']), criticalCount: 'NonnegativeSafeInteger', importantCount: 'NonnegativeSafeInteger'
+}, value => {
+  requireThat(value.reviewedAt >= value.exactHeadCiObservedAt, 'review before CI')
+  requireThat(value.result === 'approved_zero' ? value.criticalCount === 0 && value.importantCount === 0 : value.criticalCount + value.importantCount > 0, 'review count consequence')
+})
+attachmentType('wave0a-generated-paths', { phase: enumeration(['before', 'after', 'recovery']), headSha: 'LowercaseSha', treeOid: 'LowercaseSha', statusSha256: 'LowercaseSha256', roots: array(generatedRootIdentity, 0, 64), observedAt: 'CanonicalUtc', diagnostics }, value => requireThat(new Set(value.roots.map(row => ordinalFold(row.repositoryPath))).size === value.roots.length, 'duplicate generated root'))
+attachmentType('wave0a-generated-cleanup', { mode: enumeration(['pre_merge_abort_cleanup', 'main_only_cleanup', 'post_merge_failure_cleanup']), headSha: 'LowercaseSha', before: repositoryState, after: repositoryState, beforeInventorySha256: 'LowercaseSha256', afterInventorySha256: 'LowercaseSha256', deletionPlanSha256: 'LowercaseSha256', operationIntentSha256: 'LowercaseSha256', acknowledgementAggregateSha256: 'LowercaseSha256', nativeResultSha256: 'LowercaseSha256', progressAggregateSha256: 'LowercaseSha256', removedRoots: array(generatedRootIdentity, 0, 64), finalStatusSha256: 'LowercaseSha256', observedAt: 'CanonicalUtc', diagnostics }, value => {
+  requireThat(value.before.headSha === value.headSha && value.after.headSha === value.headSha && value.before.treeOid === value.after.treeOid, 'cleanup state crossing')
+  requireThat(value.after.statusSha256 === value.finalStatusSha256, 'cleanup final status')
+})
+attachmentType('wave0a-cleanup-progress', { journal: enumeration(['pre_merge_abort_cleanup', 'main_only_cleanup', 'post_merge_failure_cleanup']), authoritySha256: 'LowercaseSha256', runPublicationReservationSha256: 'LowercaseSha256', effectiveClaim: 'OperationClaimLink', deletionPlanSha256: 'LowercaseSha256', chunkOrdinal: integer(1, 98), firstDeleteOrdinal: 'PositiveSafeInteger', lastDeleteOrdinal: 'PositiveSafeInteger', completedPrefixCount: 'PositiveSafeInteger', rollingPrefixSha256: 'LowercaseSha256', absenceAndSuffixObservationSha256: 'LowercaseSha256', nativeAcknowledgementSha256: 'LowercaseSha256', recordedAt: 'CanonicalUtc' }, value => {
+  requireThat(value.firstDeleteOrdinal === (value.chunkOrdinal - 1) * 1024 + 1 && value.lastDeleteOrdinal >= value.firstDeleteOrdinal && value.lastDeleteOrdinal === value.completedPrefixCount, 'cleanup progress range')
+  requireThat(value.effectiveClaim.path.includes('/cleanup-generated-paths/'), 'cleanup claim owner')
+})
+const topologyProfiles = Object.freeze([
+  'READY', 'LOCAL_PRE_PUBLISH', 'LOCAL_PUBLISHED', 'PR_ACTIVE', 'PREMERGE_PR_CLOSED', 'PREMERGE_READY_RESTORED', 'PREMERGE_BRANCH_DELETED_MAIN_DRIFT', 'PREMERGE_GENERATED_PATHS_CLEANED',
+  'MERGE_COMMIT_PREPARED', 'MAIN_INTEGRATED_PR_PENDING', 'POST_MERGE_PR_SETTLEMENT_CLOSED', 'POST_MERGE_PR_SETTLEMENT_TIMEOUT', 'POST_INTEGRATION_MAIN_DRIFT', 'MERGED_PRE_FETCH', 'MERGED', 'POST_MERGE_VERIFIED',
+  'POST_MERGE_CI_AMBIGUOUS', 'POST_MERGE_CI_FAILED', 'POST_MERGE_DISPATCH_FAILED', 'POST_MERGE_RUN_DISCOVERY_FAILED', 'POST_MERGE_FAILURE_GENERATED_PATHS_CLEANED', 'POST_MERGE_FAILURE_ROOT_FAST_FORWARDED',
+  'POST_MERGE_FAILURE_FEATURE_WORKTREE_REMOVED', 'POST_MERGE_FAILURE_LOCAL_MAIN_ONLY', 'MAIN_ONLY', 'GENERATED_PATHS_CLEANED', 'ROOT_FAST_FORWARDED', 'FEATURE_WORKTREE_REMOVED', 'VERIFIED'
+])
+const topologyExternalSchemas = Object.freeze({
+  protectedCloneBaseline: 'protected-clone-baseline', mergePreparation: 'merge-commit-preparation', integrationReconciliation: 'main-integration-reconciliation', integrationSettlement: 'main-integration-settlement', generatedAfter: 'wave0a-generated-paths', generatedCleanup: 'wave0a-generated-cleanup'
+})
+const topologyRequest = (value, recovery = false) => {
+  const fields = {
+    schemaVersion: literal(`${S}slice-topology-request/v1`), repository: literal('katamor1/bob_builtin_analyze'), expectedLiveMainSha: 'LowercaseSha', expectedOriginMainSha: 'LowercaseSha', expectedRootMainSha: 'LowercaseSha', rootWorktreePath: 'AbsolutePath', protectedCloneBaseline: externalAttachmentRef('protected-clone-baseline')
+  }
+  if (!recovery) fields.snapshotProfile = enumeration(topologyProfiles)
+  for (const [key, type] of Object.entries({ activeWorktreePath: 'AbsolutePath', activeBranch: 'SafeBranch', expectedFeatureHeadSha: 'LowercaseSha', pullRequestNumber: 'PositiveSafeInteger', expectedBaseSha: 'LowercaseSha', expectedMergeSha: 'LowercaseSha', expectedDriftedLiveMainSha: 'LowercaseSha' })) if (Object.hasOwn(value ?? {}, key)) fields[key] = type
+  for (const [key, schema] of Object.entries(topologyExternalSchemas)) if (key !== 'protectedCloneBaseline' && Object.hasOwn(value ?? {}, key)) fields[key] = externalAttachmentRef(schema)
+  shape(fields)(value)
+  requireThat(Object.hasOwn(value, 'activeBranch') === Object.hasOwn(value, 'expectedFeatureHeadSha'), 'topology feature identity pair')
+  requireThat(!Object.hasOwn(value, 'activeWorktreePath') || Object.hasOwn(value, 'activeBranch'), 'topology active worktree owner')
+  if (Object.hasOwn(value, 'expectedDriftedLiveMainSha')) requireThat(value.expectedDriftedLiveMainSha === value.expectedLiveMainSha, 'topology drift identity')
+}
+const topologyObservation = shape({
+  liveMainSha: 'LowercaseSha', originMainSha: 'LowercaseSha', rootMainSha: 'LowercaseSha', repositorySettings,
+  remoteHeads: gitRefObservations, localHeads: gitRefObservations, archiveRefs: gitRefObservations, worktrees: worktreeObservations, worktreesSha256: 'LowercaseSha256', worktreePruneDryRun: statusObservation,
+  activeWorktreeStatus: nullable(statusObservation), rootWorktreeStatus: statusObservation, openPullRequests: array(prObservation, 0, 120), namedPullRequest: namedPrObservation, protectedCloneTreeSha256: 'LowercaseSha256'
+}, value => {
+  requireThat(value.worktreesSha256 === hash(value.worktrees), 'topology worktree tuple digest')
+  requireThat(new Set(value.openPullRequests.map(row => row.number)).size === value.openPullRequests.length, 'duplicate open PR')
+  requireThat(value.openPullRequests.every(row => row.state === 'OPEN'), 'non-open PR in open set')
+})
+const featureRemoteProfiles = new Set(['LOCAL_PUBLISHED', 'PR_ACTIVE', 'PREMERGE_PR_CLOSED', 'MERGE_COMMIT_PREPARED'])
+function validateTopology(value, recovery) {
+  topologyRequest(value.request, recovery)
+  topologyObservation(value.before); topologyObservation(value.after)
+  same(value.before, value.after, 'topology before/after')
+  const observation = value.after, request = value.request
+  requireThat(observation.liveMainSha === request.expectedLiveMainSha && observation.originMainSha === request.expectedOriginMainSha && observation.rootMainSha === request.expectedRootMainSha, 'topology requested main roles')
+  const remoteMain = observation.remoteHeads.filter(row => row.ref === 'main'), localMain = observation.localHeads.filter(row => row.ref === 'main')
+  requireThat(remoteMain.length === 1 && remoteMain[0].sha === observation.liveMainSha && localMain.length === 1 && localMain[0].sha === observation.rootMainSha, 'topology main refs')
+  const rootWorktree = observation.worktrees.filter(row => samePath(row.canonicalPath, request.rootWorktreePath))
+  requireThat(rootWorktree.length === 1 && rootWorktree[0].branch === 'main' && rootWorktree[0].headSha === observation.rootMainSha, 'topology root worktree')
+  const featureRemote = observation.remoteHeads.filter(row => row.ref !== 'main')
+  if (!recovery) requireThat((featureRemote.length === 1) === featureRemoteProfiles.has(request.snapshotProfile), 'topology remote feature role')
+  if (featureRemote.length) requireThat(Object.hasOwn(request, 'activeBranch') && featureRemote[0].ref === request.activeBranch && featureRemote[0].sha === request.expectedFeatureHeadSha, 'topology remote feature identity')
+  const localFeature = observation.localHeads.filter(row => row.ref !== 'main')
+  requireThat(localFeature.length === (Object.hasOwn(request, 'activeBranch') ? 1 : 0), 'topology local feature role')
+  if (localFeature.length) requireThat(localFeature[0].ref === request.activeBranch && localFeature[0].sha === request.expectedFeatureHeadSha, 'topology local feature identity')
+  const hasActiveWorktree = Object.hasOwn(request, 'activeWorktreePath')
+  requireThat((observation.activeWorktreeStatus !== null) === hasActiveWorktree, 'topology active status role')
+  if (hasActiveWorktree) requireThat(observation.worktrees.some(row => samePath(row.canonicalPath, request.activeWorktreePath) && row.branch === request.activeBranch && row.headSha === request.expectedFeatureHeadSha), 'topology active worktree identity')
+  const named = observation.namedPullRequest
+  requireThat(named.observation === (Object.hasOwn(request, 'pullRequestNumber') ? 'present' : 'absent'), 'topology named PR role')
+  if (named.observation === 'present') requireThat(named.pullRequest.number === request.pullRequestNumber && (!Object.hasOwn(request, 'expectedFeatureHeadSha') || named.pullRequest.headRefOid === request.expectedFeatureHeadSha) && named.pullRequest.observedBaseRefOid === observation.liveMainSha, 'topology named PR identity')
+  requireThat(observation.openPullRequests.length === (named.observation === 'present' && named.pullRequest.state === 'OPEN' ? 1 : 0), 'topology open PR set')
+}
+attachmentType('slice-topology-evidence', { request: value => topologyRequest(value, false), before: topologyObservation, after: topologyObservation, result: literal('accepted'), observedAt: 'CanonicalUtc', diagnostics }, value => validateTopology(value, false))
+attachmentType('slice-topology-recovery-observation', { request: value => topologyRequest(value, true), before: topologyObservation, after: topologyObservation, result: literal('observed_recovery'), observedAt: 'CanonicalUtc', diagnostics }, value => validateTopology(value, true))
+
+const localGateCommand = value => {
+  shape({ ordinal: 'PositiveSafeInteger', ...commandCommon, ...terminationFields(value?.outcome) })(value)
+  requireThat(value.finishedAt >= value.startedAt, 'local command time order')
+  for (const [size, sha] of [['stdinBytes', 'stdinSha256'], ['stdoutBytes', 'stdoutSha256'], ['stderrBytes', 'stderrSha256']]) if (value[size] === 0) requireThat(value[sha] === digest(Buffer.alloc(0)), 'empty local stream digest')
+}
+const localCheckpoint = shape({ ordinal: 'NonnegativeSafeInteger', ...{ headSha: 'LowercaseSha', treeOid: 'LowercaseSha', statusSha256: 'LowercaseSha256' }, observedAt: 'CanonicalUtc' })
+const localCount = shape({ commandId: 'SafeId', total: 'NonnegativeSafeInteger', passed: 'NonnegativeSafeInteger', failed: 'NonnegativeSafeInteger', skipped: 'NonnegativeSafeInteger' }, value => requireThat(value.total === value.passed + value.failed + value.skipped, 'local test aggregate'))
+attachmentType('wave0a-local-gates', {
+  request: shape({ repository: literal('katamor1/bob_builtin_analyze'), baseSha: 'LowercaseSha', headSha: 'LowercaseSha', treeOid: 'LowercaseSha', contractIdentity: 'RepoObjectIdentity' }),
+  runtimeIdentities: tuple([shape({ logicalName: literal('node'), identity: value => { check('ExecutableIdentity', value); requireThat(value.logicalName === 'node', 'node runtime identity') } }), shape({ logicalName: literal('npm.cmd'), identity: 'FileIdentity' }), shape({ logicalName: literal('npm-cli.js'), identity: 'FileIdentity', npmVersion: 'BoundedString' })]),
+  before: repositoryState, commands: array(localGateCommand, 1, 4096), repositoryCheckpoints: array(localCheckpoint, 2, 4097), testCounts: array(localCount, 0, 4096),
+  artifacts: array(shape({ repositoryPath: 'SafeRepositoryPath', byteSize: 'PositiveSafeInteger', sha256: 'LowercaseSha256' }), 0, 8192), protectedPathHashes: array(shape({ repositoryPath: 'SafeRepositoryPath', sha256: 'LowercaseSha256' }), 0, 8192),
+  changedPaths: array('SafeRepositoryPath', 0, 8192), changedPathsSha256: 'LowercaseSha256', after: repositoryState, status: enumeration(['success', 'failure']), diagnostics
+}, value => {
+  requireThat(value.request.contractIdentity.repositoryPath === 'tools/main-consolidation/wave0a-local-gates.json', 'local gate contract')
+  requireThat(value.commands.every((row, index) => row.ordinal === index + 1), 'local command ordinal')
+  requireThat(value.repositoryCheckpoints.length === value.commands.length + 1 && value.repositoryCheckpoints.every((row, index) => row.ordinal === index), 'local checkpoint ordinal')
+  requireThat(value.request.headSha === value.before.headSha && value.request.treeOid === value.before.treeOid && value.repositoryCheckpoints.every(row => row.headSha === value.before.headSha && row.treeOid === value.before.treeOid && row.statusSha256 === value.before.statusSha256), 'local repository checkpoint drift')
+  same(value.after, value.before, 'local repository state')
+  const commandIds = new Set(value.commands.map(row => row.id)); requireThat(commandIds.size === value.commands.length && value.testCounts.every(row => commandIds.has(row.commandId)), 'local test command identity')
+  requireThat(value.status === 'success' ? value.commands.every(row => row.outcome === 'success') && value.testCounts.every(row => row.failed === 0) : value.commands.some(row => row.outcome !== 'success') || value.testCounts.some(row => row.failed > 0), 'local status consequence')
+  requireThat(value.changedPathsSha256 === hash(value.changedPaths), 'local changed paths digest')
+  for (const rows of [value.artifacts, value.protectedPathHashes]) requireThat(new Set(rows.map(row => ordinalFold(row.repositoryPath))).size === rows.length, 'duplicate local path')
+})
+
+const generatedDeletionAnchor = shape({ anchorOrdinal: 'PositiveSafeInteger', parentRelativePath: 'SafeRepositoryPath', parentIdentity: 'DirectoryHandleIdentity' })
+const generatedDeletionEntry = value => {
+  const common = { ordinal: 'PositiveSafeInteger', deleteOrdinal: 'PositiveSafeInteger', repositoryPath: 'SafeRepositoryPath', parentRelativePath: 'SafeRepositoryPath', leaf: 'SafeWindowsLeafName', depth: integer(1, 256), volumeSerial: 'DecimalString', fileId: 'DecimalString', attributes: 'DecimalString', reparseTag: literal('0'), kind: literal(value?.kind) }
+  const parent = value?.parentOrdinal === 0 ? { parentOrdinal: literal(0), parentAnchorOrdinal: 'PositiveSafeInteger' } : { parentOrdinal: 'PositiveSafeInteger' }
+  if (value?.kind === 'file') shape({ ...common, ...parent, byteSize: 'NonnegativeSafeInteger', mtimeNs: 'DecimalString', ctimeNs: 'DecimalString', sha256: 'LowercaseSha256' })(value)
+  else { requireThat(value?.kind === 'directory', 'generated deletion kind'); shape({ ...common, ...parent, byteSize: literal(0), sha256: literal(null), expectedEmptyAtDeleteOrdinal: literal(true) })(value) }
+}
+attachmentType('wave0a-generated-deletion-plan', { mode: enumeration(['pre_merge_abort_cleanup', 'main_only_cleanup', 'post_merge_failure_cleanup']), headSha: 'LowercaseSha', treeOid: 'LowercaseSha', repositoryRoot: 'DirectoryHandleIdentity', retainedParentAnchors: array(generatedDeletionAnchor, 0, 8192), parentAnchorCount: 'NonnegativeSafeInteger', parentAnchorAggregateSha256: 'LowercaseSha256', baselineInventorySha256: 'LowercaseSha256', generatedInventorySha256: 'LowercaseSha256', entries: array(generatedDeletionEntry, 0, 100352), entriesSha256: 'LowercaseSha256', totalEntryCount: 'NonnegativeSafeInteger', maxDepth: 'NonnegativeSafeInteger', totalPathBytes: 'NonnegativeSafeInteger', totalFileBytes: nonnegativeDecimal, createdAt: 'CanonicalUtc', diagnostics }, value => {
+  requireThat(value.parentAnchorCount === value.retainedParentAnchors.length && value.parentAnchorAggregateSha256 === hash(value.retainedParentAnchors), 'generated anchor aggregate')
+  requireThat(value.totalEntryCount === value.entries.length && value.entriesSha256 === hash(value.entries), 'generated entry aggregate')
+  requireThat(value.maxDepth === Math.max(0, ...value.entries.map(row => row.depth)) && value.totalPathBytes === value.entries.reduce((sum, row) => sum + Buffer.byteLength(row.repositoryPath), 0) && BigInt(value.totalFileBytes) === value.entries.reduce((sum, row) => sum + BigInt(row.byteSize), 0n), 'generated derived totals')
+  requireThat(value.retainedParentAnchors.every((row, index) => row.anchorOrdinal === index + 1), 'generated anchor ordinal')
+  requireThat(value.entries.every((row, index) => row.ordinal === index + 1) && new Set(value.entries.map(row => row.deleteOrdinal)).size === value.entries.length, 'generated entry ordinal')
+  const byOrdinal = new Map(value.entries.map(row => [row.ordinal, row])), anchors = new Map(value.retainedParentAnchors.map(row => [row.anchorOrdinal, row]))
+  for (const row of value.entries) {
+    const parent = row.parentOrdinal === 0 ? anchors.get(row.parentAnchorOrdinal) : byOrdinal.get(row.parentOrdinal)
+    requireThat(parent !== undefined && (row.parentOrdinal === 0 || parent.kind === 'directory'), 'generated parent identity')
+    const parentPath = row.parentOrdinal === 0 ? parent.parentRelativePath : parent.repositoryPath
+    requireThat(row.parentRelativePath === parentPath && row.repositoryPath === `${parentPath}/${row.leaf}`, 'generated path graph')
+    if (row.parentOrdinal > 0) requireThat(row.depth === parent.depth + 1 && row.deleteOrdinal < parent.deleteOrdinal, 'generated descendant order')
+  }
+  requireThat(new Set(value.entries.map(row => ordinalFold(row.repositoryPath))).size === value.entries.length && new Set(value.entries.map(row => `${row.volumeSerial}\0${row.fileId}`)).size === value.entries.length, 'generated path/identity collision')
+})
+
+const MAX_ROOT_ACTIONS = 16384
+const MAX_ROOT_DEPTH = 256
+const MAX_ROOT_PATH_BYTES = 67108864
+const MAX_ROOT_FILE_BYTES = 1073741824
+const MAX_ROOT_BLOB_BYTES = 17179869184n
+const MAX_ROOT_CHUNKS = 16
+const ROOT_ACTIONS_PER_CHUNK = 1024
+const MAX_WORKTREE_REMOVAL_ENTRIES = 16384
+const MAX_WORKTREE_REMOVAL_TOTAL_FILE_BYTES = 4294967296n
+const utf8Compare = (left, right) => Buffer.compare(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'))
+const physicalKey = value => `${value.volumeSerial ?? value.dev}\0${value.fileId ?? value.ino}`
+
+const rootMaterializationAction = value => {
+  const common = {
+    actionOrdinal: integer(1, MAX_ROOT_ACTIONS),
+    chunkOrdinal: integer(1, MAX_ROOT_CHUNKS),
+    repositoryPath: 'SafeRepositoryPath',
+    leaf: 'SafeWindowsLeafName',
+    depth: integer(1, MAX_ROOT_DEPTH)
+  }
+  const parent = value?.parentActionOrdinal === 0
+    ? { parentActionOrdinal: literal(0), rootAnchor: literal('root_worktree') }
+    : { parentActionOrdinal: integer(1, MAX_ROOT_ACTIONS), parentRelativePath: 'SafeRepositoryPath' }
+  const kind = value?.kind
+  if (kind === 'retain_directory') shape({ ...common, ...parent, kind: literal(kind), sourceTreeOid: 'LowercaseSha', targetTreeOid: 'LowercaseSha', expectedTarget: 'DirectoryHandleIdentity' })(value)
+  else if (kind === 'delete_regular_file') shape({ ...common, ...parent, kind: literal(kind), sourceObjectOid: 'LowercaseSha', sourceGitMode: enumeration(['100644', '100755']), sourceByteSize: integer(0, MAX_ROOT_FILE_BYTES), sourceBlobSha256: 'LowercaseSha256', expectedTarget: 'FileIdentity' })(value)
+  else if (kind === 'delete_empty_directory') shape({ ...common, ...parent, kind: literal(kind), sourceTreeOid: 'LowercaseSha', expectedTarget: 'DirectoryHandleIdentity', expectedEmptyAtDeleteOrdinal: literal(true) })(value)
+  else if (kind === 'create_directory') shape({ ...common, ...parent, kind: literal(kind), targetTreeOid: 'LowercaseSha', expectedAbsent: literal(true) })(value)
+  else if (kind === 'install_regular_file') shape({ ...common, ...parent, kind: literal(kind), targetObjectOid: 'LowercaseSha', targetGitMode: enumeration(['100644', '100755']), targetByteSize: integer(0, MAX_ROOT_FILE_BYTES), targetBlobSha256: 'LowercaseSha256', expectedAbsent: literal(true), scratchLeaf: 'SafeWindowsLeafName' })(value)
+  else fail('root materialization action kind')
+}
+
+function validateRootMaterializationPlan(value) {
+  requireThat(value.actionCount === value.actions.length && value.actionsSha256 === hash(value.actions), 'root materialization action aggregate')
+  requireThat(value.actions.every((row, index) => row.actionOrdinal === index + 1 && row.chunkOrdinal === Math.floor(index / ROOT_ACTIONS_PER_CHUNK) + 1), 'root materialization ordinal/chunk')
+  const chunkCount = Math.ceil(value.actions.length / ROOT_ACTIONS_PER_CHUNK)
+  requireThat(value.chunkCount === chunkCount && chunkCount <= MAX_ROOT_CHUNKS, 'root materialization chunk count')
+  const byOrdinal = new Map(value.actions.map(row => [row.actionOrdinal, row]))
+  const directoryKinds = new Set(['retain_directory', 'delete_empty_directory', 'create_directory'])
+  const physicalIdentities = new Set()
+  const fenceIdentities = new Set([
+    value.rootWorktree,
+    value.worktreeRegistryFence.commonGitDirectory,
+    value.worktreeRegistryFence.worktreesDirectory,
+    value.worktreeRegistryFence.rootAdminDirectory,
+    value.worktreeRegistryFence.rootHeadFile,
+    value.worktreeRegistryFence.featureAdminDirectory,
+    value.worktreeRegistryFence.featureWorktreeGitFile,
+    value.worktreeRegistryFence.featureAdminGitdirBackpointer,
+    value.worktreeRegistryFence.featureHeadFile
+  ].map(physicalKey))
+  for (const row of value.actions) {
+    const firstSegment = ordinalFold(row.repositoryPath.split('/')[0])
+    requireThat(firstSegment !== '.GIT' && firstSegment !== '.INTEGRATION-XLSX-ON-PREREQ', 'root materialization protected path')
+    if (row.parentActionOrdinal === 0) {
+      requireThat(row.repositoryPath === row.leaf && row.depth === 1, 'root materialization root path')
+    } else {
+      const parent = byOrdinal.get(row.parentActionOrdinal)
+      requireThat(parent !== undefined && directoryKinds.has(parent.kind), 'root materialization directory parent')
+      requireThat(row.parentRelativePath === parent.repositoryPath && row.repositoryPath === `${parent.repositoryPath}/${row.leaf}` && row.depth === parent.depth + 1, 'root materialization descendant graph')
+      if (parent.kind === 'create_directory') requireThat(parent.actionOrdinal < row.actionOrdinal && ['create_directory', 'install_regular_file'].includes(row.kind), 'root materialization create order')
+      if (parent.kind === 'delete_empty_directory') requireThat(row.actionOrdinal < parent.actionOrdinal && ['delete_regular_file', 'delete_empty_directory'].includes(row.kind), 'root materialization delete order')
+      const visited = new Set([row.actionOrdinal])
+      let cursor = parent
+      while (cursor.parentActionOrdinal !== 0) {
+        requireThat(!visited.has(cursor.actionOrdinal), 'root materialization parent cycle')
+        visited.add(cursor.actionOrdinal)
+        cursor = byOrdinal.get(cursor.parentActionOrdinal)
+        requireThat(cursor !== undefined && directoryKinds.has(cursor.kind), 'root materialization ancestor')
+      }
+    }
+    if (Object.hasOwn(row, 'expectedTarget')) {
+      pathEquals(row.expectedTarget.canonicalPath, childPath(value.rootWorktree.canonicalPath, row.repositoryPath))
+      const key = `${row.expectedTarget.dev}\0${row.expectedTarget.ino}`
+      requireThat(!physicalIdentities.has(key) && !fenceIdentities.has(key), 'root materialization identity alias')
+      physicalIdentities.add(key)
+    }
+    if (row.kind === 'delete_regular_file') requireThat(row.expectedTarget.size === String(row.sourceByteSize) && row.expectedTarget.sha256 === row.sourceBlobSha256, 'root materialization source file identity')
+    if (row.kind === 'install_regular_file') requireThat(row.scratchLeaf === `${String(row.actionOrdinal).padStart(4, '0')}-${row.leaf}`, 'root materialization scratch identity')
+  }
+  const groupedPaths = new Map()
+  for (const row of value.actions) {
+    const key = ordinalFold(row.repositoryPath)
+    const group = groupedPaths.get(key) ?? []
+    group.push(row)
+    groupedPaths.set(key, group)
+  }
+  for (const rows of groupedPaths.values()) if (rows.length !== 1) {
+    requireThat(rows.length === 2 && rows[0].kind === 'delete_regular_file' && rows[1].kind === 'install_regular_file' && rows[1].actionOrdinal === rows[0].actionOrdinal + 1 && rows[0].repositoryPath === rows[1].repositoryPath && rows[0].parentActionOrdinal === rows[1].parentActionOrdinal, 'root materialization path collision')
+  }
+  let maxFileBytes = 0, totalBlobBytes = 0n
+  for (const row of value.actions) {
+    const size = Object.hasOwn(row, 'sourceByteSize') ? row.sourceByteSize : Object.hasOwn(row, 'targetByteSize') ? row.targetByteSize : undefined
+    if (size === undefined) continue
+    maxFileBytes = Math.max(maxFileBytes, size)
+    const amount = BigInt(size)
+    requireThat(amount <= MAX_ROOT_BLOB_BYTES - totalBlobBytes, 'root materialization total blob byte cap')
+    totalBlobBytes += amount
+  }
+  const totalPathBytes = value.actions.reduce((sum, row) => sum + Buffer.byteLength(row.repositoryPath) + (Object.hasOwn(row, 'parentRelativePath') ? Buffer.byteLength(row.parentRelativePath) : 0), 0)
+  requireThat(value.maxDepth === Math.max(0, ...value.actions.map(row => row.depth)) && value.maxDepth <= MAX_ROOT_DEPTH, 'root materialization max depth')
+  requireThat(value.totalPathBytes === totalPathBytes && totalPathBytes <= MAX_ROOT_PATH_BYTES, 'root materialization total path bytes')
+  requireThat(value.maxFileBytes === maxFileBytes && value.maxFileBytes <= MAX_ROOT_FILE_BYTES, 'root materialization max file bytes')
+  check('DecimalString', value.totalBlobBytes)
+  requireThat(BigInt(value.totalBlobBytes) === totalBlobBytes, 'root materialization total blob bytes')
+  pathEquals(value.worktreeRegistryFence.rootAdminDirectory.canonicalPath, childPath(value.rootWorktree.canonicalPath, '.git'))
+  requireThat(!samePath(value.rootWorktree.canonicalPath, value.worktreeRegistryFence.featureWorktreeGitFile.canonicalPath.slice(0, -5)), 'root materialization worktree crossing')
+}
+
+attachmentType('root-materialization-plan', {
+  attemptId: 'SafeAttemptId', operationInstanceId: literal('fast-forward-root'), baseSha: 'LowercaseSha', mergeSha: 'LowercaseSha', baseTreeOid: 'LowercaseSha', mergeTreeOid: 'LowercaseSha', rootWorktree: 'DirectoryHandleIdentity', worktreeRegistryFence: 'WorktreeRegistryFence', actions: array(rootMaterializationAction, 0, MAX_ROOT_ACTIONS), actionCount: integer(0, MAX_ROOT_ACTIONS), maxDepth: integer(0, MAX_ROOT_DEPTH), totalPathBytes: integer(0, MAX_ROOT_PATH_BYTES), maxFileBytes: integer(0, MAX_ROOT_FILE_BYTES), totalBlobBytes: 'DecimalString', chunkCount: integer(0, MAX_ROOT_CHUNKS), actionsSha256: 'LowercaseSha256', createdAt: 'CanonicalUtc', diagnostics
+}, validateRootMaterializationPlan)
+
+const worktreeRemovalEntry = value => {
+  const common = { ordinal: integer(1, MAX_WORKTREE_REMOVAL_ENTRIES), deleteOrdinal: integer(1, MAX_WORKTREE_REMOVAL_ENTRIES), owner: enumeration(['target', 'admin']), entryScope: literal(value?.entryScope) }
+  const identity = { leaf: 'SafeWindowsLeafName', volumeSerial: 'DecimalString', fileId: 'DecimalString', attributes: 'DecimalString', reparseTag: literal('0'), kind: literal(value?.kind), depth: value?.entryScope === 'owner_root' ? literal(0) : integer(1, MAX_ROOT_DEPTH) }
+  let location
+  if (value?.entryScope === 'owner_root') location = {}
+  else if (value?.entryScope === 'descendant' && value?.parentOrdinal === 0) location = { parentOrdinal: literal(0), relativePath: 'SafeRepositoryPath' }
+  else if (value?.entryScope === 'descendant') location = { parentOrdinal: integer(1, MAX_WORKTREE_REMOVAL_ENTRIES), relativePath: 'SafeRepositoryPath', parentRelativePath: 'SafeRepositoryPath' }
+  else fail('worktree removal entry scope')
+  if (value?.kind === 'file') {
+    requireThat(value?.entryScope === 'descendant', 'worktree removal root file')
+    shape({ ...common, ...location, ...identity, byteSize: 'NonnegativeSafeInteger', sha256: 'LowercaseSha256' })(value)
+  } else if (value?.kind === 'directory') shape({ ...common, ...location, ...identity, byteSize: literal(0), sha256: literal(null) })(value)
+  else fail('worktree removal entry kind')
+}
+
+function deriveWorktreeRemovalTotalFileBytes(entries) {
+  let runningTotal = 0n
+  for (const entry of entries) {
+    if (entry.kind !== 'file') continue
+    const byteSize = BigInt(entry.byteSize)
+    requireThat(byteSize <= MAX_WORKTREE_REMOVAL_TOTAL_FILE_BYTES - runningTotal, 'worktree removal total file byte cap')
+    runningTotal += byteSize
+  }
+  return runningTotal
+}
+
+function validateWorktreeRemovalPlan(value) {
+  pathEquals(value.featureWorktree.canonicalPath, childPath(value.featureParent.canonicalPath, value.featureRootLeaf))
+  pathEquals(value.adminParent.canonicalPath, childPath(value.commonGitDirectory.canonicalPath, 'worktrees'))
+  pathEquals(value.adminDirectory.canonicalPath, childPath(value.adminParent.canonicalPath, value.adminRootLeaf))
+  pathEquals(value.gitFile.canonicalPath, childPath(value.featureWorktree.canonicalPath, '.git'))
+  pathEquals(value.adminGitdirBackpointer.canonicalPath, childPath(value.adminDirectory.canonicalPath, 'gitdir'))
+  requireThat(!samePath(value.featureWorktree.canonicalPath, value.adminDirectory.canonicalPath) && !inside(value.featureWorktree.canonicalPath, value.adminDirectory.canonicalPath) && !inside(value.adminDirectory.canonicalPath, value.featureWorktree.canonicalPath), 'worktree removal owner crossing')
+  const outerIdentities = [value.featureWorktree, value.featureParent, value.commonGitDirectory, value.adminDirectory, value.adminParent, value.gitFile, value.adminGitdirBackpointer].map(identity => `${identity.dev}\0${identity.ino}`)
+  requireThat(new Set(outerIdentities).size === outerIdentities.length, 'worktree removal outer identity alias')
+  requireThat(value.gitFileCanonicalBytesSha256 === value.gitFile.sha256 && value.adminGitdirBackpointerCanonicalBytesSha256 === value.adminGitdirBackpointer.sha256, 'worktree removal control bytes')
+  requireThat(value.entryCount === value.entries.length && value.tupleSha256 === hash(value.entries), 'worktree removal entry aggregate')
+  requireThat(value.entries.every((entry, index) => entry.ordinal === index + 1), 'worktree removal inventory ordinal')
+  const roots = value.entries.filter(entry => entry.entryScope === 'owner_root')
+  requireThat(roots.length === 2 && roots[0].owner === 'target' && roots[1].owner === 'admin', 'worktree removal owner roots')
+  const rootByOwner = new Map(roots.map(root => [root.owner, root]))
+  const rootBindings = { target: [value.featureWorktree, value.featureRootLeaf], admin: [value.adminDirectory, value.adminRootLeaf] }
+  for (const [owner, [identity, leaf]] of Object.entries(rootBindings)) {
+    const root = rootByOwner.get(owner)
+    requireThat(root !== undefined && root.leaf === leaf && root.volumeSerial === identity.dev && root.fileId === identity.ino && root.attributes === identity.attributes && root.reparseTag === identity.reparseTag, 'worktree removal root identity')
+  }
+  const targetEntries = value.entries.filter(entry => entry.owner === 'target'), adminEntries = value.entries.filter(entry => entry.owner === 'admin')
+  requireThat(targetEntries[0] === roots[0] && adminEntries[0] === roots[1] && value.entries.indexOf(roots[1]) === targetEntries.length, 'worktree removal owner inventory order')
+  for (const rows of [targetEntries.slice(1), adminEntries.slice(1)]) for (let index = 1; index < rows.length; index++) requireThat(utf8Compare(rows[index - 1].relativePath, rows[index].relativePath) < 0, 'worktree removal UTF-8 inventory order')
+  const byOrdinal = new Map(value.entries.map(entry => [entry.ordinal, entry]))
+  for (const entry of value.entries) {
+    if (entry.entryScope === 'owner_root') continue
+    if (entry.parentOrdinal === 0) requireThat(entry.relativePath === entry.leaf && entry.depth === 1, 'worktree removal root child graph')
+    else {
+      const parent = byOrdinal.get(entry.parentOrdinal)
+      requireThat(parent !== undefined && parent.owner === entry.owner && parent.entryScope === 'descendant' && parent.kind === 'directory' && parent.ordinal < entry.ordinal, 'worktree removal directory parent')
+      requireThat(entry.parentRelativePath === parent.relativePath && entry.relativePath === `${parent.relativePath}/${entry.leaf}` && entry.depth === parent.depth + 1, 'worktree removal descendant graph')
+    }
+  }
+  const pathKeys = value.entries.filter(entry => entry.entryScope === 'descendant').map(entry => `${entry.owner}\0${ordinalFold(entry.relativePath)}`)
+  requireThat(new Set(pathKeys).size === pathKeys.length, 'worktree removal path collision')
+  const physicalKeys = value.entries.map(physicalKey)
+  requireThat(new Set(physicalKeys).size === physicalKeys.length, 'worktree removal physical identity alias')
+  const protectedParentIdentities = new Set([value.featureParent, value.commonGitDirectory, value.adminParent].map(physicalKey))
+  requireThat(value.entries.every(entry => !protectedParentIdentities.has(physicalKey(entry))), 'worktree removal parent identity alias')
+  const deleteOrder = [
+    ...targetEntries.slice(1).sort((left, right) => right.depth - left.depth || utf8Compare(left.relativePath, right.relativePath)), roots[0],
+    ...adminEntries.slice(1).sort((left, right) => right.depth - left.depth || utf8Compare(left.relativePath, right.relativePath)), roots[1]
+  ]
+  requireThat(deleteOrder.every((entry, index) => entry.deleteOrdinal === index + 1), 'worktree removal delete order')
+  const controlEntry = (owner, relativePath, identity) => {
+    const matches = value.entries.filter(entry => entry.owner === owner && entry.entryScope === 'descendant' && entry.relativePath === relativePath)
+    requireThat(matches.length === 1, 'worktree removal control membership')
+    const entry = matches[0]
+    requireThat(entry.kind === 'file' && entry.volumeSerial === identity.dev && entry.fileId === identity.ino && BigInt(entry.byteSize) === BigInt(identity.size) && entry.sha256 === identity.sha256, 'worktree removal control identity')
+  }
+  controlEntry('target', '.git', value.gitFile)
+  controlEntry('admin', 'gitdir', value.adminGitdirBackpointer)
+  const totalFileBytes = deriveWorktreeRemovalTotalFileBytes(value.entries)
+  check('DecimalString', value.totalFileBytes)
+  requireThat(BigInt(value.totalFileBytes) === totalFileBytes, 'worktree removal total file bytes')
+  requireThat(value.maxDepth === Math.max(...value.entries.map(entry => entry.depth)) && value.maxDepth <= MAX_ROOT_DEPTH, 'worktree removal max depth')
+}
+
+attachmentType('worktree-removal-plan', {
+  attemptId: 'SafeAttemptId', operationInstanceId: literal('remove-feature-worktree'), featureWorktree: 'DirectoryHandleIdentity', featureParent: 'DirectoryHandleIdentity', featureRootLeaf: 'SafeWindowsLeafName', gitFile: 'FileIdentity', gitFileCanonicalBytesSha256: 'LowercaseSha256', commonGitDirectory: 'DirectoryHandleIdentity', adminDirectory: 'DirectoryHandleIdentity', adminParent: 'DirectoryHandleIdentity', adminRootLeaf: 'SafeWindowsLeafName', adminGitdirBackpointer: 'FileIdentity', adminGitdirBackpointerCanonicalBytesSha256: 'LowercaseSha256', branch: 'SafeBranch', headSha: 'LowercaseSha', headTreeOid: 'LowercaseSha', trackedModificationCount: literal(0), untrackedCount: literal(0), ignoredCount: literal(0), entries: array(worktreeRemovalEntry, 4, MAX_WORKTREE_REMOVAL_ENTRIES), entryCount: integer(4, MAX_WORKTREE_REMOVAL_ENTRIES), maxDepth: integer(1, MAX_ROOT_DEPTH), totalFileBytes: 'DecimalString', tupleSha256: 'LowercaseSha256', observedAt: 'CanonicalUtc'
+}, validateWorktreeRemovalPlan)
+
+attachmentType('worktree-removal-observation', {
+  attemptId: 'SafeAttemptId', operationInstanceId: literal('remove-feature-worktree'), planSha256: 'LowercaseSha256', beforeRootState: enumeration(['present_exact', 'authorized_prefix']), beforeCompletedPrefixCount: 'NonnegativeSafeInteger', afterRootState: enumeration(['present_exact', 'authorized_prefix', 'both_absent', 'partial_or_changed']), missingEntryOrdinals: array('PositiveSafeInteger', 0, MAX_WORKTREE_REMOVAL_ENTRIES), unexpectedTupleSha256: 'LowercaseSha256', worktrees: worktreeObservations, worktreePruneDryRun: statusObservation, classification: enumeration(['not_applied', 'applied', 'contradictory']), observedAt: 'CanonicalUtc', diagnostics
+}, value => {
+  for (let index = 1; index < value.missingEntryOrdinals.length; index++) requireThat(value.missingEntryOrdinals[index - 1] < value.missingEntryOrdinals[index], 'worktree removal missing ordinal order')
+  requireThat((value.beforeRootState === 'present_exact') === (value.beforeCompletedPrefixCount === 0), 'worktree removal before prefix')
+  if (value.classification === 'not_applied') requireThat(value.afterRootState === 'present_exact' && value.missingEntryOrdinals.length === 0, 'worktree removal not-applied consequence')
+  else if (value.classification === 'applied') requireThat(value.afterRootState === 'both_absent' && value.missingEntryOrdinals.length > 0, 'worktree removal applied consequence')
+  else requireThat(value.afterRootState === 'partial_or_changed' || value.afterRootState === 'authorized_prefix', 'worktree removal contradictory consequence')
+})
+
+const contractWorkflows = Object.freeze(['extensions-quality', 'workflow-contracts', 'code-consistency-review-scaffold', 'three-extension-ui-contracts'])
+const workflowPath = name => `.github/workflows/${name}.yml`
+const partialRunObservation = value => {
+  const common = { workflowPath: 'SafeRepositoryPath', event: enumeration(['pull_request', 'workflow_dispatch']), headSha: 'LowercaseSha', headBranch: branchOrMain, observation: literal(value?.observation) }
+  if (value?.observation === 'missing') shape(common)(value)
+  else {
+    requireThat(value?.observation === 'present', 'partial run observation')
+    const fields = { ...common, runId: 'PositiveSafeInteger', runAttempt: 'PositiveSafeInteger', displayTitle: 'BoundedString', status: enumeration(['queued', 'in_progress', 'completed']), conclusion: nullable(enumeration(['success', 'failure', 'cancelled', 'skipped', 'timed_out', 'action_required', 'neutral', 'stale'])), createdAt: 'CanonicalUtcSecond' }
+    if (value.event === 'workflow_dispatch') fields.dispatchCorrelation = correlation => {
+      if (correlation?.status === 'verified') shape({ status: literal('verified'), nonce: 'SafeDispatchNonce' })(correlation)
+      else shape({ status: literal('unverified') })(correlation)
+    }
+    shape(fields)(value)
+  }
+  if (value.event === 'pull_request') check('SafeBranch', value.headBranch)
+}
+const partialJobObservation = value => {
+  if (value?.observation === 'run_missing') shape({ workflowPath: 'SafeRepositoryPath', name: 'BoundedString', observation: literal('run_missing') })(value)
+  else if (value?.observation === 'missing_required') shape({ runId: 'PositiveSafeInteger', name: 'BoundedString', observation: literal('missing_required') })(value)
+  else {
+    requireThat(value?.observation === 'present', 'partial job observation')
+    const verification = item => {
+      if (item?.observation === 'missing') shape({ observation: literal('missing') })(item)
+      else shape({ observation: literal('present'), status: enumeration(['queued', 'in_progress', 'completed']), conclusion: nullable(enumeration(['success', 'failure', 'cancelled', 'skipped', 'timed_out', 'action_required', 'neutral', 'stale'])) })(item)
+    }
+    shape({ runId: 'PositiveSafeInteger', name: 'BoundedString', observation: literal('present'), jobId: 'PositiveSafeInteger', status: enumeration(['queued', 'in_progress', 'completed']), conclusion: nullable(enumeration(['success', 'failure', 'cancelled', 'skipped', 'timed_out', 'action_required', 'neutral', 'stale'])), labels: tuple([enumeration(['ubuntu-latest', 'windows-latest'])]), headSha: 'LowercaseSha', verificationStep: verification })(value)
+  }
+}
+const expectedJobWorkflow = new Map([
+  ...['workflow-register', 'bob-bazaar-review', 'bob-code-consistency-review', 'Windows / workflow-register', 'Windows / bob-bazaar-review', 'Windows / bob-code-consistency-review', 'Real-machine environment contracts', 'Extension source metrics'].map(name => [name, workflowPath('extensions-quality')]),
+  ['Strict workflow validation', workflowPath('workflow-contracts')], ['Validate scaffold', workflowPath('code-consistency-review-scaffold')], ['Validate VS Code extension', workflowPath('code-consistency-review-scaffold')], ['UI and documentation contracts', workflowPath('three-extension-ui-contracts')]
+])
+attachmentType('partial-run-evidence', { assessment: enumeration(['poll_exhausted', 'terminal_non_success']), runs: array(partialRunObservation, 0, 32), jobs: array(partialJobObservation, 0, 256), observedAt: 'CanonicalUtc', diagnostics }, value => {
+  requireThat(value.runs.length === contractWorkflows.length, 'partial run workflow set')
+  for (let index = 0; index < contractWorkflows.length; index++) requireThat(value.runs[index].workflowPath === workflowPath(contractWorkflows[index]), 'partial run workflow order')
+  requireThat(new Set(value.runs.map(row => `${row.event}\0${row.headSha}\0${row.headBranch}`)).size === 1, 'partial run trigger crossing')
+  requireThat(new Set(value.jobs.map(row => `${row.runId ?? 'missing'}\0${row.name}`)).size === value.jobs.length, 'duplicate partial job')
+  for (const job of value.jobs) if (job.observation === 'run_missing') requireThat(job.workflowPath === expectedJobWorkflow.get(job.name), 'partial job workflow')
+})
+attachmentType('candidate-preservation-manifest', {
+  baseSha: 'LowercaseSha', headSha: 'LowercaseSha', treeOid: 'LowercaseSha',
+  gitBundle: value => shape({ kind: literal('git_bundle'), path: literal('attachments/0002-candidate.bundle'), mediaType: literal('application/x-git-bundle'), byteSize: integer(1, 16777216), sha256: 'LowercaseSha256', verifiedHeadSha: 'LowercaseSha', bundleVerifyExitCode: literal(0) })(value),
+  patch: value => shape({ kind: literal('git_binary_patch'), path: literal('attachments/0002-candidate.patch'), mediaType: literal('text/x-diff'), byteSize: integer(1, 16777216), sha256: 'LowercaseSha256', fromSha: 'LowercaseSha', toSha: 'LowercaseSha', applyCheckExitCode: literal(0) })(value),
+  diagnosticLog: value => shape({ kind: literal('diagnostic_log'), path: literal('attachments/0002-candidate-diagnostic.log'), mediaType: literal('text/plain'), byteSize: integer(1, 16777216), sha256: 'LowercaseSha256', redactionPolicy: literal('fixed_fields_and_hashes_only'), lineCount: literal(5) })(value),
+  createdAt: 'CanonicalUtc'
+}, value => {
+  requireThat(value.gitBundle.verifiedHeadSha === value.headSha && value.patch.fromSha === value.baseSha && value.patch.toSha === value.headSha, 'preservation commit crossing')
+  requireThat(new Set([value.gitBundle.path, value.patch.path, value.diagnosticLog.path].map(ordinalFold)).size === 3, 'raw locator crossing')
+})
+
+const workflowObject = member => shape(Object.fromEntries(contractWorkflows.map(name => [name, member])))
+const runSetRequest = value => shape({ repository: literal('katamor1/bob_builtin_analyze'), event: enumeration(['pull_request', 'workflow_dispatch']), expectedHeadSha: 'LowercaseSha', expectedRef: value?.event === 'pull_request' ? 'SafeBranch' : branchOrMain })(value)
+const orderedPositiveIds = value => {
+  array('PositiveSafeInteger', 0, 10000)(value)
+  for (let index = 1; index < value.length; index++) requireThat(value[index - 1] < value[index], 'run IDs not strictly ordered')
+}
+attachmentType('exact-head-run-set-snapshot', { request: runSetRequest, runIdsByWorkflow: workflowObject(orderedPositiveIds), observedAt: 'CanonicalUtc', diagnostics }, value => {
+  requireThat(new Set(contractWorkflows.flatMap(name => value.runIdsByWorkflow[name])).size === contractWorkflows.reduce((count, name) => count + value.runIdsByWorkflow[name].length, 0), 'duplicate run ID')
+})
+const triggerTimes = event => event === 'pull_request' ? shape({ 'pull-request': 'CanonicalUtcSecond' }) : workflowObject('CanonicalUtcSecond')
+const dispatchNonces = workflowObject('SafeDispatchNonce')
+const triggerBoundary = value => {
+  const event = value?.event
+  const fields = { schemaVersion: literal(`${S}exact-head-trigger-boundary/v1`), headSha: 'LowercaseSha', triggerNotBefore: 'CanonicalUtcSecond', recordedAt: 'CanonicalUtc', event: enumeration(['pull_request', 'workflow_dispatch']), headBranch: event === 'pull_request' ? 'SafeBranch' : branchOrMain, triggerIntents: array(operationEvidenceRef, event === 'pull_request' ? 1 : 4, event === 'pull_request' ? 1 : 4), triggerNotBeforeByWorkflow: triggerTimes(event) }
+  if (event === 'workflow_dispatch') fields.dispatchNonceByWorkflow = dispatchNonces
+  shape(fields)(value)
+  requireThat(value.triggerIntents.every(ref => ref.recordKind === 'intent' && ref.schemaVersion === `${S}wave0a-mutation-intent/v1`), 'trigger intent kind')
+}
+const discoveryRequest = value => shape({ schemaVersion: literal(`${S}exact-head-run-discovery-request/v1`), repository: literal('katamor1/bob_builtin_analyze'), event: enumeration(['pull_request', 'workflow_dispatch']), expectedHeadSha: 'LowercaseSha', expectedRef: value?.event === 'pull_request' ? 'SafeBranch' : branchOrMain, triggerBoundarySha256: 'LowercaseSha256' })(value)
+const selectedRunMap = workflowObject(runSelection)
+function validateRunMap(map, event, expectedHeadSha, expectedRef, triggerNotBeforeByWorkflow, nonces) {
+  const ids = []
+  for (const name of contractWorkflows) {
+    const run = map[name]
+    requireThat(run.workflowPath === workflowPath(name) && run.event === event && run.headSha === expectedHeadSha && run.headBranch === expectedRef, 'selected run identity')
+    const notBefore = event === 'pull_request' ? triggerNotBeforeByWorkflow['pull-request'] : triggerNotBeforeByWorkflow[name]
+    requireThat(run.createdAt >= notBefore, 'selected run before trigger')
+    if (event === 'workflow_dispatch') {
+      requireThat(run.dispatchNonce === nonces[name] && run.displayTitle === `wave0a-${expectedHeadSha}-${run.dispatchNonce}`, 'dispatch run correlation')
+    }
+    ids.push(run.runId)
+  }
+  requireThat(new Set(ids).size === ids.length, 'duplicate selected run')
+}
+attachmentUnion('exact-head-run-discovery', value => {
+  const event = value.request.event
+  const expectedFields = { schemaVersion: literal(`${S}exact-head-run-discovery/v1`), request: discoveryRequest, beforeSnapshotSha256: 'LowercaseSha256', triggerBoundary, triggerNotBefore: 'CanonicalUtcSecond', triggerNotBeforeByWorkflow: triggerTimes(event), selectedRuns: selectedRunMap, observedAt: 'CanonicalUtc', diagnostics }
+  if (event === 'workflow_dispatch') expectedFields.dispatchNonceByWorkflow = dispatchNonces
+  shape(expectedFields)(value)
+  requireThat(value.request.triggerBoundarySha256 === hash(value.triggerBoundary) && value.triggerBoundary.event === event && value.triggerBoundary.headSha === value.request.expectedHeadSha && value.triggerBoundary.headBranch === value.request.expectedRef, 'trigger boundary crossing')
+  requireThat(value.triggerNotBefore === value.triggerBoundary.triggerNotBefore && equal(value.triggerNotBeforeByWorkflow, value.triggerBoundary.triggerNotBeforeByWorkflow), 'trigger time crossing')
+  if (event === 'workflow_dispatch') same(value.dispatchNonceByWorkflow, value.triggerBoundary.dispatchNonceByWorkflow, 'dispatch nonces')
+  validateRunMap(value.selectedRuns, event, value.request.expectedHeadSha, value.request.expectedRef, value.triggerNotBeforeByWorkflow, value.dispatchNonceByWorkflow)
+})
+const runCandidates = value => array(runSelection, 0, 120)(value)
+attachmentType('exact-head-run-discovery-failure', { request: discoveryRequest, beforeSnapshotSha256: 'LowercaseSha256', triggerBoundarySha256: 'LowercaseSha256', candidatesByWorkflow: workflowObject(runCandidates), reason: enumeration(['missing_workflow', 'ambiguous_workflow', 'candidate_identity_mismatch']), observedAt: 'CanonicalUtc', diagnostics }, value => {
+  requireThat(value.triggerBoundarySha256 === value.request.triggerBoundarySha256, 'failure trigger digest')
+  for (const name of contractWorkflows) for (const run of value.candidatesByWorkflow[name]) requireThat(run.workflowPath === workflowPath(name) && run.event === value.request.event && run.headSha === value.request.expectedHeadSha && run.headBranch === value.request.expectedRef, 'failure candidate identity')
+  const counts = contractWorkflows.map(name => value.candidatesByWorkflow[name].length)
+  if (value.reason === 'missing_workflow') requireThat(counts.some(count => count === 0), 'missing workflow consequence')
+  if (value.reason === 'ambiguous_workflow') requireThat(counts.some(count => count > 1), 'ambiguous workflow consequence')
+})
+const dispatchOperationByWorkflow = Object.freeze({ 'extensions-quality': 'dispatch-extensions-quality', 'workflow-contracts': 'dispatch-workflow-contracts', 'code-consistency-review-scaffold': 'dispatch-code-consistency-review-scaffold', 'three-extension-ui-contracts': 'dispatch-three-extension-ui-contracts' })
+attachmentUnion('wave0a-dispatch-run-observation', value => {
+  const base = { schemaVersion: literal(`${S}wave0a-dispatch-run-observation/v1`), intentSha256: 'LowercaseSha256', beforeSnapshotSha256: 'LowercaseSha256', observedAt: 'CanonicalUtc', diagnostics, result: literal(value.result), operationInstanceId: 'Wave0aOperationInstanceId', workflowId: enumeration(contractWorkflows) }
+  if (value.result === 'observed') shape({ ...base, run: runSelection })(value)
+  else if (value.result === 'not_observed') shape({ ...base, reason: literal('no_causal_candidate'), candidates: tuple([]) })(value)
+  else shape({ ...base, reason: literal('multiple_causal_candidates'), candidates: array(runSelection, 2, 120) })(value)
+  requireThat(value.operationInstanceId === dispatchOperationByWorkflow[value.workflowId], 'dispatch operation/workflow')
+  const candidates = value.result === 'observed' ? [value.run] : value.candidates ?? []
+  for (const run of candidates) requireThat(run.event === 'workflow_dispatch' && run.workflowPath === workflowPath(value.workflowId) && run.displayTitle === `wave0a-${run.headSha}-${run.dispatchNonce}`, 'dispatch candidate correlation')
+})
+const exactJobNames = Object.freeze([...expectedJobWorkflow.keys()])
+const expectedJobLabel = name => name.startsWith('Windows /') || name === 'Real-machine environment contracts' ? 'windows-latest' : 'ubuntu-latest'
+attachmentUnion('exact-head-ci-evidence', value => {
+  const base = { schemaVersion: literal(`${S}exact-head-ci-evidence/v1`), repository: literal('katamor1/bob_builtin_analyze'), mode: enumeration(['wave0a_pr_head', 'slice_pr_head', 'post_merge_main']), event: literal(value.event), headSha: 'LowercaseSha', requiredJobCount: literal(value.event === 'pull_request' ? 12 : 11), runs: array(runSelection, 4, 4), jobs: array(jobEvidence, 12, 12), result: literal('success'), observedAt: 'CanonicalUtc', diagnostics }
+  if (value.event === 'pull_request') Object.assign(base, { baseSha: 'LowercaseSha', pullRequest: pullRequestIdentity })
+  else Object.assign(base, { expectedSkippedJobs: tuple([literal('Extension source metrics')]) })
+  shape(base)(value)
+  requireThat(value.event === 'pull_request' ? value.mode !== 'post_merge_main' : value.mode !== 'wave0a_pr_head', 'CI mode/event')
+  const runMap = Object.fromEntries(value.runs.map(run => [run.workflowPath, run]))
+  requireThat(value.runs.every((run, index) => run.workflowPath === workflowPath(contractWorkflows[index]) && run.event === value.event && run.headSha === value.headSha), 'CI run order/identity')
+  requireThat(new Set(value.runs.map(run => run.runId)).size === 4 && new Set(value.jobs.map(job => job.jobId)).size === value.jobs.length, 'CI duplicate identity')
+  requireThat(value.jobs.length === exactJobNames.length && value.jobs.every((job, index) => job.name === exactJobNames[index]), 'CI job roster')
+  for (const job of value.jobs) {
+    const workflow = expectedJobWorkflow.get(job.name), run = runMap[workflow]
+    requireThat(run !== undefined && job.runId === run.runId && job.headSha === value.headSha && job.labels[0] === expectedJobLabel(job.name), 'CI job/run crossing')
+    if (job.name === 'Extension source metrics' && value.event === 'workflow_dispatch') requireThat(job.conclusion === 'skipped', 'CI expected skip')
+    else requireThat(job.conclusion === 'success', 'CI required success')
+  }
+  if (value.event === 'pull_request') requireThat(value.pullRequest.headSha === value.headSha && value.pullRequest.baseSha === value.baseSha && value.pullRequest.headRef === value.runs[0].headBranch, 'CI pull request crossing')
+})
+const mergeabilityObservation = shape({ pullRequest: namedPrObservation, liveMainSha: 'LowercaseSha', mergeable: enumeration(['UNKNOWN', 'MERGEABLE', 'CONFLICTING']), observedAt: 'CanonicalUtc' })
+attachmentUnion('pull-request-mergeability', value => {
+  const base = { schemaVersion: literal(`${S}pull-request-mergeability/v1`), pullRequest: pullRequestIdentity, observations: array(mergeabilityObservation, 1, 120), observedAt: 'CanonicalUtc', diagnostics, pollCount: integer(1, 120), result: literal(value.result) }
+  if (value.result === 'identity_drift') base.driftReason = enumeration(['pr_absent', 'pr_state', 'pr_head', 'pr_branch', 'pr_base', 'live_main', 'conflicting'])
+  shape(base)(value)
+  requireThat(value.pollCount === value.observations.length, 'mergeability poll count')
+  for (const row of value.observations) if (row.pullRequest.observation === 'present') {
+    const pr = row.pullRequest.pullRequest
+    requireThat(pr.number === value.pullRequest.number && pr.headRefOid === value.pullRequest.headSha && pr.headRefName === value.pullRequest.headRef && pr.originalBaseSha === value.pullRequest.baseSha, 'mergeability PR identity')
+  }
+  if (value.result === 'mergeable') requireThat(value.observations.at(-1).mergeable === 'MERGEABLE' && value.observations.at(-1).liveMainSha === value.pullRequest.baseSha, 'mergeability result')
+  if (value.result === 'poll_exhausted') requireThat(value.pollCount === 120, 'mergeability poll exhaustion')
+})
+const commitSignature = shape({ name: literal('bob-builtin-analyze integration'), email: literal('noreply@localhost'), timestamp: 'CanonicalGitTimestamp' })
+function expectedRawCommit(value) {
+  return Buffer.from(`tree ${value.treeOid}\nparent ${value.firstParentSha}\nparent ${value.secondParentSha}\nauthor ${value.author.name} <${value.author.email}> ${value.author.timestamp}\ncommitter ${value.committer.name} <${value.committer.email}> ${value.committer.timestamp}\n\nMerge Wave 0A integration control plane\n`)
+}
+attachmentType('merge-commit-plan', { pullRequest: pullRequestIdentity, treeOid: 'LowercaseSha', firstParentSha: 'LowercaseSha', secondParentSha: 'LowercaseSha', author: commitSignature, committer: commitSignature, message: literal('Merge Wave 0A integration control plane'), rawCommitBase64Url: pattern(/^[A-Za-z0-9_-]+$/u), rawCommitByteSize: 'PositiveSafeInteger', rawCommitSha256: 'LowercaseSha256', expectedMergeSha: 'LowercaseSha', createdAt: 'CanonicalUtc' }, value => {
+  requireThat(value.firstParentSha === value.pullRequest.baseSha && value.secondParentSha === value.pullRequest.headSha, 'merge parent PR binding')
+  const raw = Buffer.from(value.rawCommitBase64Url, 'base64url'), expected = expectedRawCommit(value)
+  requireThat(raw.toString('base64url') === value.rawCommitBase64Url && raw.equals(expected) && raw.length === value.rawCommitByteSize && digest(raw) === value.rawCommitSha256, 'raw commit identity')
+  requireThat(createHash('sha1').update(`commit ${raw.length}\0`).update(raw).digest('hex') === value.expectedMergeSha, 'Git object hash')
+})
+attachmentType('merge-commit-preparation', { pullRequest: pullRequestIdentity, treeOid: 'LowercaseSha', firstParentSha: 'LowercaseSha', secondParentSha: 'LowercaseSha', author: commitSignature, committer: commitSignature, messageSha256: 'LowercaseSha256', rawCommitByteSize: 'PositiveSafeInteger', rawCommitSha256: 'LowercaseSha256', expectedMergeSha: 'LowercaseSha', writeCommand: value => check('CommandObservation', value), verifiedObjectSha256: 'LowercaseSha256', result: literal('prepared'), observedAt: 'CanonicalUtc', diagnostics }, value => {
+  requireThat(value.firstParentSha === value.pullRequest.baseSha && value.secondParentSha === value.pullRequest.headSha && value.messageSha256 === digest(Buffer.from('Merge Wave 0A integration control plane\n')), 'prepared commit binding')
+  requireThat(value.verifiedObjectSha256 === value.rawCommitSha256 && value.writeCommand.outcome === 'success', 'prepared object verification')
+})
+attachmentType('remote-branch-deletion', { branch: 'SafeBranch', expectedHeadSha: 'LowercaseSha', observedMainBefore: 'LowercaseSha', observedMainAfter: 'LowercaseSha', before: gitRefObservations, operation: value => check('CommandObservation', value), after: gitRefObservations, result: enumeration(['deleted', 'already_absent_authenticated', 'applied_with_main_drift']), observedAt: 'CanonicalUtc' }, value => {
+  requireThat(value.before.some(row => row.ref === 'main' && row.sha === value.observedMainBefore), 'delete before main')
+  requireThat(value.before.some(row => row.ref === value.branch && row.sha === value.expectedHeadSha) || value.result === 'already_absent_authenticated', 'delete before feature')
+  requireThat(!value.after.some(row => row.ref === value.branch) && value.after.some(row => row.ref === 'main' && row.sha === value.observedMainAfter), 'delete after refs')
+  requireThat((value.observedMainBefore === value.observedMainAfter) === (value.result !== 'applied_with_main_drift'), 'delete main drift consequence')
+})
+
+const integrationObservation = shape({ pullRequest: namedPrObservation, liveMainSha: 'LowercaseSha', liveFeatureSha: nullable('LowercaseSha'), observedAt: 'CanonicalUtc' })
+const integrationClassification = value => {
+  const kind = value?.kind
+  if (kind === 'integrated_pr_merged' || kind === 'integrated_pr_pending') shape({ kind: literal(kind), integratedMainSha: 'LowercaseSha', featureRefDisposition: literal('absent') })(value)
+  else if (kind === 'not_integrated') shape({ kind: literal(kind), featureRefDisposition: literal('retained_at_h') })(value)
+  else if (kind === 'post_integration_main_drift') shape({ kind: literal(kind), preparedMergeSha: 'LowercaseSha', driftedLiveMainSha: 'LowercaseSha', featureRefDisposition: literal('absent'), preparedMergeReachability: literal('ancestor_of_live_main') })(value)
+  else { requireThat(kind === 'contradictory' || kind === 'timeout', 'integration classification'); shape({ kind: literal(kind) })(value) }
+}
+attachmentType('main-integration-reconciliation', { pullRequest: pullRequestIdentity, integrationCommand: value => check('CommandObservation', value), commandPacketSha256: 'LowercaseSha256', commandRefs: tuple([literal('refs/heads/main'), 'SafeBranch']), observations: array(integrationObservation, 1, 120), pollCount: integer(1, 120), classification: integrationClassification, observedAt: 'CanonicalUtc', diagnostics }, value => {
+  requireThat(value.commandRefs[1] === value.pullRequest.headRef && value.pollCount === value.observations.length, 'integration observation count/branch')
+  const classification = value.classification, last = value.observations.at(-1)
+  if (classification.kind === 'integrated_pr_merged' || classification.kind === 'integrated_pr_pending') {
+    requireThat(last.liveMainSha === classification.integratedMainSha && last.liveFeatureSha === null && classification.integratedMainSha !== value.pullRequest.baseSha, 'integrated classification consequence')
+    requireThat(last.pullRequest.observation === 'present' && last.pullRequest.pullRequest.number === value.pullRequest.number && last.pullRequest.pullRequest.headRefOid === value.pullRequest.headSha, 'integrated PR identity')
+    requireThat((classification.kind === 'integrated_pr_merged') === (last.pullRequest.pullRequest.state === 'MERGED'), 'integrated PR state')
+  } else if (classification.kind === 'not_integrated') requireThat(last.liveMainSha === value.pullRequest.baseSha && last.liveFeatureSha === value.pullRequest.headSha, 'not-integrated consequence')
+})
+
+const settlementObservation = shape({ pullRequest: prObservation, liveMainSha: 'LowercaseSha', liveFeatureSha: literal(null), observedAt: 'CanonicalUtc' })
+const expectedOperationRef = (operation, schema) => value => {
+  operationEvidenceRef(value); requireThat(value.operationInstanceId === operation && value.recordKind === 'postcondition' && value.schemaVersion === `${S}${schema}/v1`, 'owned operation attachment')
+}
+attachmentUnion('main-integration-settlement', value => {
+  const fields = {
+    schemaVersion: literal(`${S}main-integration-settlement/v1`), pullRequest: pullRequestIdentity,
+    mergePreparationMutation: operationRecordLocator, integrationMutation: operationRecordLocator,
+    mergePreparation: expectedOperationRef('prepare-merge-commit', 'merge-commit-preparation'), integrationReconciliation: expectedOperationRef('integrate-main-exact-lease', 'main-integration-reconciliation'),
+    lifecycleAcceptance: value => { campaignEvidenceRef(value); requireThat(value.schemaVersion === `${S}github-atomic-pr-lifecycle-acceptance/v1`, 'lifecycle acceptance reference') },
+    observations: array(settlementObservation, 1, 120), pollCount: integer(1, 120), integratedMainSha: 'LowercaseSha', observedAt: 'CanonicalUtc', diagnostics, result: literal(value?.result)
+  }
+  if (value?.result === 'settled_merged') fields.mergeCommitOid = 'LowercaseSha'
+  else requireThat(value?.result === 'closed_unmerged' || value?.result === 'poll_exhausted', 'settlement result')
+  shape(fields)(value)
+  requireThat(value.mergePreparationMutation.operationInstanceId === 'prepare-merge-commit' && value.integrationMutation.operationInstanceId === 'integrate-main-exact-lease', 'settlement mutation owners')
+  requireThat(value.pollCount === value.observations.length && value.observations.every(row => row.liveMainSha === value.integratedMainSha && row.liveFeatureSha === null && row.pullRequest.number === value.pullRequest.number && row.pullRequest.headRefOid === value.pullRequest.headSha), 'settlement observation identity')
+  const last = value.observations.at(-1)
+  if (value.result === 'settled_merged') requireThat(last.pullRequest.state === 'MERGED' && last.pullRequest.mergeCommitOid === value.mergeCommitOid && value.mergeCommitOid === value.integratedMainSha, 'merged settlement consequence')
+  else if (value.result === 'closed_unmerged') requireThat(last.pullRequest.state === 'CLOSED', 'closed settlement consequence')
+  else requireThat(last.pullRequest.state === 'OPEN' && value.pollCount === 120, 'poll settlement consequence')
+})
+
+const githubRepositoryIdentity = shape({ hostingClass: literal('github.com'), repositoryDatabaseId: 'DecimalString', nodeId: 'SafeId', fullNameLowercase: pattern(/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/u) })
+const repositoryPolicy = shape({ repository: pattern(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u), hostingClass: literal('github.com'), defaultBranch: literal('main'), normalizedIntegrationPolicySha256: 'LowercaseSha256', atomicReceivePackAllowed: literal(true), deleteRefsAllowed: literal(true), observedAt: 'CanonicalUtc' })
+const targetAcceptance = shape({ repository: literal('katamor1/bob_builtin_analyze'), mainSha: 'LowercaseSha', remoteHeadTupleSha256: 'LowercaseSha256', openPullRequestTupleSha256: 'LowercaseSha256', policy: repositoryPolicy, observedAt: 'CanonicalUtc' }, value => requireThat(value.policy.repository === value.repository, 'target policy repository'))
+const acceptancePr = value => {
+  const fields = { repository: pattern(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u), number: 'PositiveSafeInteger', headRepository: pattern(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u), isCrossRepository: literal(false), headRef: 'SafeBranch', headSha: 'LowercaseSha', baseRef: literal('main'), baseSha: 'LowercaseSha', state: literal(value?.state) }
+  if (value?.state === 'MERGED') fields.mergeCommitOid = 'LowercaseSha'
+  else requireThat(value?.state === 'OPEN', 'acceptance PR state')
+  shape(fields)(value); requireThat(value.repository === value.headRepository, 'acceptance cross repository')
+}
+const acceptanceSettlement = shape({ liveMainSha: 'LowercaseSha', liveFeatureSha: nullable('LowercaseSha'), pullRequest: acceptancePr, observedAt: 'CanonicalUtc' })
+const acceptanceRef = shape({ repository: githubRepositoryIdentity, ref: pattern(/^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]*$/u), expectedOldSha: 'LowercaseSha' })
+attachmentType('github-atomic-pr-lifecycle-acceptance', {
+  repositoryIdentity: githubRepositoryIdentity, sourceRef: acceptanceRef, targetRef: acceptanceRef,
+  operationSet: tuple([literal('publish_acceptance_head_exact_absent_lease'), literal('create_same_repository_acceptance_pr'), literal('atomic_update_main_and_delete_acceptance_head')]),
+  gitExecutable: value => { check('ExecutableIdentity', value); requireThat(value.logicalName === 'git', 'acceptance Git identity') }, ghExecutable: value => { check('ExecutableIdentity', value); requireThat(value.logicalName === 'gh', 'acceptance GitHub identity') },
+  targetBefore: targetAcceptance, targetAfter: targetAcceptance, disposablePolicy: repositoryPolicy,
+  before: shape({ mainSha: 'LowercaseSha', featureSha: 'LowercaseSha', pullRequest: acceptancePr }), mergeSha: 'LowercaseSha', mergeParents: tuple(['LowercaseSha', 'LowercaseSha']), mergeTreeOid: 'LowercaseSha',
+  commandPacket: shape({ sha256: 'LowercaseSha256', commands: tuple([shape({ oldSha: 'LowercaseSha', newSha: 'LowercaseSha', ref: literal('refs/heads/main') }), shape({ oldSha: 'LowercaseSha', newSha: literal(null), ref: pattern(/^refs\/heads\/[A-Za-z0-9][A-Za-z0-9._/-]*$/u) })]) }),
+  settlement: array(acceptanceSettlement, 1, 120), after: shape({ mainSha: 'LowercaseSha', featureRef: literal('absent'), pullRequest: acceptancePr }), mergeTopologyVerified: literal(true), observedAt: 'CanonicalUtc', expiresAt: 'CanonicalUtc'
+}, value => {
+  same(value.sourceRef.repository, value.repositoryIdentity, 'acceptance source repository'); same(value.targetRef.repository, value.repositoryIdentity, 'acceptance target repository')
+  requireThat(value.sourceRef.ref !== value.targetRef.ref && value.targetRef.ref === 'refs/heads/main' && value.sourceRef.expectedOldSha === value.before.featureSha && value.targetRef.expectedOldSha === value.before.mainSha, 'acceptance ref leases')
+  requireThat(value.disposablePolicy.repository === value.repositoryIdentity.fullNameLowercase && equal(value.targetBefore, value.targetAfter), 'acceptance target immutability')
+  requireThat(value.before.pullRequest.state === 'OPEN' && value.mergeParents[0] === value.before.mainSha && value.mergeParents[1] === value.before.featureSha, 'acceptance merge parents')
+  requireThat(value.commandPacket.commands[0].oldSha === value.before.mainSha && value.commandPacket.commands[0].newSha === value.mergeSha && value.commandPacket.commands[1].oldSha === value.before.featureSha && value.commandPacket.commands[1].newSha === null && value.commandPacket.commands[1].ref === value.sourceRef.ref, 'acceptance atomic packet')
+  const last = value.settlement.at(-1); requireThat(last.liveMainSha === value.mergeSha && last.liveFeatureSha === null && last.pullRequest.state === 'MERGED' && last.pullRequest.mergeCommitOid === value.mergeSha, 'acceptance settlement')
+  requireThat(value.after.mainSha === value.mergeSha && value.after.pullRequest.state === 'MERGED' && value.after.pullRequest.mergeCommitOid === value.mergeSha && value.expiresAt > value.observedAt, 'acceptance result/expiry')
+})
+attachmentType('github-atomic-pr-lifecycle-validation', { acceptance: 'FileIdentity', currentTarget: targetAcceptance, result: enumeration(['expired', 'invalid']), reason: enumeration(['acceptance_expired', 'approval_expired', 'target_policy_drift', 'target_topology_drift', 'executable_drift', 'command_template_mismatch']), observedAt: 'CanonicalUtc', diagnostics }, value => {
+  requireThat(value.result === 'expired' ? value.reason === 'acceptance_expired' || value.reason === 'approval_expired' : !['acceptance_expired', 'approval_expired'].includes(value.reason), 'lifecycle validation result/reason')
+})
+
+const failureCodes = Object.freeze(['authority_drift', 'archive_drift', 'topology_drift', 'source_drift', 'local_gate_failed', 'review_failed', 'handoff_invalid', 'publication_failed', 'capacity_insufficient', 'pr_identity_drift', 'pr_run_discovery_failed', 'pr_settlement_failed', 'lifecycle_acceptance_invalid', 'ci_failed', 'ci_ambiguous', 'main_dispatch_failed', 'main_run_discovery_failed', 'merge_ambiguous', 'remote_ref_cleanup_failed', 'generated_cleanup_failed', 'artifact_identity_drift', 'mutation_reconciliation_required'])
+attachmentUnion('feature-integration-failure', value => {
+  const fields = { schemaVersion: literal(`${S}feature-integration-failure/v1`), failureCode: enumeration(failureCodes), messageDigestSha256: 'LowercaseSha256', candidatePreservation: value => { campaignEvidenceRef(value); requireThat(value.schemaVersion === `${S}candidate-preservation-manifest/v1`, 'failure preservation schema') }, observedAt: 'CanonicalUtc', diagnostics, commandObservation: literal(value?.commandObservation) }
+  if (value?.commandObservation === 'present') fields.command = value => check('CommandObservation', value)
+  else requireThat(value?.commandObservation === 'absent', 'failure command observation')
+  shape(fields)(value)
+})
+const checkpointDiagnosticLabels = Object.freeze({ authority_drift: ['authority-observation'], archive_drift: ['archive-observation'], topology_drift: ['topology-observation'], source_drift: ['source-observation'], local_gate_failed: ['local-gates'], review_failed: ['independent-review'], handoff_invalid: ['handoff-inspection'], publication_failed: ['publication-observation'], capacity_insufficient: ['capacity-observation'], pr_identity_drift: ['merge-observation'], pr_run_discovery_failed: ['run-discovery-failure'], pr_settlement_failed: ['integration-settlement'], lifecycle_acceptance_invalid: ['lifecycle-acceptance-validation'], ci_failed: ['partial-run'], ci_ambiguous: ['partial-run'], main_dispatch_failed: ['dispatch-observation'], main_run_discovery_failed: ['run-discovery-failure'], merge_ambiguous: ['merge-observation'], remote_ref_cleanup_failed: ['remote-ref-observation'], generated_cleanup_failed: ['cleanup-progress-inspection'], artifact_identity_drift: ['artifact-observation'], mutation_reconciliation_required: ['operation-inspection'] })
+const checkpointAttachments = value => {
+  shape({ candidatePreservation: campaignEvidenceRef, failure: campaignEvidenceRef, diagnostics: array(campaignEvidenceRef, 1, 2) })(value)
+  requireThat(value.candidatePreservation.label === 'candidate-preservation' && value.candidatePreservation.schemaVersion === `${S}candidate-preservation-manifest/v1`, 'checkpoint preservation identity')
+  requireThat(value.failure.label === 'failure' && value.failure.schemaVersion === `${S}feature-integration-failure/v1`, 'checkpoint failure identity')
+}
+attachmentUnion('feature-integration-recovery-checkpoint', value => {
+  const fields = { schemaVersion: literal(`${S}feature-integration-recovery-checkpoint/v1`), attemptId: 'SafeAttemptId', currentEventSha256: 'LowercaseSha256', operationProgress: array(operationRecordLocator, 0, 15), latestTopology: campaignEvidenceRef, recordedAt: 'CanonicalUtc', expectedState: enumeration(['READY', 'LOCAL', 'PR_ACTIVE', 'MERGED', 'POST_MERGE_VERIFIED', 'MAIN_ONLY']), resumeProfile: 'SafeId', checkpointProfile: enumeration(['normal', 'mutation_reconciliation', 'partial_cleanup']), failureCode: enumeration(failureCodes), attachments: checkpointAttachments }
+  if (Object.hasOwn(value ?? {}, 'cleanupJournalProgress')) fields.cleanupJournalProgress = object => requireThat(object !== null && typeof object === 'object' && !Array.isArray(object), 'cleanup journal progress')
+  if (Object.hasOwn(value ?? {}, 'reconciliationOrigin')) fields.reconciliationOrigin = object => requireThat(object !== null && typeof object === 'object' && !Array.isArray(object), 'reconciliation origin')
+  shape(fields)(value)
+  requireThat(value.latestTopology.schemaVersion === `${S}slice-topology-evidence/v1` && value.latestTopology.attemptId === value.attemptId, 'checkpoint topology owner')
+  for (const ref of [value.attachments.candidatePreservation, value.attachments.failure, ...value.attachments.diagnostics]) requireThat(ref.attemptId === value.attemptId, 'checkpoint attachment owner')
+  requireThat(equal(value.attachments.diagnostics.map(ref => ref.label), checkpointDiagnosticLabels[value.failureCode]), 'checkpoint diagnostic labels')
+  requireThat((value.failureCode === 'mutation_reconciliation_required') === (value.checkpointProfile === 'mutation_reconciliation'), 'checkpoint mutation profile')
+})
+
+const operationIds = Object.freeze({
+  'publish-branch': 'publish_branch', 'create-pull-request': 'create_pull_request', 'close-pull-request-abort': 'close_pull_request_abort', 'delete-remote-branch-abort': 'delete_remote_branch_abort', 'prepare-merge-commit': 'prepare_merge_commit', 'integrate-main-exact-lease': 'integrate_main_exact_lease', 'fetch-after-integration': 'fetch_exact_main',
+  'dispatch-extensions-quality': 'dispatch_extensions_quality', 'dispatch-workflow-contracts': 'dispatch_workflow_contracts', 'dispatch-code-consistency-review-scaffold': 'dispatch_code_consistency_review_scaffold', 'dispatch-three-extension-ui-contracts': 'dispatch_three_extension_ui_contracts',
+  'cleanup-generated-paths': 'cleanup_generated_paths', 'fast-forward-root': 'fast_forward_root', 'remove-feature-worktree': 'remove_feature_worktree', 'delete-local-branch': 'delete_local_branch'
+})
+const mutationOperationIdentity = fields => value => {
+  shape({ ...fields, operationInstanceId: 'Wave0aOperationInstanceId', operationId: 'SafeId' })(value)
+  requireThat(value.operationId === operationIds[value.operationInstanceId], 'operation discriminator pair')
+}
+const closedEnvironment = shape({ SystemRoot: 'AbsolutePath', ComSpec: 'AbsolutePath', USERPROFILE: 'AbsolutePath', APPDATA: 'AbsolutePath', LOCALAPPDATA: 'AbsolutePath', TEMP: 'AbsolutePath', TMP: 'AbsolutePath', GIT_CONFIG_NOSYSTEM: literal('1'), GIT_CONFIG_SYSTEM: literal('NUL'), GIT_CONFIG_GLOBAL: 'AbsolutePath', GIT_OPTIONAL_LOCKS: literal('0'), GIT_PAGER: literal('cat'), GIT_TERMINAL_PROMPT: literal('0'), GCM_INTERACTIVE: literal('Never'), GH_CONFIG_DIR: 'AbsolutePath', GH_HOST: literal('github.com'), GH_PROMPT_DISABLED: literal('1'), NO_COLOR: literal('1') })
+const closedStdin = value => {
+  if (value?.kind === 'none') shape({ kind: literal('none') })(value)
+  else {
+    shape({ kind: literal('fixed_utf8_lf'), byteSize: 'PositiveSafeInteger', sha256: 'LowercaseSha256', bytesBase64Url: pattern(/^[A-Za-z0-9_-]+$/u) })(value)
+    const raw = Buffer.from(value.bytesBase64Url, 'base64url'); requireThat(raw.toString('base64url') === value.bytesBase64Url && raw.length === value.byteSize && digest(raw) === value.sha256, 'fixed stdin identity')
+    let text; try { text = new TextDecoder('utf-8', { fatal: true }).decode(raw) } catch { fail('fixed stdin UTF-8') }
+    requireThat(!text.includes('\r') && text.endsWith('\n'), 'fixed stdin LF')
+  }
+}
+const closedCommandPlan = shape({ executableIdentity: 'ExecutableIdentity', argv: array(boundedText(0, 4096, false), 0, 4096), argvSha256: 'LowercaseSha256', stdin: closedStdin, environment: closedEnvironment, environmentSha256: 'LowercaseSha256', cwd: shape({ kind: literal('absolute'), path: 'AbsolutePath' }), deadlineMs: 'PositiveSafeInteger', stdoutBytes: 'PositiveSafeInteger', stderrBytes: 'PositiveSafeInteger' }, value => {
+  requireThat(value.argvSha256 === hash(value.argv) && value.environmentSha256 === hash(value.environment), 'closed command aggregate')
+})
+const repositoryExecutionIdentity = shape({ repositoryRoot: 'AbsolutePath', commonGitDirectory: 'DirectoryIdentity', objectDirectory: 'DirectoryIdentity', originUrl: literal('https://github.com/katamor1/bob_builtin_analyze.git'), effectiveConfigSha256: 'LowercaseSha256', sanitizedGlobalConfig: 'FileIdentity', credentialHelper: 'ExecutableIdentity', ghConfigDirectory: 'DirectoryIdentity', gitRefTransactionCapabilitySha256: 'LowercaseSha256', hooksDisabled: literal(true) }, value => {
+  requireThat(inside(value.objectDirectory.canonicalPath, value.commonGitDirectory.canonicalPath), 'repository object directory containment')
+})
+const mutationPathIdentity = value => {
+  const common = { kind: literal(value?.kind), argumentIndex: 'NonnegativeSafeInteger', role: 'SafeId', canonicalPath: 'AbsolutePath' }
+  if (value?.kind === 'file') shape({ ...common, dev: 'DecimalString', ino: 'DecimalString', byteSize: 'NonnegativeSafeInteger', mtimeNs: 'DecimalString', ctimeNs: 'DecimalString', sha256: 'LowercaseSha256' })(value)
+  else if (value?.kind === 'directory') shape({ ...common, dev: 'DecimalString', ino: 'DecimalString', mtimeNs: 'DecimalString', ctimeNs: 'DecimalString', entryCount: 'NonnegativeSafeInteger', treeSha256: 'LowercaseSha256' })(value)
+  else if (value?.kind === 'mutable_worktree') shape({ ...common, role: literal('worktree'), handleIdentity: 'DirectoryHandleIdentity', handleShareMode: literal('read_write_no_delete'), expectedBeforeEntryCount: 'NonnegativeSafeInteger', expectedBeforeTreeSha256: 'LowercaseSha256' })(value)
+  else fail('mutation path identity kind')
+}
+const mutationExecutionPlan = value => {
+  if (value?.kind === 'single_command') shape({ kind: literal('single_command'), command: closedCommandPlan })(value)
+  else fail('unsupported closed execution plan')
+}
+const mutationExecutionObservation = value => {
+  if (value?.kind === 'single_command') shape({ kind: literal('single_command'), command: value => check('CommandObservation', value) })(value)
+  else fail('unsupported execution observation')
+}
+const mutationRequestBase = { schemaVersion: literal(`${S}wave0a-mutation-request/v1`), attemptId: 'SafeAttemptId', subject: 'Wave0aSubject', decisionAuthority: 'Wave0aDecisionAuthority', predecessorState: enumeration(['READY', 'LOCAL', 'PR_ACTIVE', 'MERGED', 'POST_MERGE_VERIFIED', 'MAIN_ONLY']), currentEventSha256: 'LowercaseSha256', topology: operationEvidenceRef, evidence: array(operationEvidenceRef, 0, 7) }
+attachmentUnion('wave0a-mutation-request', value => {
+  const operation = value?.operationInstanceId, fields = { ...mutationRequestBase }
+  if (operation === 'publish-branch') Object.assign(fields, { branch: 'SafeBranch', headSha: 'LowercaseSha', baseSha: 'LowercaseSha' })
+  else if (operation === 'create-pull-request') Object.assign(fields, { branch: 'SafeBranch', headSha: 'LowercaseSha', baseSha: 'LowercaseSha', body: 'FileIdentity' })
+  else if (operation === 'close-pull-request-abort') Object.assign(fields, { pullRequest: pullRequestIdentity, preservation: operationEvidenceRef, recoveryCheckpoint: operationEvidenceRef })
+  else if (operation === 'delete-remote-branch-abort') Object.assign(fields, { branch: 'SafeBranch', expectedHeadSha: 'LowercaseSha', baseSha: 'LowercaseSha', preservation: operationEvidenceRef, recoveryCheckpoint: operationEvidenceRef })
+  else if (operation?.startsWith('dispatch-')) Object.assign(fields, { workflowPath: literal(`.github/workflows/${operation.slice('dispatch-'.length)}.yml`), mainSha: 'LowercaseSha', ref: literal('main'), dispatchNonce: 'SafeDispatchNonce', expectedRunName: 'BoundedString' })
+  else if (operation === 'prepare-merge-commit') Object.assign(fields, { pullRequest: pullRequestIdentity, headTreeOid: 'LowercaseSha', commitPlan: operationEvidenceRef, expectedMergeSha: 'LowercaseSha' })
+  else if (operation === 'integrate-main-exact-lease') Object.assign(fields, { pullRequest: pullRequestIdentity, mergePreparation: operationEvidenceRef, lifecycleAcceptance: campaignEvidenceRef, mergeSha: 'LowercaseSha', branch: 'SafeBranch', expectedHeadSha: 'LowercaseSha', headTreeOid: 'LowercaseSha' })
+  else if (operation === 'fetch-after-integration') Object.assign(fields, { phase: literal('after_integration'), mainSha: 'LowercaseSha' })
+  else if (operation === 'cleanup-generated-paths') Object.assign(fields, { mode: enumeration(['pre_merge_abort_cleanup', 'main_only_cleanup', 'post_merge_failure_cleanup']), repositoryRoot: 'AbsolutePath', beforeInventory: 'FileIdentity', afterInventory: 'FileIdentity', deletionPlan: operationEvidenceRef })
+  else if (operation === 'fast-forward-root') Object.assign(fields, { mode: enumeration(['post_merge_success', 'post_merge_failure_cleanup']), rootWorktreePath: 'AbsolutePath', worktreeRegistryFence: 'WorktreeRegistryFence', materializationPlan: operationEvidenceRef, baseSha: 'LowercaseSha', mergeSha: 'LowercaseSha', headSha: 'LowercaseSha', headTreeOid: 'LowercaseSha' })
+  else if (operation === 'remove-feature-worktree') Object.assign(fields, { mode: enumeration(['post_merge_success', 'post_merge_failure_cleanup']), featureWorktreePath: 'AbsolutePath', branch: 'SafeBranch', expectedHeadSha: 'LowercaseSha', expectedHeadTreeOid: 'LowercaseSha', controllerProof: object => requireThat(object !== null && typeof object === 'object' && !Array.isArray(object), 'controller proof') })
+  else if (operation === 'delete-local-branch') Object.assign(fields, { mode: enumeration(['post_merge_success', 'post_merge_failure_cleanup']), branch: 'SafeBranch', expectedHeadSha: 'LowercaseSha', mergedAncestorSha: 'LowercaseSha', worktreeRegistryFence: 'WorktreeRegistryFence' })
+  else fail('mutation request operation')
+  mutationOperationIdentity(fields)(value)
+  requireThat(value.topology.attemptId === value.attemptId && value.topology.operationInstanceId === operation && value.topology.recordKind === 'precondition' && value.topology.schemaVersion === `${S}slice-topology-evidence/v1`, 'mutation request topology owner')
+  for (const ref of value.evidence) requireThat(ref.attemptId === value.attemptId && ref.operationInstanceId === operation, 'mutation request evidence owner')
+})
+attachmentUnion('wave0a-mutation-intent', value => {
+  const fields = { schemaVersion: literal(`${S}wave0a-mutation-intent/v1`), attemptId: 'SafeAttemptId', subject: 'Wave0aSubject', decisionAuthority: 'Wave0aDecisionAuthority', predecessorState: enumeration(['READY', 'LOCAL', 'PR_ACTIVE', 'MERGED', 'POST_MERGE_VERIFIED', 'MAIN_ONLY']), currentEventSha256: 'LowercaseSha256', requestEvidence: operationEvidenceRef, mutationContractIdentity: 'RepoObjectIdentity', preconditionEvidence: array(operationEvidenceRef, 1, 7), executionPlan: mutationExecutionPlan, executionPlanSha256: 'LowercaseSha256', repositoryExecutionIdentity, pathArgumentIdentities: array(mutationPathIdentity, 0, 64), createdAt: 'CanonicalUtc' }
+  mutationOperationIdentity(fields)(value)
+  requireThat(value.requestEvidence.attemptId === value.attemptId && value.requestEvidence.operationInstanceId === value.operationInstanceId && value.requestEvidence.recordKind === 'request' && value.requestEvidence.schemaVersion === `${S}wave0a-mutation-request/v1`, 'intent request owner')
+  requireThat(value.mutationContractIdentity.repositoryPath === 'tools/main-consolidation/wave0a-mutations.json' && value.executionPlanSha256 === hash(value.executionPlan), 'intent contract/execution digest')
+  requireThat(new Set(value.preconditionEvidence.map(ref => ref.label)).size === value.preconditionEvidence.length && value.preconditionEvidence.every(ref => ref.attemptId === value.attemptId && ref.operationInstanceId === value.operationInstanceId && ref.recordKind === 'precondition'), 'intent preconditions')
+  requireThat(value.pathArgumentIdentities.every((row, index) => row.argumentIndex === index), 'intent argument ordinal')
+})
+
+const processIdentity = value => check('WindowsProcessIdentity', value)
+const processExit = value => {
+  const fields = { expectedProcess: processIdentity, state: literal(value?.state) }
+  if (value?.state === 'pid_reused') fields.observedCreationFileTime100ns = 'DecimalString'
+  else requireThat(value?.state === 'signaled' || value?.state === 'not_found', 'process exit state')
+  shape(fields)(value)
+  if (value.state === 'pid_reused') requireThat(value.observedCreationFileTime100ns !== value.expectedProcess.creationFileTime100ns, 'PID reuse identity')
+}
+const operationFence = shape({ coordinationFile: 'CoordinationLeaseFileIdentity', lease: literal('exclusive_owner_death_observation'), byteOffset: literal(0), byteLength: literal(1), acquiredAt: 'CanonicalUtc' })
+attachmentUnion('wave0a-operation-claim', value => {
+  const common = { schemaVersion: literal(`${S}wave0a-operation-claim/v1`), operationInstanceId: 'Wave0aOperationInstanceId', intentSha256: 'LowercaseSha256', runPublicationReservationSha256: 'LowercaseSha256', claimOrdinal: 'OperationClaimOrdinal', claimPath: 'SafeOperationClaimPath', priorClaim: nullable('OperationClaimLink'), priorTerminationProof: nullable('OperationTerminationProofLink'), coordinationFile: 'CoordinationLeaseFileIdentity', executionPlanSha256: 'LowercaseSha256', deadlineAt: 'CanonicalUtc', deadlineBoot: 'WindowsBootIdentity', deadlineUnbiased100ns: 'DecimalString', processResultPath: 'SafeRepositoryPath', recordedAt: 'CanonicalUtc', kind: literal(value?.kind) }
+  if (value?.kind === 'supervisor') shape({ ...common, coordinationLease: literal('shared_supervisor'), supervisorProcess: processIdentity, childProcess: processIdentity, jobContract: literal('kill_on_close_single_noninheritable_supervisor_handle') })(value)
+  else fail('unsupported operation claim kind')
+  const owner = `operations/${value.claimPath.split('/')[1]}/${value.operationInstanceId}/`
+  requireThat(value.claimPath.startsWith(owner) && value.processResultPath === `${owner}process-result.json` && Number(value.claimPath.split('/').at(-1).slice(0, 4)) === value.claimOrdinal, 'claim owned paths')
+  requireThat(value.claimOrdinal === 1 ? value.priorClaim === null && value.priorTerminationProof === null : value.priorClaim?.ordinal === value.claimOrdinal - 1 && value.priorTerminationProof?.ordinal === value.claimOrdinal - 1, 'claim predecessor')
+  requireThat(!equal(value.supervisorProcess, value.childProcess) && equal(value.deadlineBoot, value.supervisorProcess.boot), 'claim process/deadline identity')
+})
+attachmentType('wave0a-process-result', { operationInstanceId: 'Wave0aOperationInstanceId', intentSha256: 'LowercaseSha256', runPublicationReservationSha256: 'LowercaseSha256', claim: 'OperationClaimLink', execution: mutationExecutionObservation, recordedAt: 'CanonicalUtc' }, value => {
+  requireThat(value.claim.path.includes(`/${value.operationInstanceId}/claims/`), 'process result claim owner')
+})
+attachmentType('wave0a-job-termination-proof', { operationInstanceId: 'Wave0aOperationInstanceId', intentSha256: 'LowercaseSha256', proofPublicationReservationSha256: 'LowercaseSha256', claim: 'OperationClaimLink', supervisorExit: processExit, childExit: processExit, jobContract: literal('kill_on_close_single_noninheritable_supervisor_handle'), coordinationFence: operationFence, observation: literal('exclusive_fence_supervisor_and_child_exited'), observedAt: 'CanonicalUtc' }, value => {
+  requireThat(value.claim.path.includes(`/${value.operationInstanceId}/claims/`) && equal(value.coordinationFence.coordinationFile, value.coordinationFence.coordinationFile), 'termination proof owner')
+})
+attachmentUnion('wave0a-mutation-receipt', value => {
+  const fields = { schemaVersion: literal(`${S}wave0a-mutation-receipt/v1`), operationInstanceId: 'Wave0aOperationInstanceId', intentSha256: 'LowercaseSha256', postconditionEvidence: array(operationEvidenceRef, 1, 3), recordedAt: 'CanonicalUtc', diagnostics, receiptMode: enumeration(['supervisor', 'reconciler']), execution: mutationExecutionObservation, effectiveClaim: operationEvidenceRef, reconciliation: enumeration(['applied', 'not_applied', 'contradictory', 'ambiguous', 'applied_with_main_drift']), requiresManualDecision: 'Boolean' }
+  shape(fields)(value)
+  requireThat(value.effectiveClaim.operationInstanceId === value.operationInstanceId && value.effectiveClaim.recordKind === 'claim' && value.effectiveClaim.schemaVersion === `${S}wave0a-operation-claim/v1`, 'receipt claim owner')
+  requireThat(value.postconditionEvidence.every(ref => ref.operationInstanceId === value.operationInstanceId && ref.recordKind === 'postcondition'), 'receipt postcondition owner')
+  requireThat(value.requiresManualDecision === (value.reconciliation !== 'applied') && (value.reconciliation !== 'applied_with_main_drift' || value.operationInstanceId === 'delete-remote-branch-abort'), 'receipt reconciliation consequence')
+})
+
+const operationClaimEvidence = value => { operationEvidenceRef(value); requireThat(value.recordKind === 'claim' && value.schemaVersion === `${S}wave0a-operation-claim/v1`, 'claim evidence schema') }
+const operationProofEvidence = value => { operationEvidenceRef(value); requireThat(value.recordKind === 'termination_proof' && value.schemaVersion === `${S}wave0a-job-termination-proof/v1`, 'proof evidence schema') }
+attachmentUnion('wave0a-operation-inspection', value => {
+  const common = { schemaVersion: literal(`${S}wave0a-operation-inspection/v1`), operationInstanceId: 'Wave0aOperationInstanceId', inspectedAt: 'CanonicalUtc', diagnostics, classification: literal(value?.classification) }
+  if (value?.classification === 'absent') shape({ ...common, intent: literal(null), receipt: literal(null), executionChainState: literal('unclaimed'), claimChain: tuple([]), terminationProofChain: tuple([]), effectiveClaim: literal(null), processResult: literal(null), terminationProof: literal(null) })(value)
+  else {
+    requireThat(value?.classification === 'intent_only' || value?.classification === 'receipted', 'inspection classification')
+    const fields = { ...common, intent: operationRecordLocator, receipt: value.classification === 'receipted' ? operationRecordLocator : literal(null), executionChainState: enumeration(['result_durable', 'terminated_without_result', 'no_spawn_fenced', 'proof_required', 'unclaimed']), claimChain: array(operationClaimEvidence, 0, 128), terminationProofChain: array(operationProofEvidence, 0, 128), effectiveClaim: value.effectiveClaim === null ? literal(null) : operationClaimEvidence, processResult: value.processResult === null ? literal(null) : operationEvidenceRef, terminationProof: value.terminationProof === null ? literal(null) : operationProofEvidence }
+    shape(fields)(value)
+    requireThat(value.intent.operationInstanceId === value.operationInstanceId && (value.receipt === null || value.receipt.operationInstanceId === value.operationInstanceId), 'inspection locator owner')
+    if (value.executionChainState !== 'unclaimed') requireThat(value.claimChain.length > 0 && equal(value.effectiveClaim, value.claimChain.at(-1)), 'inspection effective claim chain')
+    if (value.executionChainState === 'result_durable') requireThat(value.processResult !== null && value.processResult.operationInstanceId === value.operationInstanceId && value.processResult.recordKind === 'process_result' && value.terminationProof === null, 'inspection durable result')
+  }
+})
+const commandTermination = value => {
+  const outcome = value?.outcome, fields = terminationFields(outcome)
+  if ((outcome === 'timeout' || outcome === 'overflow') && Object.hasOwn(value ?? {}, 'treeTermination')) fields.treeTermination = enumeration(['job_closed_and_empty', 'termination_failed'])
+  shape(fields)(value)
+}
+attachmentUnion('wave0a-supervised-operation-result', value => {
+  const fields = { schemaVersion: literal(`${S}wave0a-supervised-operation-result/v1`), attemptId: 'SafeAttemptId', intentSha256: 'LowercaseSha256', reservationSha256: 'LowercaseSha256', observedAt: 'CanonicalUtc', program: enumeration(['ordinary', 'generated_cleanup', 'root_fast_forward', 'worktree_removal']), operationInstanceId: 'Wave0aOperationInstanceId', progress: array(value => { requireThat(value !== null && typeof value === 'object' && !Array.isArray(value), 'progress locator') }, 0, 18), outcome: literal(value?.outcome), claim: value?.claim === null ? literal(null) : 'OperationClaimLink', processResult: value?.processResult === null ? literal(null) : 'FileIdentity', termination: commandTermination }
+  shape(fields)(value)
+  const expectedProgram = value.operationInstanceId === 'cleanup-generated-paths' ? 'generated_cleanup' : value.operationInstanceId === 'fast-forward-root' ? 'root_fast_forward' : value.operationInstanceId === 'remove-feature-worktree' ? 'worktree_removal' : 'ordinary'
+  requireThat(value.program === expectedProgram, 'supervised program operation')
+  if (value.outcome === 'settled_with_result') requireThat(value.claim !== null && value.processResult !== null && !['spawn_error'].includes(value.termination.outcome) && value.termination.treeTermination !== 'termination_failed', 'settled supervised result')
+  else if (value.outcome === 'preclaim_spawn_failed') requireThat(value.claim === null && value.processResult === null && value.progress.length === 0 && value.termination.outcome === 'spawn_error', 'preclaim supervised result')
+  else { requireThat(value.outcome === 'owner_unavailable_without_result' && value.claim !== null && value.processResult === null && value.termination.treeTermination === 'termination_failed', 'unavailable supervised result') }
+})
+const currentAttemptEvent = shape({ sequence: 'PositiveSafeInteger', path: 'SafeAttemptEventPath', sha256: 'LowercaseSha256' }, value => requireThat(Number(value.path.slice(7, 11)) === value.sequence, 'event sequence/path'))
+attachmentUnion('wave0a-historical-precheckpoint-validation', value => {
+  const fields = { schemaVersion: literal(`${S}wave0a-historical-precheckpoint-validation/v1`), historicalBootstrapIdentity: 'FileIdentity', sourceHandoff: 'FileIdentity', intentSha256: 'LowercaseSha256', priorCampaignIndexHead: 'IndexHead', currentCampaignIndexHead: 'IndexHead', currentEvent: currentAttemptEvent, priorOperationPrefixSha256: 'LowercaseSha256', currentOperationPrefixSha256: 'LowercaseSha256', observedProgramStateSha256: 'LowercaseSha256', validatedAt: 'CanonicalUtc', operationInstanceId: 'Wave0aOperationInstanceId', program: enumeration(['observe_only_no_spawn', 'generated_cleanup', 'root_fast_forward', 'worktree_removal']), priorOwnerState: enumeration(['unclaimed', 'terminated_without_result', 'result_durable', 'proof_required']), currentOwnerState: enumeration(['unclaimed', 'terminated_without_result', 'result_durable']), allowedDelta: enumeration(['none', 'same_ordinal_termination_proof']) }
+  if (value?.allowedDelta === 'same_ordinal_termination_proof') Object.assign(fields, { provedClaim: 'OperationClaimLink', newTerminationProof: 'OperationTerminationProofLink' })
+  shape(fields)(value)
+  const expectedProgram = value.operationInstanceId === 'cleanup-generated-paths' ? 'generated_cleanup' : value.operationInstanceId === 'fast-forward-root' ? 'root_fast_forward' : value.operationInstanceId === 'remove-feature-worktree' ? 'worktree_removal' : 'observe_only_no_spawn'
+  requireThat(value.program === expectedProgram, 'historical program operation')
+  if (value.allowedDelta === 'none') requireThat(value.priorOwnerState === value.currentOwnerState && value.priorOperationPrefixSha256 === value.currentOperationPrefixSha256, 'historical unchanged prefix')
+  else requireThat(value.priorOwnerState === 'proof_required' && value.currentOwnerState === 'terminated_without_result' && value.provedClaim.ordinal === value.newTerminationProof.ordinal, 'historical proof delta')
+})
+
+requireThat(Object.keys(attachmentValidators).length === ATTACHMENT_SCHEMA_ROWS.length && ATTACHMENT_SCHEMA_ROWS.every(row => Object.hasOwn(attachmentValidators, row.schemaVersion.slice(S.length, -3))), 'complete attachment validator registry')
+Object.freeze(attachmentValidators)
 
 export function getAttachmentSchemaRegistry() {
   return ATTACHMENT_SCHEMA_ROWS.map(row => ({ ...row }))
@@ -618,7 +1496,9 @@ export function validateAttachmentPayload(value, options) {
   requireThat(options !== null && typeof options === 'object' && !Array.isArray(options) && Object.keys(options).length === 1 && Object.hasOwn(options, 'producer') && options.producer === row.producer, 'attachment producer')
   canonicalBytes(value, row.byteCap)
   const name = row.schemaVersion.slice(S.length, -3)
-  requireThat(attachmentProfileJson[name].has(renderJson(value)), 'attachment semantic profile')
+  const validator = attachmentValidators[name]
+  requireThat(typeof validator === 'function', 'missing attachment validator')
+  validator(value)
   return cloneJson(value)
 }
 export function parseAttachmentBytes(input, metadata) {
@@ -637,21 +1517,199 @@ export function parseAttachmentBytes(input, metadata) {
 }
 
 const RAW_CANDIDATE_CAP = 16777216
+const RAW_CANDIDATE_KINDS = Object.freeze(['git_bundle', 'git_binary_patch', 'diagnostic_log'])
 export function validateRawCandidateByteSize(kind, byteSize) {
-  requireThat(Object.hasOwn(rawCandidateLiterals, kind), 'unknown raw candidate kind')
+  requireThat(RAW_CANDIDATE_KINDS.includes(kind), 'unknown raw candidate kind')
   requireThat(Number.isSafeInteger(byteSize) && byteSize > 0 && byteSize <= RAW_CANDIDATE_CAP, 'raw candidate byte cap')
   return byteSize
 }
+
+function fatalUtf8(raw, label) {
+  try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(raw) } catch { fail(`invalid ${label} UTF-8`) }
+}
+
+const PACK_OBJECT_TYPES = Object.freeze(Object.assign(Object.create(null), { 1: 'commit', 2: 'tree', 3: 'blob', 4: 'tag' }))
+function packObjectId(type, data) {
+  return createHash('sha1').update(`${type} ${data.length}\0`).update(data).digest('hex')
+}
+function applyGitDelta(base, delta) {
+  let cursor = 0
+  const readSize = () => {
+    let result = 0, shift = 0, byte
+    do {
+      requireThat(cursor < delta.length && shift <= 28, 'git pack delta size')
+      byte = delta[cursor++]
+      result += (byte & 0x7f) * (2 ** shift)
+      shift += 7
+      requireThat(result <= RAW_CANDIDATE_CAP, 'git pack delta byte cap')
+    } while (byte & 0x80)
+    return result
+  }
+  requireThat(readSize() === base.length, 'git pack delta base size')
+  const resultSize = readSize()
+  const chunks = []
+  let produced = 0
+  while (cursor < delta.length) {
+    const command = delta[cursor++]
+    if (command & 0x80) {
+      let offset = 0, size = 0
+      for (const [mask, shift] of [[0x01, 0], [0x02, 8], [0x04, 16], [0x08, 24]]) if (command & mask) { requireThat(cursor < delta.length, 'git pack delta copy offset'); offset += delta[cursor++] * (2 ** shift) }
+      for (const [mask, shift] of [[0x10, 0], [0x20, 8], [0x40, 16]]) if (command & mask) { requireThat(cursor < delta.length, 'git pack delta copy size'); size += delta[cursor++] * (2 ** shift) }
+      if (size === 0) size = 0x10000
+      requireThat(offset + size <= base.length && produced + size <= resultSize, 'git pack delta copy range')
+      chunks.push(base.subarray(offset, offset + size)); produced += size
+    } else {
+      requireThat(command > 0 && cursor + command <= delta.length && produced + command <= resultSize, 'git pack delta insert range')
+      chunks.push(delta.subarray(cursor, cursor + command)); cursor += command; produced += command
+    }
+  }
+  requireThat(produced === resultSize, 'git pack delta result size')
+  return Buffer.concat(chunks, resultSize)
+}
+function parseGitPack(pack) {
+  requireThat(pack.length >= 12 && pack.subarray(0, 4).equals(Buffer.from('PACK')), 'git bundle pack signature')
+  requireThat([2, 3].includes(pack.readUInt32BE(4)), 'git bundle pack version')
+  const count = pack.readUInt32BE(8)
+  requireThat(count > 0 && count <= pack.length - 12, 'git bundle pack object count')
+  let cursor = 12
+  const byOffset = new Map(), byOid = new Map()
+  for (let index = 0; index < count; index++) {
+    const objectOffset = cursor
+    requireThat(cursor < pack.length, 'git pack truncated object header')
+    let byte = pack[cursor++], typeCode = (byte >> 4) & 7, size = byte & 15, shift = 4
+    while (byte & 0x80) {
+      requireThat(cursor < pack.length && shift <= 28, 'git pack object size header')
+      byte = pack[cursor++]; size += (byte & 0x7f) * (2 ** shift); shift += 7
+      requireThat(size <= RAW_CANDIDATE_CAP, 'git pack object byte cap')
+    }
+    requireThat(Object.hasOwn(PACK_OBJECT_TYPES, typeCode) || typeCode === 6 || typeCode === 7, 'git pack object type')
+    let baseOffset, baseOid
+    if (typeCode === 6) {
+      requireThat(cursor < pack.length, 'git pack offset delta base')
+      let distanceByte = pack[cursor++], distance = distanceByte & 0x7f
+      while (distanceByte & 0x80) {
+        requireThat(cursor < pack.length && distance <= RAW_CANDIDATE_CAP, 'git pack offset delta distance')
+        distanceByte = pack[cursor++]; distance = ((distance + 1) * 128) + (distanceByte & 0x7f)
+      }
+      baseOffset = objectOffset - distance
+      requireThat(baseOffset >= 12 && byOffset.has(baseOffset), 'git pack offset delta target')
+    } else if (typeCode === 7) {
+      requireThat(cursor + 20 <= pack.length, 'git pack reference delta base')
+      baseOid = pack.subarray(cursor, cursor + 20).toString('hex'); cursor += 20
+    }
+    let inflated
+    try { inflated = inflateSync(pack.subarray(cursor), { info: true, maxOutputLength: RAW_CANDIDATE_CAP }) } catch { fail('invalid git pack compressed object') }
+    const data = Buffer.from(inflated.buffer)
+    const consumed = inflated.engine.bytesWritten
+    requireThat(Number.isSafeInteger(consumed) && consumed > 0 && cursor + consumed <= pack.length && data.length === size, 'git pack compressed object boundary')
+    cursor += consumed
+    let object = null
+    if (Object.hasOwn(PACK_OBJECT_TYPES, typeCode)) object = { type: PACK_OBJECT_TYPES[typeCode], data }
+    else {
+      const base = typeCode === 6 ? byOffset.get(baseOffset) : byOid.get(baseOid)
+      if (base !== undefined && base !== null) object = { type: base.type, data: applyGitDelta(base.data, data) }
+    }
+    if (object !== null) {
+      object.oid = packObjectId(object.type, object.data)
+      byOid.set(object.oid, object)
+    }
+    byOffset.set(objectOffset, object)
+  }
+  requireThat(cursor === pack.length, 'git pack trailing or missing object bytes')
+  return byOid
+}
+function validateCandidateCommit(data, manifest) {
+  const separator = data.indexOf(Buffer.from('\n\n'))
+  requireThat(separator > 0, 'git bundle commit header boundary')
+  const header = data.subarray(0, separator + 1)
+  requireThat(!header.includes(0x00) && !header.includes(0x0d), 'git bundle commit header bytes')
+  const lines = header.toString('ascii').slice(0, -1).split('\n')
+  const trees = lines.flatMap(line => /^tree ([0-9a-f]{40})$/u.exec(line)?.[1] ?? [])
+  const parents = lines.flatMap(line => /^parent ([0-9a-f]{40})$/u.exec(line)?.[1] ?? [])
+  requireThat(trees.length === 1 && trees[0] === manifest.treeOid && parents.includes(manifest.baseSha), 'git bundle commit topology binding')
+}
+
+function validateGitBundleBytes(raw, reference, manifest) {
+  const separator = raw.indexOf(Buffer.from('\n\n'))
+  requireThat(separator > 0 && separator <= 65536, 'git bundle header boundary')
+  const headerBytes = raw.subarray(0, separator + 2)
+  const header = fatalUtf8(headerBytes, 'git bundle header')
+  requireThat(!header.includes('\r') && !header.includes('\0') && header.endsWith('\n\n'), 'git bundle header line endings')
+  const lines = header.slice(0, -2).split('\n')
+  requireThat(lines.shift() === '# v2 git bundle', 'git bundle signature')
+  const prerequisites = [], references = []
+  for (const line of lines) {
+    let match = /^-([0-9a-f]{40}) ([\x20-\x7e]{1,1024})$/u.exec(line)
+    if (match !== null) { prerequisites.push(match[1]); continue }
+    match = /^([0-9a-f]{40}) refs\/heads\/(.+)$/u.exec(line)
+    requireThat(match !== null, 'git bundle reference header')
+    check('SafeBranch', match[2])
+    references.push({ sha: match[1], ref: `refs/heads/${match[2]}` })
+  }
+  requireThat(prerequisites.includes(manifest.baseSha) && references.some(row => row.sha === reference.verifiedHeadSha) && reference.verifiedHeadSha === manifest.headSha, 'git bundle commit binding')
+  requireThat(new Set(prerequisites).size === prerequisites.length && new Set(references.map(row => row.ref)).size === references.length && references.length > 0, 'git bundle reference set')
+  const pack = raw.subarray(separator + 2)
+  requireThat(pack.length >= 32 && pack.subarray(0, 4).equals(Buffer.from('PACK')), 'git bundle pack signature')
+  const body = pack.subarray(0, -20), trailer = pack.subarray(-20)
+  requireThat(createHash('sha1').update(body).digest().equals(trailer), 'git bundle pack trailer')
+  const objects = parseGitPack(body)
+  const commit = objects.get(reference.verifiedHeadSha)
+  requireThat(commit?.type === 'commit', 'git bundle advertised head object')
+  validateCandidateCommit(commit.data, manifest)
+}
+
+function validateGitPatchBytes(raw) {
+  const text = fatalUtf8(raw, 'git patch')
+  requireThat(text.endsWith('\n') && !text.includes('\r') && !text.includes('\0'), 'git patch line endings')
+  const lines = text.slice(0, -1).split('\n')
+  let currentPath = null, sectionHasContent = false, sections = 0
+  const finishSection = () => { if (currentPath !== null) requireThat(sectionHasContent, 'git patch empty section') }
+  for (const line of lines) {
+    if (line.startsWith('diff --git ')) {
+      finishSection()
+      const match = /^diff --git a\/(.+) b\/(.+)$/u.exec(line)
+      requireThat(match !== null && match[1] === match[2], 'git patch diff path')
+      check('SafeRepositoryPath', match[1])
+      currentPath = match[1]; sectionHasContent = false; sections++
+      continue
+    }
+    requireThat(currentPath !== null, 'git patch content before diff')
+    if (line.startsWith('--- ') || line.startsWith('+++ ')) {
+      const path = line.slice(4)
+      if (path !== '/dev/null') {
+        const match = /^[ab]\/(.+)$/u.exec(path)
+        requireThat(match !== null && match[1] === currentPath, 'git patch marker path')
+        check('SafeRepositoryPath', match[1])
+      }
+    } else if (/^(rename|copy) (from|to) /u.test(line)) {
+      const match = /^(?:rename|copy) (?:from|to) (.+)$/u.exec(line)
+      requireThat(match !== null, 'git patch rename/copy path')
+      check('SafeRepositoryPath', match[1])
+    }
+    if (line.startsWith('@@ ') || line === 'GIT binary patch') sectionHasContent = true
+  }
+  finishSection()
+  requireThat(sections > 0, 'git patch section count')
+}
+
+function validateDiagnosticLogBytes(raw, manifest) {
+  const text = fatalUtf8(raw, 'diagnostic log')
+  const expected = `baseSha=${manifest.baseSha}\nheadSha=${manifest.headSha}\ntreeOid=${manifest.treeOid}\nbundleVerifyExitCode=0\napplyCheckExitCode=0\n`
+  requireThat(text === expected, 'diagnostic log fixed fields')
+}
+
 export function validateRawCandidatePayload(input, reference, preservationManifest) {
   requireThat(Buffer.isBuffer(input) || input instanceof Uint8Array, 'raw candidate requires bytes')
-  requireThat(reference !== null && typeof reference === 'object' && preservationManifest !== null && typeof preservationManifest === 'object', 'raw candidate identity')
+  requireThat(reference !== null && typeof reference === 'object' && !Array.isArray(reference) && preservationManifest !== null && typeof preservationManifest === 'object' && !Array.isArray(preservationManifest), 'raw candidate identity')
+  validateAttachmentPayload(preservationManifest, { producer: '6F' })
   const expectedReference = reference.kind === 'git_bundle' ? preservationManifest.gitBundle : reference.kind === 'git_binary_patch' ? preservationManifest.patch : reference.kind === 'diagnostic_log' ? preservationManifest.diagnosticLog : undefined
   requireThat(expectedReference !== undefined && equal(reference, expectedReference), 'raw candidate reference binding')
   validateRawCandidateByteSize(reference.kind, reference.byteSize)
   const raw = Buffer.from(input.buffer, input.byteOffset, input.byteLength)
   requireThat(raw.length === reference.byteSize && digest(raw) === reference.sha256, 'raw candidate byte identity')
-  requireThat(raw.equals(rawCandidateLiterals[reference.kind]), 'raw candidate format or content')
-  check('SafeAttemptEvidencePath', reference.path)
+  if (reference.kind === 'git_bundle') validateGitBundleBytes(raw, reference, preservationManifest)
+  else if (reference.kind === 'git_binary_patch') validateGitPatchBytes(raw)
+  else validateDiagnosticLogBytes(raw, preservationManifest)
   return cloneJson(reference)
 }
 

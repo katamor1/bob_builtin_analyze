@@ -482,7 +482,23 @@ const A_TOPOLOGY = { schemaVersion: `${S}slice-topology-evidence/v1`, request: A
 const A_GENERATED = { schemaVersion: `${S}wave0a-generated-paths/v1`, phase: 'before', ...A_STATE, roots: [{ repositoryPath: 'extensions/workflow-register/out', kind: 'absent', entryCount: 0, totalBytes: '0' }], observedAt: AT, diagnostics: [] }
 const A_DELETION = { schemaVersion: `${S}wave0a-generated-deletion-plan/v1`, mode: 'main_only_cleanup', headSha: H, treeOid: TREE, repositoryRoot: scope.featureWorktree, retainedParentAnchors: [], parentAnchorCount: 0, parentAnchorAggregateSha256: hash([]), baselineInventorySha256: hash(A_GENERATED), generatedInventorySha256: hash(A_GENERATED), entries: [], entriesSha256: hash([]), totalEntryCount: 0, maxDepth: 0, totalPathBytes: 0, totalFileBytes: '0', createdAt: AT, diagnostics: [] }
 const A_CLEANUP = { schemaVersion: `${S}wave0a-generated-cleanup/v1`, mode: 'main_only_cleanup', headSha: H, before: A_STATE, after: A_STATE, beforeInventorySha256: hash(A_GENERATED), afterInventorySha256: hash(A_GENERATED), deletionPlanSha256: hash(A_DELETION), operationIntentSha256: HASH, acknowledgementAggregateSha256: hash([]), nativeResultSha256: HASH, progressAggregateSha256: hash([]), removedRoots: [], finalStatusSha256: EMPTY_SHA, observedAt: AT, diagnostics: [] }
-const A_MATERIALIZATION = { schemaVersion: `${S}root-materialization-plan/v1`, attemptId: ATTEMPT, operationInstanceId: 'fast-forward-root', baseSha: B, mergeSha: M, baseTreeOid: TREE, mergeTreeOid: TREE, rootWorktree: scope.rootWorktree, worktreeRegistryFence: scope.worktreeRegistryFence, actions: [], actionCount: 0, maxDepth: 0, totalPathBytes: 0, maxFileBytes: 0, totalBlobBytes: '0', chunkCount: 0, actionsSha256: hash([]), createdAt: AT, diagnostics: [] }
+const fixedDirectoryHandle = (path, ino) => ({ ...dir(path), ino })
+const A_ROOT_KEEP = fixedDirectoryHandle(`${scope.rootWorktree.canonicalPath}/keep`, '201')
+const fixedFileIdentity = (path, content, ino) => ({ canonicalPath: path, dev: '1', ino, size: String(content.length), mtimeNs: '1', ctimeNs: '1', sha256: digest(content) })
+const A_ROOT_OLD = fixedFileIdentity(`${scope.rootWorktree.canonicalPath}/obsolete/old.txt`, Buffer.from('old!!'), '143')
+const A_ROOT_OBSOLETE = fixedDirectoryHandle(`${scope.rootWorktree.canonicalPath}/obsolete`, '202')
+const A_ROOT_CHANGED = fixedFileIdentity(`${scope.rootWorktree.canonicalPath}/keep/change.txt`, Buffer.from('old!'), '144')
+const A_ROOT_ACTIONS = [
+  { actionOrdinal: 1, chunkOrdinal: 1, repositoryPath: 'keep', leaf: 'keep', depth: 1, parentActionOrdinal: 0, rootAnchor: 'root_worktree', kind: 'retain_directory', sourceTreeOid: B, targetTreeOid: H, expectedTarget: A_ROOT_KEEP },
+  { actionOrdinal: 2, chunkOrdinal: 1, repositoryPath: 'obsolete/old.txt', parentRelativePath: 'obsolete', leaf: 'old.txt', depth: 2, parentActionOrdinal: 3, kind: 'delete_regular_file', sourceObjectOid: B, sourceGitMode: '100644', sourceByteSize: 5, sourceBlobSha256: A_ROOT_OLD.sha256, expectedTarget: A_ROOT_OLD },
+  { actionOrdinal: 3, chunkOrdinal: 1, repositoryPath: 'obsolete', leaf: 'obsolete', depth: 1, parentActionOrdinal: 0, rootAnchor: 'root_worktree', kind: 'delete_empty_directory', sourceTreeOid: B, expectedTarget: A_ROOT_OBSOLETE, expectedEmptyAtDeleteOrdinal: true },
+  { actionOrdinal: 4, chunkOrdinal: 1, repositoryPath: 'newdir', leaf: 'newdir', depth: 1, parentActionOrdinal: 0, rootAnchor: 'root_worktree', kind: 'create_directory', targetTreeOid: H, expectedAbsent: true },
+  { actionOrdinal: 5, chunkOrdinal: 1, repositoryPath: 'newdir/new.txt', parentRelativePath: 'newdir', leaf: 'new.txt', depth: 2, parentActionOrdinal: 4, kind: 'install_regular_file', targetObjectOid: H, targetGitMode: '100644', targetByteSize: 6, targetBlobSha256: digest(Buffer.from('new!!!')), expectedAbsent: true, scratchLeaf: '0005-new.txt' },
+  { actionOrdinal: 6, chunkOrdinal: 1, repositoryPath: 'keep/change.txt', parentRelativePath: 'keep', leaf: 'change.txt', depth: 2, parentActionOrdinal: 1, kind: 'delete_regular_file', sourceObjectOid: B, sourceGitMode: '100644', sourceByteSize: 4, sourceBlobSha256: A_ROOT_CHANGED.sha256, expectedTarget: A_ROOT_CHANGED },
+  { actionOrdinal: 7, chunkOrdinal: 1, repositoryPath: 'keep/change.txt', parentRelativePath: 'keep', leaf: 'change.txt', depth: 2, parentActionOrdinal: 1, kind: 'install_regular_file', targetObjectOid: H, targetGitMode: '100755', targetByteSize: 7, targetBlobSha256: digest(Buffer.from('changed')), expectedAbsent: true, scratchLeaf: '0007-change.txt' }
+]
+const A_MATERIALIZATION = { schemaVersion: `${S}root-materialization-plan/v1`, attemptId: ATTEMPT, operationInstanceId: 'fast-forward-root', baseSha: B, mergeSha: M, baseTreeOid: TREE, mergeTreeOid: TREE, rootWorktree: scope.rootWorktree, worktreeRegistryFence: scope.worktreeRegistryFence, actions: A_ROOT_ACTIONS, actionCount: 7, maxDepth: 2, totalPathBytes: 100, maxFileBytes: 7, totalBlobBytes: '22', chunkCount: 1, actionsSha256: hash(A_ROOT_ACTIONS), createdAt: AT, diagnostics: [] }
+const A_EMPTY_MATERIALIZATION = { ...A_MATERIALIZATION, actions: [], actionCount: 0, maxDepth: 0, totalPathBytes: 0, maxFileBytes: 0, totalBlobBytes: '0', chunkCount: 0, actionsSha256: '37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570' }
 const A_RUN = (index, event = 'pull_request') => ({ runId: 101 + index, workflowPath: `.github/workflows/${WF[index]}.yml`, headSha: event === 'pull_request' ? H : M, runAttempt: 1, createdAt: '2026-08-23T00:00:00Z', displayTitle: event === 'pull_request' ? 'test-owned PR run' : `wave0a-${M}-${TX}`, event, headBranch: event === 'pull_request' ? A_BRANCH : 'main', ...(event === 'workflow_dispatch' ? { dispatchNonce: TX } : {}) })
 const A_BOUNDARY = event => ({ schemaVersion: `${S}exact-head-trigger-boundary/v1`, headSha: event === 'pull_request' ? H : M, triggerNotBefore: '2026-08-23T00:00:00Z', recordedAt: AT, event, headBranch: event === 'pull_request' ? A_BRANCH : 'main', triggerIntents: (event === 'pull_request' ? ['create-pull-request'] : OPERATIONS.slice(7, 11)).map(id => operationAttachment(id, 'intent', 'intent', { schemaVersion: `${S}wave0a-mutation-intent/v1` })), triggerNotBeforeByWorkflow: Object.fromEntries((event === 'pull_request' ? ['pull-request'] : WF).map(id => [id, '2026-08-23T00:00:00Z'])), ...(event === 'workflow_dispatch' ? { dispatchNonceByWorkflow: Object.fromEntries(WF.map(id => [id, TX])) } : {}) })
 const A_SNAPSHOT = event => ({ schemaVersion: `${S}exact-head-run-set-snapshot/v1`, request: { repository: 'katamor1/bob_builtin_analyze', event, expectedHeadSha: event === 'pull_request' ? H : M, expectedRef: event === 'pull_request' ? A_BRANCH : 'main' }, runIdsByWorkflow: Object.fromEntries(WF.map(id => [id, []])), observedAt: '2026-08-22T23:59:59.000Z', diagnostics: [] })
@@ -528,7 +544,25 @@ const A_INTENT_LOCATOR = { operationInstanceId: 'publish-branch', intentPath: `o
 const A_RECEIPT_LOCATOR = { status: 'receipted', ...A_INTENT_LOCATOR, receiptPath: `operations/${ATTEMPT}/publish-branch/receipt.json`, receiptSha256: hash(A_RECEIPT) }
 const A_LOCAL_COMMAND = { ...A_COMMAND, ordinal: 1, executable: 'node', argv: ['--test', 'tools/main-consolidation/test/featureIntegrationCampaignPolicy.test.mjs'] }
 const A_LOCAL_GATES = { schemaVersion: `${S}wave0a-local-gates/v1`, request: { repository: 'katamor1/bob_builtin_analyze', baseSha: B, headSha: H, treeOid: TREE, contractIdentity: repo('tools/main-consolidation/wave0a-local-gates.json') }, runtimeIdentities: [{ logicalName: 'node', identity: externalTools.nodeExecutable }, { logicalName: 'npm.cmd', identity: file('C:/wave0a/bin/npm.cmd') }, { logicalName: 'npm-cli.js', identity: file('C:/wave0a/bin/npm-cli.js'), npmVersion: '10.0.0' }], before: A_STATE, commands: [A_LOCAL_COMMAND], repositoryCheckpoints: [{ ordinal: 0, ...A_STATE, observedAt: AT }, { ordinal: 1, ...A_STATE, observedAt: AT }], testCounts: [{ commandId: A_LOCAL_COMMAND.id, total: 1, passed: 1, failed: 0, skipped: 0 }], artifacts: [{ repositoryPath: 'reports/test.json', byteSize: 3, sha256: digest(Buffer.from('{}\n')) }], protectedPathHashes: [{ repositoryPath: 'extensions/workflow-register/src/extension.ts', sha256: HASH }], changedPaths: [], changedPathsSha256: hash([]), after: A_STATE, status: 'success', diagnostics: [] }
-const A_REMOVAL_PLAN = { schemaVersion: `${S}worktree-removal-plan/v1`, attemptId: ATTEMPT, operationInstanceId: 'remove-feature-worktree', featureWorktree: scope.featureWorktree, featureParent: dir('C:/wave0a'), featureRootLeaf: 'feature', gitFile: scope.worktreeRegistryFence.featureWorktreeGitFile, gitFileCanonicalBytesSha256: scope.worktreeRegistryFence.featureWorktreeGitFile.sha256, commonGitDirectory: scope.commonGitDirectory, adminDirectory: scope.worktreeRegistryFence.featureAdminDirectory, adminParent: scope.worktreeRegistryFence.worktreesDirectory, adminRootLeaf: 'feature', adminGitdirBackpointer: scope.worktreeRegistryFence.featureAdminGitdirBackpointer, adminGitdirBackpointerCanonicalBytesSha256: scope.worktreeRegistryFence.featureAdminGitdirBackpointer.sha256, branch: A_BRANCH, headSha: H, headTreeOid: TREE, trackedModificationCount: 0, untrackedCount: 0, ignoredCount: 0, entries: [], entryCount: 0, maxDepth: 1, totalFileBytes: '0', tupleSha256: hash([]), observedAt: AT }
+const A_REMOVAL_PACKAGE = fixedFileIdentity(`${scope.featureWorktree.canonicalPath}/package.json`, Buffer.from('{}\n'), '149')
+const A_REMOVAL_SRC = dir(`${scope.featureWorktree.canonicalPath}/src`)
+const A_REMOVAL_RULE = fixedFileIdentity(`${scope.featureWorktree.canonicalPath}/src/rule.md`, Buffer.from('rule\n'), '150')
+const A_REMOVAL_INDEX = fixedFileIdentity(`${scope.worktreeRegistryFence.featureAdminDirectory.canonicalPath}/index`, Buffer.from('index'), '151')
+const removalFileEntry = (ordinal, deleteOrdinal, owner, relativePath, parentOrdinal, identity, extra = {}) => ({ ordinal, deleteOrdinal, owner, entryScope: 'descendant', parentOrdinal, relativePath, ...(parentOrdinal === 0 ? {} : { parentRelativePath: relativePath.slice(0, relativePath.lastIndexOf('/')) }), leaf: relativePath.split('/').at(-1), depth: relativePath.split('/').length, volumeSerial: identity.dev, fileId: identity.ino, attributes: '128', reparseTag: '0', kind: 'file', byteSize: Number(identity.size), sha256: identity.sha256, ...extra })
+const removalRootEntry = (ordinal, deleteOrdinal, owner, root, leaf) => ({ ordinal, deleteOrdinal, owner, entryScope: 'owner_root', leaf, volumeSerial: root.dev, fileId: root.ino, attributes: root.attributes, reparseTag: '0', kind: 'directory', depth: 0, byteSize: 0, sha256: null })
+const A_REMOVAL_ENTRIES = [
+  removalRootEntry(1, 5, 'target', scope.featureWorktree, 'feature'),
+  removalFileEntry(2, 2, 'target', '.git', 0, scope.worktreeRegistryFence.featureWorktreeGitFile),
+  removalFileEntry(3, 3, 'target', 'package.json', 0, A_REMOVAL_PACKAGE),
+  { ordinal: 4, deleteOrdinal: 4, owner: 'target', entryScope: 'descendant', parentOrdinal: 0, relativePath: 'src', leaf: 'src', depth: 1, volumeSerial: A_REMOVAL_SRC.dev, fileId: A_REMOVAL_SRC.ino, attributes: A_REMOVAL_SRC.attributes, reparseTag: '0', kind: 'directory', byteSize: 0, sha256: null },
+  removalFileEntry(5, 1, 'target', 'src/rule.md', 4, A_REMOVAL_RULE),
+  removalRootEntry(6, 9, 'admin', scope.worktreeRegistryFence.featureAdminDirectory, 'feature'),
+  removalFileEntry(7, 6, 'admin', 'HEAD', 0, scope.worktreeRegistryFence.featureHeadFile),
+  removalFileEntry(8, 7, 'admin', 'gitdir', 0, scope.worktreeRegistryFence.featureAdminGitdirBackpointer),
+  removalFileEntry(9, 8, 'admin', 'index', 0, A_REMOVAL_INDEX)
+]
+const A_REMOVAL_TOTAL_FILE_BYTES = A_REMOVAL_ENTRIES.reduce((sum, entry) => sum + (entry.kind === 'file' ? BigInt(entry.byteSize) : 0n), 0n).toString()
+const A_REMOVAL_PLAN = { schemaVersion: `${S}worktree-removal-plan/v1`, attemptId: ATTEMPT, operationInstanceId: 'remove-feature-worktree', featureWorktree: scope.featureWorktree, featureParent: dir('C:/wave0a'), featureRootLeaf: 'feature', gitFile: scope.worktreeRegistryFence.featureWorktreeGitFile, gitFileCanonicalBytesSha256: scope.worktreeRegistryFence.featureWorktreeGitFile.sha256, commonGitDirectory: scope.commonGitDirectory, adminDirectory: scope.worktreeRegistryFence.featureAdminDirectory, adminParent: scope.worktreeRegistryFence.worktreesDirectory, adminRootLeaf: 'feature', adminGitdirBackpointer: scope.worktreeRegistryFence.featureAdminGitdirBackpointer, adminGitdirBackpointerCanonicalBytesSha256: scope.worktreeRegistryFence.featureAdminGitdirBackpointer.sha256, branch: A_BRANCH, headSha: H, headTreeOid: TREE, trackedModificationCount: 0, untrackedCount: 0, ignoredCount: 0, entries: A_REMOVAL_ENTRIES, entryCount: 9, maxDepth: 2, totalFileBytes: A_REMOVAL_TOTAL_FILE_BYTES, tupleSha256: hash(A_REMOVAL_ENTRIES), observedAt: AT }
 const A_REMOVAL_OBSERVATION = { schemaVersion: `${S}worktree-removal-observation/v1`, attemptId: ATTEMPT, operationInstanceId: 'remove-feature-worktree', planSha256: hash(A_REMOVAL_PLAN), beforeRootState: 'present_exact', beforeCompletedPrefixCount: 0, afterRootState: 'present_exact', missingEntryOrdinals: [], unexpectedTupleSha256: hash([]), worktrees: A_WORKTREES, worktreePruneDryRun: { lines: [], normalizedUtf8Sha256: EMPTY_SHA }, classification: 'not_applied', observedAt: AT, diagnostics: [] }
 const A_DISPOSABLE = 'test-owner/bob-wave0a-acceptance-unit'
 const A_REPOSITORY_ID = { hostingClass: 'github.com', repositoryDatabaseId: '12345', nodeId: 'R_test_owned', fullNameLowercase: A_DISPOSABLE }
@@ -558,9 +592,15 @@ for (const [name, payload] of [
 const A_ARCHIVE = {"schemaVersion":"bob-builtin-analyze/feature-integration-archive-preflight/v1","repository":"katamor1/bob_builtin_analyze","programIndexBlobSha256":"2879a50f4c2690d73323497fe02f340ca92ec5481f98bb4bd536381b0c20ba48","observedAt":"2026-08-23T00:00:00.100Z","archives":[{"rootLeaf":"2026-08-21-main-consolidation","manifestSha256":"36e477ee9b752ebf7f07a208c166fec24e14a89bf7ba6a7921cf6bdf708c9f31","exactTreeVerified":true},{"rootLeaf":"2026-08-22-local-worktree-cleanup","manifestSha256":"ad742f4dbd2112c5674da2e3e0ee2046645849e4b3bf3674596df3b868c8bdff","exactTreeVerified":true},{"rootLeaf":"2026-08-22-remote-main-unification","manifestSha256":"bcdb61aad397ef4c6463eaa789d5d278b9d1bcad34015bc472c1dfc97773e476","exactTreeVerified":true}],"bundles":[{"archiveRootLeaf":"2026-08-21-main-consolidation","relativePath":"bundles/accepted-main-all-refs.bundle","sha256":"919c8e7ff8c6860bb27a467b6c8acc2577003e3c7e87e519a65600d1d2950a30","bundleVerify":"passed","headsSha256":"70b2cfc6ad0420214ed3f07de0827fbc8c8c58fcfdea320d857ee81e6911373c"},{"archiveRootLeaf":"2026-08-21-main-consolidation","relativePath":"bundles/integration-xlsx-on-prereq-all-refs.bundle","sha256":"22035ffd528db4e306867ae3a6aec988a04fcac30a73fe1e638ed8a1b27739cc","bundleVerify":"passed","headsSha256":"aa5d3e128d5e957a4164c62fc2c6088e25b5003b5bb25ec6891265baa1435d63"},{"archiveRootLeaf":"2026-08-21-main-consolidation","relativePath":"bundles/repository-all-refs.bundle","sha256":"55db2865e7795d9192e75bfb3dbaadc47d28366128c241edda512aef4ca599a1","bundleVerify":"passed","headsSha256":"87b833f81e7a35ee660eebf154078f1243b50681ec374178f2ee9211c5e0b59c"},{"archiveRootLeaf":"2026-08-22-local-worktree-cleanup","relativePath":"bundles/local-branches-before-cleanup.bundle","sha256":"e0e6fd92f1d7504c3271c01b0eae3542d3562a9214b8164957e19b56ac48dc40","bundleVerify":"passed","headsSha256":"232cbb56054784d26ff58a9c2202390f25ed27e244b82b5f4e1402c15be4fb0e"},{"archiveRootLeaf":"2026-08-22-remote-main-unification","relativePath":"bundles/remote-heads-before-main-unification.bundle","sha256":"06a338f28879218a8cbae247a3b4c5b951f152cd46caca4d81b7b07504cfbf1f","bundleVerify":"passed","headsSha256":"0f36e2d9aeb91e6e8e3eb83167e9f4a582ac7c29ab31f65dd9bfab10c60a3244"}],"carrierPatches":[{"id":"processing-a","sha256":"6913ddddcffb150eb207aee99bdbbad158b4ed05e9c3ca8714693d31f6122536"},{"id":"processing-b","sha256":"edd675378aa15650b5648308ae1f7621fa830844699ad4d06660463c9d2cb10b"},{"id":"processing-c","sha256":"294c11760ed94bdddec8f37f6f9517f42f7e9c6442ad23df6041ff9f470bbab5"},{"id":"workflow-b","sha256":"59eca51331f3c580a63435021e03c05780ffbe6b65db76949cb0d4bff8c428c7"},{"id":"workflow-c","sha256":"2852e9e0e535bbb63165ae01538dd271bd888afe0b7f7dcbca53d193ef24912f"}],"dualBundleObjects":[{"objectSha":"2d8a570fa1c0646fd662346744449b1abc1142b2","originalRepositoryBundle":true,"remoteRecoveryBundle":true},{"objectSha":"49f39e1a6ec35e5db98e9ef698d4ce43369c9760","originalRepositoryBundle":true,"remoteRecoveryBundle":true},{"objectSha":"4d0fb728763db9d13c87d000790a88c45900733e","originalRepositoryBundle":true,"remoteRecoveryBundle":true},{"objectSha":"56ba084d07f1641fa0454fe1da024f14fe99fd37","originalRepositoryBundle":true,"remoteRecoveryBundle":true},{"objectSha":"683e794eb4a39eea7bc3630bedbd2a557f4af8af","originalRepositoryBundle":true,"remoteRecoveryBundle":true},{"objectSha":"8793804f2f99fd1d545cb496064bcbdc7df4bf40","originalRepositoryBundle":true,"remoteRecoveryBundle":true},{"objectSha":"a18c09b10fa51702d312e34940a694ad971a48cc","originalRepositoryBundle":true,"remoteRecoveryBundle":true},{"objectSha":"e860d1ebbafe7068fc6871b16c9586a11b4fe19d","originalRepositoryBundle":true,"remoteRecoveryBundle":true}]}
 A_ATTACHMENT_FIXTURES.set('feature-integration-archive-preflight', A_ARCHIVE)
 
-const A_PACK_OBJECT_HEADER = (() => { let n = A_RAW_COMMIT.length; const out = [(1 << 4) | (n & 15)]; n >>>= 4; while (n) { out[out.length - 1] |= 128; out.push(n & 127); n >>>= 7 } return Buffer.from(out) })()
-const A_PACK_CONTENT = Buffer.concat([Buffer.from('5041434b0000000200000001', 'hex'), A_PACK_OBJECT_HEADER, deflateSync(A_RAW_COMMIT)])
-const A_BUNDLE_BYTES = Buffer.concat([Buffer.from(`# v2 git bundle\n-${B} test-owned prerequisite\n${A_COMMIT_PLAN.expectedMergeSha} refs/heads/${A_BRANCH}\n\n`), A_PACK_CONTENT, createHash('sha1').update(A_PACK_CONTENT).digest()])
+const packObjectHeader = (type, byteSize) => { let n = byteSize; const out = [(type << 4) | (n & 15)]; n >>>= 4; while (n) { out[out.length - 1] |= 128; out.push(n & 127); n >>>= 7 } return Buffer.from(out) }
+const packForCommit = rawCommit => Buffer.concat([Buffer.from('5041434b0000000200000001', 'hex'), packObjectHeader(1, rawCommit.length), deflateSync(rawCommit)])
+const bundleForCommit = (baseSha, branch, rawCommit) => {
+  const headSha = createHash('sha1').update(`commit ${rawCommit.length}\0`).update(rawCommit).digest('hex')
+  const pack = packForCommit(rawCommit)
+  return { headSha, bytes: Buffer.concat([Buffer.from(`# v2 git bundle\n-${baseSha} test-owned prerequisite\n${headSha} refs/heads/${branch}\n\n`), pack, createHash('sha1').update(pack).digest()]) }
+}
+const A_PACK_CONTENT = packForCommit(A_RAW_COMMIT)
+const A_BUNDLE_BYTES = bundleForCommit(B, A_BRANCH, A_RAW_COMMIT).bytes
 const A_PATCH_BYTES = Buffer.from('diff --git a/fixture.txt b/fixture.txt\nnew file mode 100644\nindex 0000000000000000000000000000000000000000..ce013625030ba8dba906f756967f9e9ca394464a\n--- /dev/null\n+++ b/fixture.txt\n@@ -0,0 +1 @@\n+hello\n')
 const A_LOG_BYTES = Buffer.from(`baseSha=${B}\nheadSha=${A_COMMIT_PLAN.expectedMergeSha}\ntreeOid=${TREE}\nbundleVerifyExitCode=0\napplyCheckExitCode=0\n`)
 const A_RAW_CANDIDATES = new Map([['git_bundle', A_BUNDLE_BYTES], ['git_binary_patch', A_PATCH_BYTES], ['diagnostic_log', A_LOG_BYTES]])
@@ -579,6 +619,39 @@ test('campaign attachment: complete literal corpus has every one of the 42 close
   assert.equal(A_ATTACHMENT_FIXTURES.size, 42)
   assert.deepEqual([...A_ATTACHMENT_FIXTURES.keys()].sort(), A_SCHEMA_ROWS.map(row => row[0]).sort())
   assert.deepEqual(policy.getAttachmentSchemaRegistry().map(row => [row.schemaVersion.slice(S.length, -3), row.producer, row.byteCap]), A_SCHEMA_ROWS)
+})
+test('campaign attachment: fresh valid timestamps identities hashes and refs are not fixture allowlisted', () => {
+  const protectedBaseline = clone(A_PROTECTED)
+  protectedBaseline.capturedAt = '2026-08-24T01:02:03.004Z'
+  assert.deepEqual(validateAttachment('protected-clone-baseline', protectedBaseline), protectedBaseline)
+
+  const capacity = clone(A_ATTACHMENT_FIXTURES.get('wave0a-capacity-observation'))
+  capacity.attemptId = 'wave-0a-20260824T010203Z-a1b2c3d4'
+  capacity.currentEventSha256 = 'a'.repeat(64)
+  capacity.requiredProjectionSha256 = 'b'.repeat(64)
+  capacity.observedAt = '2026-08-24T01:02:03.004Z'
+  assert.deepEqual(validateAttachment('wave0a-capacity-observation', capacity), capacity)
+
+  const remoteRefs = clone(A_ATTACHMENT_FIXTURES.get('remote-ref-observation'))
+  remoteRefs.refs[0].sha = 'a'.repeat(40)
+  remoteRefs.observedAt = '2026-08-24T01:02:03.004Z'
+  assert.deepEqual(validateAttachment('remote-ref-observation', remoteRefs), remoteRefs)
+
+  const partialRuns = clone(A_ATTACHMENT_FIXTURES.get('partial-run-evidence'))
+  for (const run of partialRuns.runs) { run.headSha = 'b'.repeat(40); run.headBranch = 'codex/fresh-candidate' }
+  partialRuns.observedAt = '2026-08-24T01:02:03.004Z'
+  assert.deepEqual(validateAttachment('partial-run-evidence', partialRuns), partialRuns)
+})
+for (const [name, payload] of A_ATTACHMENT_FIXTURES) test(`campaign attachment: ${name} accepts a fresh valid top-level observation time`, () => {
+  const fresh = clone(payload)
+  const field = ['capturedAt', 'observedAt', 'createdAt', 'recordedAt', 'reviewedAt', 'inspectedAt', 'validatedAt'].find(key => Object.hasOwn(fresh, key))
+  if (field === undefined && name === 'wave0a-local-gates') fresh.repositoryCheckpoints.at(-1).observedAt = '2026-08-23T00:00:00.200Z'
+  else if (field === undefined && name === 'wave0a-mutation-request') fresh.currentEventSha256 = 'c'.repeat(64)
+  else {
+    assert.notEqual(field, undefined)
+    fresh[field] = '2026-08-23T00:00:00.200Z'
+  }
+  assert.deepEqual(validateAttachment(name, fresh), fresh)
 })
 for (const [name, producer, cap] of A_SCHEMA_ROWS) {
   test(`campaign attachment: ${name} literal content and canonical producer equality`, () => {
@@ -620,7 +693,7 @@ const A_SEMANTIC_MUTATIONS = [
   ['wave0a-local-gates', 'head checkpoint', v => { v.repositoryCheckpoints[1].headSha = B }], ['wave0a-local-gates', 'tree after', v => { v.after.treeOid = H }], ['wave0a-local-gates', 'runtime name', v => { v.runtimeIdentities[0].identity.logicalName = 'git' }], ['wave0a-local-gates', 'test total', v => { v.testCounts[0].total++ }], ['wave0a-local-gates', 'test failure success', v => { v.testCounts[0].failed = 1; v.testCounts[0].passed = 0 }], ['wave0a-local-gates', 'changed paths hash', v => { v.changedPathsSha256 = HASH }],
   ['wave0a-generated-paths', 'absent bytes', v => { v.roots[0].totalBytes = '1' }], ['wave0a-generated-paths', 'duplicate root', v => { v.roots.push(clone(v.roots[0])) }], ['wave0a-generated-deletion-plan', 'entry count', v => { v.totalEntryCount = 1 }], ['wave0a-generated-deletion-plan', 'anchor count', v => { v.parentAnchorCount = 1 }], ['wave0a-generated-deletion-plan', 'entry digest', v => { v.entriesSha256 = HASH }], ['wave0a-generated-cleanup', 'state crossing', v => { v.after.headSha = B }], ['wave0a-generated-cleanup', 'final status', v => { v.finalStatusSha256 = HASH }],
   ['wave0a-cleanup-progress', 'chunk range', v => { v.firstDeleteOrdinal = 2 }], ['wave0a-cleanup-progress', 'foreign effective claim', v => { v.effectiveClaim = claim('publish-branch') }],
-  ['root-materialization-plan', 'aggregate count', v => { v.actionCount = 1 }], ['root-materialization-plan', 'chunk count', v => { v.chunkCount = 1 }], ['root-materialization-plan', 'tuple digest', v => { v.actionsSha256 = HASH }], ['worktree-removal-plan', 'parent leaf crossing', v => { v.featureRootLeaf = 'other' }], ['worktree-removal-plan', 'entry count', v => { v.entryCount = 1 }], ['worktree-removal-observation', 'classification crossing', v => { v.classification = 'applied' }],
+  ['root-materialization-plan', 'aggregate count', v => { v.actionCount = 1 }], ['root-materialization-plan', 'chunk count', v => { v.chunkCount = 2 }], ['root-materialization-plan', 'tuple digest', v => { v.actionsSha256 = HASH }], ['worktree-removal-plan', 'parent leaf crossing', v => { v.featureRootLeaf = 'other' }], ['worktree-removal-plan', 'entry count', v => { v.entryCount = 1 }], ['worktree-removal-observation', 'classification crossing', v => { v.classification = 'applied' }],
   ['wave0a-dispatch-run-observation', 'workflow mapping', v => { v.workflowId = 'workflow-contracts' }], ['wave0a-dispatch-run-observation', 'run workflow mapping', v => { v.run.workflowPath = '.github/workflows/workflow-contracts.yml' }], ['wave0a-dispatch-run-observation', 'dispatch title nonce', v => { v.run.dispatchNonce = RECOVERY }],
   ['feature-integration-independent-review', 'approved counts', v => { v.importantCount = 1 }], ['feature-integration-independent-review', 'review before CI', v => { v.reviewedAt = '2026-08-22T00:00:00.000Z' }],
   ['exact-head-run-set-snapshot', 'duplicate ids', v => { v.runIdsByWorkflow['extensions-quality'] = [1, 1] }], ['exact-head-run-set-snapshot', 'unordered ids', v => { v.runIdsByWorkflow['extensions-quality'] = [2, 1] }],
@@ -640,6 +713,183 @@ const A_SEMANTIC_MUTATIONS = [
   ['wave0a-mutation-receipt', 'manual decision consequence', v => { v.requiresManualDecision = true }], ['wave0a-mutation-receipt', 'effective claim kind', v => { v.effectiveClaim.recordKind = 'receipt' }], ['wave0a-mutation-receipt', 'foreign postcondition', v => { v.postconditionEvidence[0].operationInstanceId = 'create-pull-request' }], ['wave0a-operation-inspection', 'effective claim not terminal', v => { v.effectiveClaim.sha256 = HASH }], ['wave0a-operation-inspection', 'empty durable chain', v => { v.claimChain = [] }], ['wave0a-supervised-operation-result', 'program operation', v => { v.program = 'root_fast_forward' }], ['wave0a-supervised-operation-result', 'unsettled termination', v => { v.termination = { outcome: 'timeout', treeTermination: 'termination_failed' } }], ['wave0a-historical-precheckpoint-validation', 'program operation', v => { v.program = 'generated_cleanup' }], ['wave0a-historical-precheckpoint-validation', 'unapproved owner delta', v => { v.currentOwnerState = 'terminated_without_result' }]
 ]
 for (const [name, reason, change] of A_SEMANTIC_MUTATIONS) test(`campaign attachment: ${name} rejects ${reason}`, () => { const good = A_ATTACHMENT_FIXTURES.get(name); assert.deepEqual(validateAttachment(name), good); const bad = clone(good); change(bad); assert.throws(() => validateAttachment(name, bad), TypeError) })
+
+function refreshMaterialization(plan) {
+  plan.actionCount = plan.actions.length
+  plan.maxDepth = Math.max(0, ...plan.actions.map(action => action.depth))
+  plan.totalPathBytes = plan.actions.reduce((sum, action) => sum + Buffer.byteLength(action.repositoryPath) + (Object.hasOwn(action, 'parentRelativePath') ? Buffer.byteLength(action.parentRelativePath) : 0), 0)
+  const fileSizes = plan.actions.flatMap(action => Object.hasOwn(action, 'sourceByteSize') ? [action.sourceByteSize] : Object.hasOwn(action, 'targetByteSize') ? [action.targetByteSize] : [])
+  plan.maxFileBytes = Math.max(0, ...fileSizes)
+  plan.totalBlobBytes = fileSizes.reduce((sum, size) => sum + BigInt(size), 0n).toString()
+  plan.chunkCount = Math.ceil(plan.actions.length / 1024)
+  plan.actionsSha256 = hash(plan.actions)
+  return plan
+}
+function refreshRemoval(plan) {
+  plan.entryCount = plan.entries.length
+  plan.maxDepth = Math.max(...plan.entries.map(entry => entry.depth))
+  plan.totalFileBytes = plan.entries.reduce((sum, entry) => sum + (entry.kind === 'file' ? BigInt(entry.byteSize) : 0n), 0n).toString()
+  plan.tupleSha256 = hash(plan.entries)
+  return plan
+}
+test('campaign attachment: root-contract materialization root parent union', () => {
+  assert.deepEqual(validateAttachment('root-materialization-plan', A_MATERIALIZATION), A_MATERIALIZATION)
+  assert.deepEqual(A_MATERIALIZATION.actions.map(action => action.kind), ['retain_directory', 'delete_regular_file', 'delete_empty_directory', 'create_directory', 'install_regular_file', 'delete_regular_file', 'install_regular_file'])
+  for (const action of A_MATERIALIZATION.actions) {
+    if (action.parentActionOrdinal === 0) { assert.equal(Object.hasOwn(action, 'parentRelativePath'), false); assert.equal(action.rootAnchor, 'root_worktree') }
+    else { assert.equal(Object.hasOwn(action, 'rootAnchor'), false); assert.equal(typeof action.parentRelativePath, 'string') }
+  }
+  for (const change of [
+    plan => { plan.actions[0].parentRelativePath = 'root' },
+    plan => { plan.actions[1].rootAnchor = 'root_worktree' },
+    plan => { plan.actions[0].parentActionOrdinal = 1; plan.actions[0].parentRelativePath = 'keep'; delete plan.actions[0].rootAnchor },
+    plan => { plan.actions[4].parentActionOrdinal = 2; plan.actions[4].parentRelativePath = 'obsolete/old.txt'; plan.actions[4].repositoryPath = 'obsolete/old.txt/new.txt' },
+    plan => { plan.actions[4].parentActionOrdinal = 99 },
+    plan => { [plan.actions[3], plan.actions[4]] = [plan.actions[4], plan.actions[3]] },
+    plan => { plan.actions[0].expectedTarget.canonicalPath += '-crossed' },
+    plan => { plan.actions[0].expectedTarget.reparseTag = '1' }
+  ]) { const bad = clone(A_MATERIALIZATION); change(bad); refreshMaterialization(bad); assert.throws(() => validateAttachment('root-materialization-plan', bad), TypeError) }
+})
+test('campaign attachment: root-contract accepts exact empty materialization plan', () => {
+  assert.deepEqual(validateAttachment('root-materialization-plan', A_EMPTY_MATERIALIZATION), A_EMPTY_MATERIALIZATION)
+  for (const change of [plan => { plan.actionCount = 1 }, plan => { plan.maxDepth = 1 }, plan => { plan.actionsSha256 = HASH }, plan => { plan.unrecognized = true }]) { const bad = clone(A_EMPTY_MATERIALIZATION); change(bad); assert.throws(() => validateAttachment('root-materialization-plan', bad), TypeError) }
+})
+test('campaign attachment: delete empty directory uses stable identity and exact empty literal', () => {
+  const action = A_MATERIALIZATION.actions.find(row => row.kind === 'delete_empty_directory')
+  assert.deepEqual(Object.keys(action.expectedTarget).sort(), ['attributes', 'canonicalPath', 'dev', 'ino', 'reparseTag'])
+  assert.equal(action.expectedEmptyAtDeleteOrdinal, true)
+  for (const change of [row => { row.expectedTarget.mtimeNs = '1' }, row => { delete row.expectedEmptyAtDeleteOrdinal }, row => { row.expectedEmptyAtDeleteOrdinal = false }, row => { row.expectedEmptyAtDeleteOrdinal = null }, row => { row.expectedEmptyAtDeleteOrdinal = 'true' }]) {
+    const bad = clone(A_MATERIALIZATION), selected = bad.actions.find(row => row.kind === 'delete_empty_directory'); change(selected); refreshMaterialization(bad); assert.throws(() => validateAttachment('root-materialization-plan', bad), TypeError)
+  }
+})
+test('campaign attachment: root materialization independently derives every aggregate', () => {
+  for (const change of [plan => { plan.totalPathBytes++ }, plan => { plan.maxFileBytes++ }, plan => { plan.totalBlobBytes = '23' }, plan => { plan.maxDepth++ }, plan => { plan.actionCount++ }, plan => { plan.chunkCount++ }, plan => { plan.actionsSha256 = HASH }]) {
+    const bad = clone(A_MATERIALIZATION); change(bad); assert.throws(() => validateAttachment('root-materialization-plan', bad), TypeError)
+  }
+})
+test('campaign attachment: root materialization rejects Git metadata paths and registry identity aliases', () => {
+  const metadata = clone(A_EMPTY_MATERIALIZATION)
+  metadata.actions = [{ actionOrdinal: 1, chunkOrdinal: 1, repositoryPath: '.git', leaf: '.git', depth: 1, parentActionOrdinal: 0, rootAnchor: 'root_worktree', kind: 'create_directory', targetTreeOid: H, expectedAbsent: true }]
+  refreshMaterialization(metadata)
+  assert.throws(() => validateAttachment('root-materialization-plan', metadata), TypeError)
+  const alias = clone(A_MATERIALIZATION)
+  alias.actions[0].expectedTarget.dev = alias.worktreeRegistryFence.featureAdminDirectory.dev
+  alias.actions[0].expectedTarget.ino = alias.worktreeRegistryFence.featureAdminDirectory.ino
+  refreshMaterialization(alias)
+  assert.throws(() => validateAttachment('root-materialization-plan', alias), TypeError)
+})
+test('campaign attachment: root-contract removal root and descendant graph', () => {
+  assert.deepEqual(validateAttachment('worktree-removal-plan', A_REMOVAL_PLAN), A_REMOVAL_PLAN)
+  assert.deepEqual(A_REMOVAL_PLAN.entries.map(entry => entry.deleteOrdinal), [5, 2, 3, 4, 1, 9, 6, 7, 8])
+  assert.deepEqual(A_REMOVAL_PLAN.entries.filter(entry => entry.entryScope === 'owner_root').map(entry => entry.owner), ['target', 'admin'])
+  for (const change of [
+    plan => { plan.entries[0].parentOrdinal = 0 },
+    plan => { plan.entries[4].owner = 'admin' },
+    plan => { plan.entries[4].parentOrdinal = 5 },
+    plan => { plan.entries[4].parentOrdinal = 2; plan.entries[4].parentRelativePath = '.git'; plan.entries[4].relativePath = '.git/rule.md' },
+    plan => { plan.entries[4].fileId = plan.entries[2].fileId; plan.entries[4].volumeSerial = plan.entries[2].volumeSerial },
+    plan => { plan.entries[1].reparseTag = '1' },
+    plan => { plan.entries[4].deleteOrdinal = 2; plan.entries[1].deleteOrdinal = 1 },
+    plan => { plan.adminParent.ino = plan.featureParent.ino; plan.adminParent.dev = plan.featureParent.dev },
+    plan => { plan.entries.splice(5, 1) }
+  ]) { const bad = clone(A_REMOVAL_PLAN); change(bad); refreshRemoval(bad); assert.throws(() => validateAttachment('worktree-removal-plan', bad), TypeError) }
+})
+test('campaign attachment: worktree removal descendants cannot alias outer directory identities', () => {
+  const bad = clone(A_REMOVAL_PLAN)
+  bad.entries[2].volumeSerial = bad.featureParent.dev
+  bad.entries[2].fileId = bad.featureParent.ino
+  refreshRemoval(bad)
+  assert.throws(() => validateAttachment('worktree-removal-plan', bad), TypeError)
+})
+function removalByteBoundary(first, second = 0) {
+  const plan = clone(A_REMOVAL_PLAN)
+  for (const entry of plan.entries) if (entry.kind === 'file') entry.byteSize = 0
+  plan.gitFile.size = '0'; plan.adminGitdirBackpointer.size = '0'
+  plan.entries[2].byteSize = first; plan.entries[4].byteSize = second
+  return refreshRemoval(plan)
+}
+test('campaign attachment: worktree removal total file bytes inclusive boundary', () => {
+  for (const size of [4294967295, 4294967296]) assert.deepEqual(validateAttachment('worktree-removal-plan', removalByteBoundary(size)), removalByteBoundary(size))
+  assert.throws(() => validateAttachment('worktree-removal-plan', removalByteBoundary(4294967297)), TypeError)
+  assert.deepEqual(validateAttachment('worktree-removal-plan', removalByteBoundary(4294967295, 1)), removalByteBoundary(4294967295, 1))
+  assert.throws(() => validateAttachment('worktree-removal-plan', removalByteBoundary(4294967296, 1)), TypeError)
+})
+test('campaign attachment: worktree removal rejects noncanonical total file bytes', () => {
+  for (const totalFileBytes of ['00', '+0', '-0', '', ' 0', '0 ', '0e0']) { const bad = removalByteBoundary(0); bad.totalFileBytes = totalFileBytes; assert.throws(() => validateAttachment('worktree-removal-plan', bad), TypeError) }
+  const mismatch = removalByteBoundary(1); mismatch.totalFileBytes = '0'; assert.throws(() => validateAttachment('worktree-removal-plan', mismatch), TypeError)
+})
+
+function materializationCountBoundary(actionCount) {
+  const plan = clone(A_EMPTY_MATERIALIZATION)
+  plan.actions = Array.from({ length: actionCount }, (_, index) => { const leaf = `d${String(index).padStart(5, '0')}`; return { actionOrdinal: index + 1, chunkOrdinal: Math.floor(index / 1024) + 1, repositoryPath: leaf, leaf, depth: 1, parentActionOrdinal: 0, rootAnchor: 'root_worktree', kind: 'create_directory', targetTreeOid: H, expectedAbsent: true } })
+  return refreshMaterialization(plan)
+}
+test('campaign attachment: root materialization action count inclusive boundary', () => {
+  for (const count of [16383, 16384]) assert.equal(validateAttachment('root-materialization-plan', materializationCountBoundary(count)).actionCount, count)
+  assert.throws(() => validateAttachment('root-materialization-plan', materializationCountBoundary(16385)), TypeError)
+})
+
+function rootFileBoundary(sizes) {
+  const plan = clone(A_EMPTY_MATERIALIZATION)
+  plan.actions = sizes.map((size, index) => { const leaf = `f${String(index).padStart(4, '0')}`; return { actionOrdinal: index + 1, chunkOrdinal: 1, repositoryPath: leaf, leaf, depth: 1, parentActionOrdinal: 0, rootAnchor: 'root_worktree', kind: 'install_regular_file', targetObjectOid: H, targetGitMode: '100644', targetByteSize: size, targetBlobSha256: HASH, expectedAbsent: true, scratchLeaf: `${String(index + 1).padStart(4, '0')}-${leaf}` } })
+  return refreshMaterialization(plan)
+}
+test('campaign attachment: root file and total blob byte caps are inclusive', () => {
+  for (const size of [1073741823, 1073741824]) assert.equal(validateAttachment('root-materialization-plan', rootFileBoundary([size])).maxFileBytes, size)
+  assert.throws(() => validateAttachment('root-materialization-plan', rootFileBoundary([1073741825])), TypeError)
+  assert.equal(validateAttachment('root-materialization-plan', rootFileBoundary(Array(16).fill(1073741824))).totalBlobBytes, '17179869184')
+  assert.throws(() => validateAttachment('root-materialization-plan', rootFileBoundary([...Array(16).fill(1073741824), 1])), TypeError)
+})
+function rootDepthBoundary(depth) {
+  const plan = clone(A_EMPTY_MATERIALIZATION), actions = []
+  let repositoryPath = ''
+  for (let index = 0; index < depth; index++) {
+    const leaf = `d${index}`; repositoryPath = repositoryPath === '' ? leaf : `${repositoryPath}/${leaf}`
+    actions.push({ actionOrdinal: index + 1, chunkOrdinal: 1, repositoryPath, ...(index === 0 ? { parentActionOrdinal: 0, rootAnchor: 'root_worktree' } : { parentActionOrdinal: index, parentRelativePath: actions.at(-1).repositoryPath }), leaf, depth: index + 1, kind: 'create_directory', targetTreeOid: H, expectedAbsent: true })
+  }
+  plan.actions = actions
+  return refreshMaterialization(plan)
+}
+test('campaign attachment: root materialization depth cap is inclusive', () => {
+  for (const depth of [255, 256]) assert.equal(validateAttachment('root-materialization-plan', rootDepthBoundary(depth)).maxDepth, depth)
+  assert.throws(() => validateAttachment('root-materialization-plan', rootDepthBoundary(257)), TypeError)
+})
+
+function removalCountBoundary(entryCount) {
+  const plan = clone(A_REMOVAL_PLAN), fillerCount = entryCount - 9
+  const targetRoot = clone(plan.entries[0]), target = plan.entries.slice(1, 5).map(clone), adminRoot = clone(plan.entries[5]), admin = plan.entries.slice(6).map(clone)
+  const fillers = Array.from({ length: fillerCount }, (_, index) => ({ ordinal: 0, deleteOrdinal: 0, owner: 'target', entryScope: 'descendant', parentOrdinal: 0, relativePath: `z${String(index).padStart(5, '0')}`, leaf: `z${String(index).padStart(5, '0')}`, depth: 1, volumeSerial: '9', fileId: String(index + 1000), attributes: '128', reparseTag: '0', kind: 'file', byteSize: 0, sha256: HASH }))
+  plan.entries = [targetRoot, ...target, ...fillers, adminRoot, ...admin]
+  plan.entries.forEach((entry, index) => { entry.ordinal = index + 1 })
+  plan.entries.find(entry => entry.owner === 'target' && entry.relativePath === 'src/rule.md').parentOrdinal = plan.entries.find(entry => entry.owner === 'target' && entry.relativePath === 'src').ordinal
+  const targetDescendants = plan.entries.filter(entry => entry.owner === 'target' && entry.entryScope === 'descendant').sort((left, right) => right.depth - left.depth || Buffer.compare(Buffer.from(left.relativePath), Buffer.from(right.relativePath)))
+  const adminDescendants = plan.entries.filter(entry => entry.owner === 'admin' && entry.entryScope === 'descendant').sort((left, right) => right.depth - left.depth || Buffer.compare(Buffer.from(left.relativePath), Buffer.from(right.relativePath)))
+  ;[...targetDescendants, targetRoot, ...adminDescendants, adminRoot].forEach((entry, index) => { entry.deleteOrdinal = index + 1 })
+  return refreshRemoval(plan)
+}
+test('campaign attachment: worktree removal entry count inclusive boundary', () => {
+  for (const count of [16383, 16384]) assert.equal(validateAttachment('worktree-removal-plan', removalCountBoundary(count)).entryCount, count)
+  assert.throws(() => validateAttachment('worktree-removal-plan', removalCountBoundary(16385)), TypeError)
+})
+function removalDepthBoundary(depth) {
+  const plan = clone(A_REMOVAL_PLAN), targetRoot = clone(plan.entries[0]), adminRoot = clone(plan.entries[5])
+  const targetGit = clone(plan.entries[1]), adminGitdir = clone(plan.entries[7]), chain = []
+  let relativePath = ''
+  for (let index = 0; index < depth; index++) {
+    const leaf = `d${index}`; relativePath = relativePath === '' ? leaf : `${relativePath}/${leaf}`
+    chain.push({ ordinal: 0, deleteOrdinal: 0, owner: 'target', entryScope: 'descendant', parentOrdinal: index === 0 ? 0 : 0, relativePath, ...(index === 0 ? {} : { parentRelativePath: chain.at(-1).relativePath }), leaf, depth: index + 1, volumeSerial: '9', fileId: String(10000 + index), attributes: '16', reparseTag: '0', kind: 'directory', byteSize: 0, sha256: null })
+  }
+  plan.entries = [targetRoot, targetGit, ...chain, adminRoot, adminGitdir]
+  plan.entries.forEach((entry, index) => { entry.ordinal = index + 1 })
+  chain.forEach((entry, index) => { if (index > 0) entry.parentOrdinal = chain[index - 1].ordinal })
+  const targetDescendants = [targetGit, ...chain].sort((left, right) => right.depth - left.depth || Buffer.compare(Buffer.from(left.relativePath), Buffer.from(right.relativePath)))
+  ;[...targetDescendants, targetRoot, adminGitdir, adminRoot].forEach((entry, index) => { entry.deleteOrdinal = index + 1 })
+  return refreshRemoval(plan)
+}
+test('campaign attachment: worktree removal depth cap is inclusive', () => {
+  for (const depth of [255, 256]) assert.equal(validateAttachment('worktree-removal-plan', removalDepthBoundary(depth)).maxDepth, depth)
+  assert.throws(() => validateAttachment('worktree-removal-plan', removalDepthBoundary(257)), TypeError)
+})
 
 for (const event of ['pull_request', 'workflow_dispatch']) test(`campaign attachment: run discovery and exact CI ${event} complete positive controls`, () => {
   const discovery = A_DISCOVERY(event), ci = A_CI(event)
@@ -663,6 +913,56 @@ test('campaign attachment: raw candidate diagnostic secrets and binary patch tra
   assert.deepEqual(policy.validateRawCandidatePayload(A_LOG_BYTES, A_PRESERVATION.diagnosticLog, A_PRESERVATION), A_PRESERVATION.diagnosticLog)
   for (const value of ['token=ghp_secret\n', `headSha=${H}\n`, 'message=arbitrary free text\n']) { const raw = Buffer.from(value); assert.throws(() => policy.validateRawCandidatePayload(raw, { ...A_PRESERVATION.diagnosticLog, byteSize: raw.length, sha256: digest(raw) }, A_PRESERVATION), TypeError) }
   const bad = Buffer.from(A_PATCH_BYTES.toString().replaceAll('b/fixture.txt', 'b/../escape')); assert.throws(() => policy.validateRawCandidatePayload(bad, { ...A_PRESERVATION.patch, byteSize: bad.length, sha256: digest(bad) }, A_PRESERVATION), TypeError)
+})
+test('campaign attachment: raw manifest and reference coordinated tampering fails closed', () => {
+  for (const change of [
+    ref => { ref.unrecognized = true },
+    ref => { ref.mediaType = 'application/octet-stream' },
+    ref => { ref.path = 'attachments/9999-other.log' }
+  ]) {
+    const manifest = clone(A_PRESERVATION), ref = manifest.diagnosticLog
+    change(ref)
+    assert.throws(() => policy.validateRawCandidatePayload(A_LOG_BYTES, ref, manifest), TypeError)
+  }
+})
+test('campaign attachment: fresh valid bundle patch and diagnostic bytes are semantic not corpus members', () => {
+  const baseSha = '4'.repeat(40), treeOid = '6'.repeat(40)
+  const rawCommit = Buffer.from(`tree ${treeOid}\nparent ${baseSha}\nauthor Fresh Evidence <fresh@example.test> 1787529600 +0000\ncommitter Fresh Evidence <fresh@example.test> 1787529600 +0000\n\nFresh runtime candidate\n`)
+  const { headSha, bytes: bundle } = bundleForCommit(baseSha, A_BRANCH, rawCommit)
+  const patch = Buffer.from('diff --git a/fresh.txt b/fresh.txt\nnew file mode 100644\nindex 0000000000000000000000000000000000000000..ce013625030ba8dba906f756967f9e9ca394464a\n--- /dev/null\n+++ b/fresh.txt\n@@ -0,0 +1 @@\n+fresh\n')
+  const diagnosticLog = Buffer.from(`baseSha=${baseSha}\nheadSha=${headSha}\ntreeOid=${treeOid}\nbundleVerifyExitCode=0\napplyCheckExitCode=0\n`)
+  const bind = (reference, raw) => ({ ...reference, byteSize: raw.length, sha256: digest(raw) })
+  const manifest = {
+    ...clone(A_PRESERVATION), baseSha, headSha, treeOid, createdAt: '2026-08-24T01:02:03.004Z',
+    gitBundle: { ...bind(A_PRESERVATION.gitBundle, bundle), verifiedHeadSha: headSha },
+    patch: { ...bind(A_PRESERVATION.patch, patch), fromSha: baseSha, toSha: headSha },
+    diagnosticLog: bind(A_PRESERVATION.diagnosticLog, diagnosticLog)
+  }
+  assert.deepEqual(validateAttachment('candidate-preservation-manifest', manifest), manifest)
+  for (const [kind, raw, ref] of [['git_bundle', bundle, manifest.gitBundle], ['git_binary_patch', patch, manifest.patch], ['diagnostic_log', diagnosticLog, manifest.diagnosticLog]]) assert.deepEqual(policy.validateRawCandidatePayload(raw, ref, manifest), ref, kind)
+})
+test('campaign attachment: raw bundle parses declared pack objects and binds commit tree and parent', () => {
+  const manifestFor = (baseSha, treeOid, rawCommit, bundle) => {
+    const headSha = createHash('sha1').update(`commit ${rawCommit.length}\0`).update(rawCommit).digest('hex')
+    const manifest = clone(A_PRESERVATION)
+    manifest.baseSha = baseSha; manifest.headSha = headSha; manifest.treeOid = treeOid
+    manifest.gitBundle = { ...manifest.gitBundle, byteSize: bundle.length, sha256: digest(bundle), verifiedHeadSha: headSha }
+    manifest.patch.toSha = headSha
+    return manifest
+  }
+  const corruptPack = Buffer.from(A_PACK_CONTENT)
+  corruptPack.writeUInt32BE(2, 8)
+  const countMismatch = Buffer.concat([A_BUNDLE_BYTES.subarray(0, A_BUNDLE_BYTES.indexOf(Buffer.from('\n\n')) + 2), corruptPack, createHash('sha1').update(corruptPack).digest()])
+  const countManifest = clone(A_PRESERVATION)
+  countManifest.gitBundle = { ...countManifest.gitBundle, byteSize: countMismatch.length, sha256: digest(countMismatch) }
+  assert.throws(() => policy.validateRawCandidatePayload(countMismatch, countManifest.gitBundle, countManifest), TypeError)
+
+  for (const [treeOid, parentSha] of [['7'.repeat(40), B], [TREE, '8'.repeat(40)]]) {
+    const rawCommit = Buffer.from(`tree ${treeOid}\nparent ${parentSha}\nauthor Fresh Evidence <fresh@example.test> 1787529600 +0000\ncommitter Fresh Evidence <fresh@example.test> 1787529600 +0000\n\nCrossed runtime candidate\n`)
+    const built = bundleForCommit(B, A_BRANCH, rawCommit)
+    const manifest = manifestFor(B, TREE, rawCommit, built.bytes)
+    assert.throws(() => policy.validateRawCandidatePayload(built.bytes, manifest.gitBundle, manifest), TypeError)
+  }
 })
 test('campaign attachment: full archive fixture preserves actual bytes membership and all endpoint observations', () => {
   const fixture = policy.buildFullArchivePreflightFixture()
