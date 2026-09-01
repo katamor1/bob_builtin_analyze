@@ -213,6 +213,46 @@ test("documentation metadata recursively classifies the complete configured scop
   assert.equal(classification.get("extensions/bob-bazaar-review/docs/review-run-v3-iteration2-ja.md"), "historical")
   assert.equal(classification.get("extensions/bob-bazaar-review/docs/review-run-v3-iteration3-dashboard-ja.md"), "historical")
   assert.equal(classification.get("docs/workflows/code-consistency-review/README.md"), "current")
+  assert.equal(classification.get("docs/superpowers/specs/2026-08-23-feature-selection-and-sequential-main-integration-design.md"), "current")
+  assert.equal(classification.get("docs/superpowers/specs/2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md"), "current")
+  assert.equal(classification.get("docs/superpowers/plans/2026-08-31-wave0a-risk-tiered-approval-and-evidence.md"), "current")
+  assert.equal(classification.get("docs/superpowers/plans/2026-08-23-feature-integration-program-index-and-wave-0a.md"), "historical")
+  assert.equal(classification.get("docs/superpowers/plans/2026-08-27-wave0a-root-path-contract-addendum.md"), "historical")
+  assert.equal(classification.get("docs/superpowers/plans/2026-08-27-wave0a-approved-root-removal-addenda-composed-implementation.md"), "historical")
+  assert.equal(classification.get("docs/superpowers/specs/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception-design.md"), "historical")
+  assert.equal(classification.get("docs/superpowers/plans/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception.md"), "historical")
+})
+
+test("Wave 0A risk-tiered approval route retains technical references without reviving legacy authority", () => {
+  const canonicalRoute = "docs/superpowers/specs/2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md"
+  const historicalDocuments = [
+    "docs/superpowers/plans/2026-08-23-feature-integration-program-index-and-wave-0a.md",
+    "docs/superpowers/plans/2026-08-27-wave0a-root-path-contract-addendum.md",
+    "docs/superpowers/plans/2026-08-27-wave0a-approved-root-removal-addenda-composed-implementation.md",
+    "docs/superpowers/specs/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception-design.md",
+    "docs/superpowers/plans/2026-08-29-wave0a-trusted-transcript-terminal-lf-exception.md"
+  ]
+  const technicalReferences = [
+    "docs/superpowers/specs/2026-08-23-feature-selection-and-sequential-main-integration-design.md",
+    "docs/superpowers/specs/2026-08-27-wave0a-root-path-contract-addendum-design.md",
+    "docs/superpowers/specs/2026-08-27-wave0a-removal-cap-and-mutable-directory-identity-design.md"
+  ]
+
+  for (const relativePath of historicalDocuments) {
+    assert.equal(classification.get(relativePath), "historical", `${relativePath} must not be executable authority`)
+    const notice = readText(relativePath).split(/\r?\n/).slice(0, 12).join("\n")
+    assert.ok(notice.includes(canonicalRoute), `${relativePath} must name the replacement route`)
+    assert.match(notice, /historical[\s\S]*(?:do not execute|do not continue)/i, `${relativePath} must prohibit legacy execution`)
+  }
+
+  for (const relativePath of technicalReferences) {
+    assert.equal(classification.get(relativePath), "current", `${relativePath} remains a current technical reference`)
+    const notice = readText(relativePath).split(/\r?\n/).slice(0, 12).join("\n")
+    assert.ok(notice.includes(canonicalRoute), `${relativePath} must identify the replacement approval method`)
+    assert.match(notice, /current technical reference/i, `${relativePath} must declare current technical-reference scope`)
+    assert.match(notice, /technical-only/i, `${relativePath} must be technical-only`)
+    assert.match(notice, /execution permit[^\n]*(?:not granted|与えない)/i, `${relativePath} must grant no execution permit`)
+  }
 })
 
 test("workflow action contract current copies remain synchronized", () => {
