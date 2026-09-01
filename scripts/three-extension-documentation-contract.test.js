@@ -249,6 +249,9 @@ test("Wave 0A risk-tiered approval route retains technical references without re
     assert.equal(classification.get(relativePath), "current", `${relativePath} remains a current technical reference`)
     const notice = readText(relativePath).split(/\r?\n/).slice(0, 12).join("\n")
     assert.ok(notice.includes(canonicalRoute), `${relativePath} must identify the replacement approval method`)
+    assert.match(notice, /current technical reference/i, `${relativePath} must declare current technical-reference scope`)
+    assert.match(notice, /technical-only/i, `${relativePath} must be technical-only`)
+    assert.match(notice, /execution permit[^\n]*(?:not granted|与えない)/i, `${relativePath} must grant no execution permit`)
   }
 })
 

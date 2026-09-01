@@ -20,6 +20,28 @@ const FRESH_KEYS = ['branches', 'worktrees', 'fixtureRoots', 'requireAbsent', 'r
 const CHECK_NAMES = ['scopeContained', 'targetAbsent', 'isolatedTarget', 'endpointAllowed', 'credentialsAbsent', 'identityStable', 'parentBoundaryStable', 'leaseSatisfied', 'provenanceSatisfied']
 const PRE_FLIGHT_KEYS = ['proposalId', 'taskId', 'operationId', 'idempotencyKey', 'action', 'repository', 'worktree', 'branch', 'paths', 'outputRoots', 'freshResources', 'finalPublicEndpoints', 'observedSource', 'observedTargetSet', 'observedImpact', 'observedRollback', 'checks']
 const DECIMAL = /^(?:0|[1-9][0-9]*)$/u
+const ACTION_CHECKS = Object.freeze({
+  inspect: [], review: [], dry_run: [], render_in_chat: [],
+  edit_scoped_files: [], run_local_test: [], build_local_package: [], local_commit: ['leaseSatisfied'],
+  write_generated_output: ['targetAbsent', 'parentBoundaryStable'],
+  create_fresh_fixture: ['targetAbsent', 'isolatedTarget', 'parentBoundaryStable', 'scopeContained'],
+  create_local_branch: ['targetAbsent', 'isolatedTarget', 'leaseSatisfied'],
+  create_local_worktree: ['targetAbsent', 'isolatedTarget', 'parentBoundaryStable'],
+  public_dependency_read: ['endpointAllowed', 'credentialsAbsent'],
+  update_main: ['leaseSatisfied'], rewrite_history: ['leaseSatisfied'], push_remote: ['leaseSatisfied'],
+  create_or_update_pr: ['leaseSatisfied'], merge_pr: ['leaseSatisfied'], delete_branch: ['leaseSatisfied'],
+  delete_worktree: ['identityStable', 'parentBoundaryStable'],
+  overwrite_existing_data: ['identityStable', 'parentBoundaryStable'], delete_existing_data: ['identityStable', 'parentBoundaryStable'],
+  write_external_service: [], publish: [], sign: [], use_credentials: [], incur_cost: [], send_nonpublic_data: []
+})
+const EFFECT_CHECKS = Object.freeze({
+  repository: Object.freeze({ none: [], scoped_worktree: [], main_or_history: ['leaseSatisfied'] }),
+  filesystem: Object.freeze({ none: [], fresh_output: ['targetAbsent', 'parentBoundaryStable'], existing_external_write: ['identityStable', 'parentBoundaryStable'], existing_external_delete: ['identityStable', 'parentBoundaryStable'], existing_worktree_delete: ['identityStable', 'parentBoundaryStable'] }),
+  network: Object.freeze({ none: [], public_read: ['endpointAllowed', 'credentialsAbsent'], external_write: [] }),
+  credentials: Object.freeze({ none: [], use_secret: [] }), publication: Object.freeze({ none: [], publish: [] }),
+  cost: Object.freeze({ none: [], may_incur: [] }), nonPublicData: Object.freeze({ none: [], send: [] })
+})
+const SOURCE_CHECKS = Object.freeze({ git_revision: [], artifact: ['provenanceSatisfied'], filesystem_identity: [], external_version: [] })
 
 function fail(message) { throw new TypeError(message) }
 function assertPlain(value, keys, label) {
@@ -33,9 +55,17 @@ function assertArray(value, label) {
 }
 function assertString(value, label) { if (typeof value !== 'string' || value.length === 0 || value.trim() !== value) fail(`invalid ${label}`) }
 function assertUnique(values, label) { if (new Set(values).size !== values.length) fail(`duplicate ${label}`) }
+function pathIdentityKey(value) {
+  if (/^[A-Z]:\//u.test(value)) return `windows:${value.replace(/[A-Z]/gu, character => character.toLowerCase())}`
+  return `posix:${value}`
+}
+function samePath(left, right) { return pathIdentityKey(left) === pathIdentityKey(right) }
 function assertCanonicalPath(value, label) {
   assertString(value, label)
-  if (value.includes('\\') || value.includes('/./') || value.includes('/../') || value.endsWith('/') || !(/^(?:[A-Z]:\/|\/)/u.test(value))) fail(`noncanonical ${label}`)
+  const windows = /^[A-Z]:\//u.test(value)
+  if (value.normalize('NFC') !== value || value.includes('\\') || value.includes('//') || value.endsWith('/') || !(/^(?:[A-Z]:\/|\/)/u.test(value))) fail(`noncanonical ${label}`)
+  const segments = value.slice(windows ? 3 : 1).split('/')
+  if (segments.some(segment => segment.length === 0 || segment === '.' || segment === '..' || (windows && /[ .]$/u.test(segment)))) fail(`noncanonical ${label}`)
 }
 function assertCanonicalBranch(value, label) {
   assertString(value, label)
@@ -44,7 +74,10 @@ function assertCanonicalBranch(value, label) {
 function assertStringArray(value, label, validator = assertString) {
   assertArray(value, label); value.forEach((item) => validator(item, label)); assertUnique(value, label)
 }
-function under(child, parent) { return child.startsWith(`${parent}/`) }
+function assertCanonicalPathArray(value, label) {
+  assertArray(value, label); value.forEach(item => assertCanonicalPath(item, label)); assertUnique(value.map(pathIdentityKey), label)
+}
+function under(child, parent) { return pathIdentityKey(child).startsWith(`${pathIdentityKey(parent)}/`) }
 function assertEndpoint(value, label) {
   assertString(value, label)
   let parsed
@@ -71,13 +104,13 @@ function validateFreshResources(value, scope) {
   assertStringArray(value.branches, 'fresh branch', assertCanonicalBranch)
   assertArray(value.worktrees, 'fresh worktree')
   value.worktrees.forEach((item) => { assertPlain(item, ['canonicalPath', 'branch'], 'fresh worktree'); assertCanonicalPath(item.canonicalPath, 'fresh worktree path'); assertCanonicalBranch(item.branch, 'fresh worktree branch') })
-  assertUnique(value.worktrees.map((item) => item.canonicalPath), 'fresh worktree path')
+  assertUnique(value.worktrees.map((item) => pathIdentityKey(item.canonicalPath)), 'fresh worktree path')
   assertUnique(value.worktrees.map((item) => item.branch), 'fresh worktree branch')
-  assertStringArray(value.fixtureRoots, 'fixture root', assertCanonicalPath)
+  assertCanonicalPathArray(value.fixtureRoots, 'fixture root')
   if (typeof value.requireAbsent !== 'boolean' || typeof value.requireIsolated !== 'boolean') fail('invalid fresh requirements')
-  for (const item of value.worktrees) if (item.canonicalPath === scope.worktree || under(scope.worktree, item.canonicalPath) || item.branch === scope.branch) fail('fresh worktree overlaps current worktree')
+  for (const item of value.worktrees) if (samePath(item.canonicalPath, scope.worktree) || under(scope.worktree, item.canonicalPath) || item.branch === scope.branch) fail('fresh worktree overlaps current worktree')
   for (const root of value.fixtureRoots) {
-    if (root === scope.worktree || under(root, scope.worktree) || under(root, scope.repository)) fail('fixture root overlaps repository')
+    if (samePath(root, scope.worktree) || under(root, scope.worktree) || under(root, scope.repository)) fail('fixture root overlaps repository')
     if (!scope.outputRoots.some((parent) => under(root, parent))) fail('fixture root outside output parent')
   }
 }
@@ -117,7 +150,7 @@ function validateScope(input) {
   if (!under(value.worktree, value.repository)) fail('worktree outside repository')
   assertStringArray(value.allowedActions, 'allowed action')
   if (value.allowedActions.length === 0 || value.allowedActions.some((action) => !Object.hasOwn(ACTION_TIER, action))) fail('unknown action')
-  assertStringArray(value.allowedPaths, 'allowed path', assertCanonicalPath); assertStringArray(value.outputRoots, 'output root', assertCanonicalPath)
+  assertCanonicalPathArray(value.allowedPaths, 'allowed path'); assertCanonicalPathArray(value.outputRoots, 'output root')
   validateFreshResources(value.freshResources, value)
   assertStringArray(value.allowedPublicEndpoints, 'public endpoint', assertEndpoint)
   assertStringArray(value.exclusions, 'exclusion')
@@ -131,7 +164,8 @@ function validateScope(input) {
     if (freshActions.has('create_local_worktree') && value.freshResources.worktrees.length === 0) fail('missing fresh worktree')
     if (freshActions.has('create_fresh_fixture') && value.freshResources.fixtureRoots.length === 0) fail('missing fixture root')
   } else if (value.freshResources.branches.length || value.freshResources.worktrees.length || value.freshResources.fixtureRoots.length || value.freshResources.requireAbsent || value.freshResources.requireIsolated) fail('unexpected fresh resources')
-  if (value.allowedActions.includes('public_dependency_read') ? value.allowedPublicEndpoints.length === 0 : value.allowedPublicEndpoints.length !== 0) fail('public endpoint binding mismatch')
+  const publicRead = value.allowedActions.includes('public_dependency_read') || value.effects.network === 'public_read'
+  if (publicRead ? value.allowedPublicEndpoints.length === 0 : value.allowedPublicEndpoints.length !== 0) fail('public endpoint binding mismatch')
   if (tier === 'C') {
     if (value.source === null || value.targetSet === null || value.impact === null || value.rollback === null) fail('missing Tier C binding')
     validateSource(value.source); validateTargetSet(value.targetSet); validateImpact(value.impact, value.allowedActions); validateRollback(value.rollback, value.impact.irreversible)
@@ -153,15 +187,11 @@ function snapshot(proposal) {
   if (!proposal) return null
   return structuredClone({ proposalId: proposal.proposalId, tier: proposal.tier, state: proposal.state, invalidatedReason: proposal.invalidatedReason, scope: presentationScope(proposal.scope) })
 }
-function requiredChecks(action, effects) {
+function requiredChecks(action, effects, source) {
   const needed = new Set()
-  if (action === 'create_local_branch') ['targetAbsent', 'isolatedTarget', 'leaseSatisfied'].forEach((check) => needed.add(check))
-  if (action === 'create_local_worktree') ['targetAbsent', 'isolatedTarget', 'parentBoundaryStable'].forEach((check) => needed.add(check))
-  if (action === 'create_fresh_fixture') ['targetAbsent', 'isolatedTarget', 'parentBoundaryStable', 'scopeContained'].forEach((check) => needed.add(check))
-  if (action === 'write_generated_output') ['targetAbsent', 'parentBoundaryStable'].forEach((check) => needed.add(check))
-  if (action === 'public_dependency_read') ['endpointAllowed', 'credentialsAbsent'].forEach((check) => needed.add(check))
-  if (['overwrite_existing_data', 'delete_existing_data'].includes(action) || ['existing_external_write', 'existing_external_delete'].includes(effects.filesystem)) ['identityStable', 'parentBoundaryStable'].forEach((check) => needed.add(check))
-  if (['update_main', 'rewrite_history', 'push_remote', 'delete_branch'].includes(action)) needed.add('leaseSatisfied')
+  for (const check of ACTION_CHECKS[action]) needed.add(check)
+  for (const [dimension, arm] of Object.entries(effects)) for (const check of EFFECT_CHECKS[dimension][arm]) needed.add(check)
+  if (source !== null) for (const check of SOURCE_CHECKS[source.kind]) needed.add(check)
   return needed
 }
 function assertEqualBinding(actual, expected, label) { if (!isDeepStrictEqual(actual, expected)) fail(`${label} drift`) }
@@ -173,7 +203,7 @@ function validatePreflight(event, proposal, taskId) {
   assertEqualBinding(event.paths, proposal.scope.allowedPaths, 'paths'); assertEqualBinding(event.outputRoots, proposal.scope.outputRoots, 'outputRoots'); assertEqualBinding(event.freshResources, proposal.scope.freshResources, 'freshResources'); assertEqualBinding(event.finalPublicEndpoints, proposal.scope.allowedPublicEndpoints, 'public endpoints')
   assertEqualBinding(event.observedSource, proposal.scope.source, 'source'); assertEqualBinding(event.observedTargetSet, proposal.scope.targetSet, 'targetSet'); assertEqualBinding(event.observedImpact, proposal.scope.impact, 'impact'); assertEqualBinding(event.observedRollback, proposal.scope.rollback, 'rollback')
   assertPlain(event.checks, CHECK_NAMES, 'checks')
-  const required = requiredChecks(event.action, proposal.scope.effects)
+  const required = requiredChecks(event.action, proposal.scope.effects, proposal.scope.source)
   for (const check of CHECK_NAMES) {
     const value = event.checks[check]
     if (!['verified', 'not_applicable'].includes(value) || (required.has(check) ? value !== 'verified' : value !== 'not_applicable')) fail('invalid preflight checks')

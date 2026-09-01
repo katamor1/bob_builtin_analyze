@@ -357,10 +357,17 @@ test('campaign primitives: export surface is exact and excludes legacy authority
 
 test('campaign primitives: active policy source excludes legacy authorization vocabulary', async () => {
   const source = await readFile(new URL('../featureIntegrationCampaignPolicy.mjs', import.meta.url), 'utf8')
-  for (const forbidden of [
+  const forbiddenTokens = [
     'codex_trusted_transcript_v1', 'terminal LF', 'approvalText', 'requestSha256=',
-    'approvalRecordSha256', 'campaignExecutionApprovalIdentity', 'provisioningApprovalIdentity'
-  ]) assert.equal(source.includes(forbidden), false, forbidden)
+    'approvalRecordSha256', 'campaignExecutionApprovalIdentity', 'provisioningApprovalIdentity',
+    'authorizedAction', 'approval_expired'
+  ]
+  const activePayloads = policy.getAttachmentSchemaRegistry().map(row => [`attachment:${row.schemaVersion}`, JSON.stringify(policy.buildAttachmentFixture(row.schemaVersion))])
+  const archive = policy.buildFullArchivePreflightFixture()
+  const decodedArchivePayloads = archive.sourceFiles.map((row, index) => [`archive:${index}:${row.repositoryPath}`, policy.decodeArchiveFixtureLiteral(index).toString('utf8')])
+  for (const [label, text] of [['production-source', source], ...activePayloads, ...decodedArchivePayloads]) {
+    for (const forbidden of forbiddenTokens) assert.equal(text.includes(forbidden), false, `${label}: ${forbidden}`)
+  }
 })
 
 test('campaign primitives: operation source and receipt locator identities remain closed', () => {
@@ -532,12 +539,24 @@ const A_ATTACHMENT_FIXTURES = new Map([
 const A_ENVIRONMENT = { SystemRoot: 'C:/Windows', ComSpec: 'C:/Windows/System32/cmd.exe', USERPROFILE: 'C:/wave0a/profile', APPDATA: 'C:/wave0a/profile/AppData/Roaming', LOCALAPPDATA: 'C:/wave0a/profile/AppData/Local', TEMP: 'C:/wave0a/temp', TMP: 'C:/wave0a/temp', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: 'NUL', GIT_CONFIG_GLOBAL: 'C:/wave0a/global.gitconfig', GIT_OPTIONAL_LOCKS: '0', GIT_PAGER: 'cat', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never', GH_CONFIG_DIR: 'C:/wave0a/gh', GH_HOST: 'github.com', GH_PROMPT_DISABLED: '1', NO_COLOR: '1' }
 const A_COMMAND_PLAN = { executableIdentity: gitExecutable, argv: ['version'], argvSha256: hash(['version']), stdin: { kind: 'none' }, environment: A_ENVIRONMENT, environmentSha256: hash(A_ENVIRONMENT), cwd: { kind: 'absolute', path: scope.featureWorktree.canonicalPath }, deadlineMs: 1000, stdoutBytes: 1024, stderrBytes: 1024 }
 const A_REQUEST = { schemaVersion: `${S}wave0a-mutation-request/v1`, attemptId: ATTEMPT, subject: SUBJECT, decisionAuthority: DECISION, predecessorState: 'LOCAL', currentEventSha256: HASH, topology: operationAttachment('publish-branch', 'precondition', 'topology', { ...A_TOPOLOGY, request: { ...A_TOPOLOGY_REQUEST, snapshotProfile: 'LOCAL_PRE_PUBLISH' } }), evidence: [], operationInstanceId: 'publish-branch', operationId: 'publish_branch', branch: A_BRANCH, headSha: H, baseSha: B }
+const A_RELEASE_ROOT = 'C:/wave0a/controller-releases/0002'
+const controllerFile = (canonicalPath, ino) => ({ ...clone(scope.worktreeRegistryFence.rootHeadFile), canonicalPath, ino: String(ino) })
+const controllerDirectory = (canonicalPath, ino) => ({ ...clone(scope.rootWorktree), canonicalPath, ino: String(ino) })
+const A_CONTROLLER_RELEASE = { envelope: controllerFile(`${A_RELEASE_ROOT}/envelope.json`, 9001), request: controllerFile(`${A_RELEASE_ROOT}/request.json`, 9002), companionResult: controllerFile(`${A_RELEASE_ROOT}/result.txt`, 9003), activation: controllerFile(`${A_RELEASE_ROOT}/activation.json`, 9004) }
+const A_CONTROLLER_SESSION_ROOT = controllerDirectory('C:/wave0a/controller-sessions/session-2', 9010)
+const A_CONTROLLER_CREDENTIAL_CWD = controllerDirectory('C:/wave0a/credential-authority', 9011)
+const A_CONTROLLER_REPOSITORY_CWD = controllerDirectory(scope.rootWorktree.canonicalPath, 9012)
+const A_CONTROLLER_SESSION = { sessionId: 'controller-session-2', supervisor: { ...processIdentity, pid: 200 }, cwd: A_CONTROLLER_CREDENTIAL_CWD, controllerSessionRoot: A_CONTROLLER_SESSION_ROOT, controllerGeneration: 2, jobContract: 'kill_on_close_one_controller_generation' }
+const A_CONTROLLER_PROCESSES = ['outer', 'host', 'operator'].map((role, index) => ({ role, process: { ...processIdentity, pid: 201 + index }, cwd: index === 0 ? A_CONTROLLER_CREDENTIAL_CWD : A_CONTROLLER_REPOSITORY_CWD, ticket: controllerFile(`${A_CONTROLLER_SESSION_ROOT.canonicalPath}/${role}.ticket.json`, 9021 + index), gateOrdinal: index + 1 }))
+const A_CONTROLLER_TREE = { schemaVersion: `${S}wave0a-active-controller-tree/v1`, session: A_CONTROLLER_SESSION, processes: A_CONTROLLER_PROCESSES }
+const A_CONTROLLER_PROOF = { release: A_CONTROLLER_RELEASE, preIntentActiveTree: A_CONTROLLER_TREE }
+const A_REMOVE_REQUEST = { schemaVersion: `${S}wave0a-mutation-request/v1`, attemptId: ATTEMPT, subject: SUBJECT, decisionAuthority: DECISION, predecessorState: 'MERGED', currentEventSha256: HASH, topology: operationAttachment('remove-feature-worktree', 'precondition', 'topology', A_TOPOLOGY), evidence: [], operationInstanceId: 'remove-feature-worktree', operationId: 'remove_feature_worktree', mode: 'post_merge_success', featureWorktreePath: scope.featureWorktree.canonicalPath, branch: A_BRANCH, expectedHeadSha: H, expectedHeadTreeOid: TREE, controllerProof: A_CONTROLLER_PROOF }
 const A_INTENT = { schemaVersion: `${S}wave0a-mutation-intent/v1`, attemptId: ATTEMPT, subject: SUBJECT, decisionAuthority: DECISION, predecessorState: 'LOCAL', currentEventSha256: HASH, requestEvidence: operationAttachment('publish-branch', 'request', 'request', A_REQUEST), mutationContractIdentity: repo('tools/main-consolidation/wave0a-mutations.json'), preconditionEvidence: [A_REQUEST.topology], executionPlan: { kind: 'single_command', command: A_COMMAND_PLAN }, executionPlanSha256: hash({ kind: 'single_command', command: A_COMMAND_PLAN }), repositoryExecutionIdentity: { repositoryRoot: scope.featureWorktree.canonicalPath, commonGitDirectory: directory(scope.commonGitDirectory.canonicalPath), objectDirectory: directory(scope.objectDirectory.canonicalPath), originUrl: 'https://github.com/katamor1/bob_builtin_analyze.git', effectiveConfigSha256: HASH, sanitizedGlobalConfig: file(A_ENVIRONMENT.GIT_CONFIG_GLOBAL), credentialHelper: executable('git-credential-manager'), ghConfigDirectory: directory(A_ENVIRONMENT.GH_CONFIG_DIR), gitRefTransactionCapabilitySha256: hash(externalTools.gitRefTransactionCapability), hooksDisabled: true }, pathArgumentIdentities: [], createdAt: AT, operationInstanceId: 'publish-branch', operationId: 'publish_branch' }
 const A_CLAIM = { schemaVersion: `${S}wave0a-operation-claim/v1`, operationInstanceId: 'publish-branch', intentSha256: hash(A_INTENT), runPublicationReservationSha256: hash(reservation), claimOrdinal: 1, claimPath: claim().path, priorClaim: null, priorTerminationProof: null, coordinationFile: coordination.coordinationFile, coordinationLease: 'shared_supervisor', supervisorProcess: processIdentity, childProcess: { ...processIdentity, pid: 101 }, jobContract: 'kill_on_close_single_noninheritable_supervisor_handle', executionPlanSha256: A_INTENT.executionPlanSha256, deadlineAt: '2026-08-23T00:00:01.100Z', deadlineBoot: processIdentity.boot, deadlineUnbiased100ns: '10000000', processResultPath: `operations/${ATTEMPT}/publish-branch/process-result.json`, recordedAt: AT, kind: 'supervisor' }
 const A_CLAIM_REF = operationAttachment('publish-branch', 'claim', 'claim', A_CLAIM)
 const A_PROCESS_RESULT = { schemaVersion: `${S}wave0a-process-result/v1`, operationInstanceId: 'publish-branch', intentSha256: hash(A_INTENT), runPublicationReservationSha256: hash(reservation), claim: { ...claim(), sha256: hash(A_CLAIM) }, execution: { kind: 'single_command', command: A_COMMAND }, recordedAt: AT }
 const A_FENCE = { coordinationFile: coordination.coordinationFile, lease: 'exclusive_owner_death_observation', byteOffset: 0, byteLength: 1, acquiredAt: AT }
-const A_PROOF = { schemaVersion: `${S}wave0a-job-termination-proof/v1`, operationInstanceId: 'publish-branch', intentSha256: hash(A_INTENT), proofPublicationReservationSha256: HASH, claim: A_PROCESS_RESULT.claim, supervisorExit: { expectedProcess: A_CLAIM.supervisorProcess, state: 'signaled' }, childExit: { expectedProcess: A_CLAIM.childProcess, state: 'not_found' }, jobContract: A_CLAIM.jobContract, coordinationFence: A_FENCE, observation: 'exclusive_fence_supervisor_and_child_exited', observedAt: AT }
+const A_PROOF = { schemaVersion: `${S}wave0a-job-termination-proof/v1`, operationInstanceId: 'publish-branch', intentSha256: hash(A_INTENT), proofPublicationReservationSha256: HASH, claim: A_PROCESS_RESULT.claim, supervisorExit: { expectedProcess: A_CLAIM.supervisorProcess, state: 'signaled' }, childExit: { expectedProcess: A_CLAIM.childProcess, state: 'not_found' }, jobContract: A_CLAIM.jobContract, coordinationEntry: coordination, coordinationFence: A_FENCE, observation: 'exclusive_fence_supervisor_and_child_exited', observedAt: AT }
 const A_PUBLISHED_TOPOLOGY = { ...clone(A_TOPOLOGY), request: { ...clone(A_TOPOLOGY_REQUEST), snapshotProfile: 'LOCAL_PUBLISHED' }, before: { ...clone(A_TOPOLOGY_OBSERVATION), remoteHeads: [{ ref: A_BRANCH, sha: H }, { ref: 'main', sha: B }] }, after: { ...clone(A_TOPOLOGY_OBSERVATION), remoteHeads: [{ ref: A_BRANCH, sha: H }, { ref: 'main', sha: B }] } }
 const A_RECEIPT = { schemaVersion: `${S}wave0a-mutation-receipt/v1`, operationInstanceId: 'publish-branch', intentSha256: hash(A_INTENT), postconditionEvidence: [operationAttachment('publish-branch', 'postcondition', 'topology', A_PUBLISHED_TOPOLOGY)], recordedAt: AT, diagnostics: [], receiptMode: 'supervisor', execution: A_PROCESS_RESULT.execution, effectiveClaim: A_CLAIM_REF, reconciliation: 'applied', requiresManualDecision: false }
 const A_INTENT_LOCATOR = { operationInstanceId: 'publish-branch', intentPath: `operations/${ATTEMPT}/publish-branch/intent.json`, intentSha256: hash(A_INTENT) }
@@ -738,6 +757,98 @@ const A_SEMANTIC_MUTATIONS = [
   ['wave0a-mutation-receipt', 'manual decision consequence', v => { v.requiresManualDecision = true }], ['wave0a-mutation-receipt', 'effective claim kind', v => { v.effectiveClaim.recordKind = 'receipt' }], ['wave0a-mutation-receipt', 'foreign postcondition', v => { v.postconditionEvidence[0].operationInstanceId = 'create-pull-request' }], ['wave0a-operation-inspection', 'effective claim not terminal', v => { v.effectiveClaim.sha256 = HASH }], ['wave0a-operation-inspection', 'empty durable chain', v => { v.claimChain = [] }], ['wave0a-supervised-operation-result', 'program operation', v => { v.program = 'root_fast_forward' }], ['wave0a-supervised-operation-result', 'unsettled termination', v => { v.termination = { outcome: 'timeout', treeTermination: 'termination_failed' } }], ['wave0a-historical-precheckpoint-validation', 'program operation', v => { v.program = 'generated_cleanup' }], ['wave0a-historical-precheckpoint-validation', 'unapproved owner delta', v => { v.currentOwnerState = 'terminated_without_result' }]
 ]
 for (const [name, reason, change] of A_SEMANTIC_MUTATIONS) test(`campaign attachment: ${name} rejects ${reason}`, () => { const good = A_ATTACHMENT_FIXTURES.get(name); assert.deepEqual(validateAttachment(name), good); const bad = clone(good); change(bad); assert.throws(() => validateAttachment(name, bad), TypeError) })
+
+test('campaign attachment: remove-worktree controller proof is exact and identity-bound', () => {
+  assert.deepEqual(validateAttachment('wave0a-mutation-request', A_REMOVE_REQUEST), A_REMOVE_REQUEST)
+  for (const [reason, change] of [
+    ['empty proof', v => { v.controllerProof = {} }],
+    ['missing release', v => { delete v.controllerProof.release }],
+    ['extra proof key', v => { v.controllerProof.extra = true }],
+    ['missing quartet member', v => { delete v.controllerProof.release.activation }],
+    ['extra quartet member', v => { v.controllerProof.release.extra = true }],
+    ['duplicate quartet identity', v => { v.controllerProof.release.activation = clone(v.controllerProof.release.request) }],
+    ['crossed quartet parent', v => { v.controllerProof.release.envelope.canonicalPath = 'C:/wave0a/other-release/envelope.json' }],
+    ['role order drift', v => { v.controllerProof.preIntentActiveTree.processes.reverse() }],
+    ['role drift', v => { v.controllerProof.preIntentActiveTree.processes[0].role = 'host' }],
+    ['gate drift', v => { v.controllerProof.preIntentActiveTree.processes[1].gateOrdinal = 1 }],
+    ['duplicate process identity', v => { v.controllerProof.preIntentActiveTree.processes[2].process = clone(v.controllerProof.preIntentActiveTree.processes[1].process) }],
+    ['supervisor child crossing', v => { v.controllerProof.preIntentActiveTree.processes[0].process = clone(v.controllerProof.preIntentActiveTree.session.supervisor) }],
+    ['tree session boot mismatch', v => { v.controllerProof.preIntentActiveTree.processes[1].process.boot.bootIdentifier = '99999999-2222-3333-4444-555555555555' }],
+    ['ticket outside session', v => { v.controllerProof.preIntentActiveTree.processes[2].ticket.canonicalPath = 'C:/wave0a/other-session/operator.ticket.json' }]
+  ]) {
+    const bad = clone(A_REMOVE_REQUEST); change(bad); assert.throws(() => validateAttachment('wave0a-mutation-request', bad), TypeError, reason)
+  }
+})
+
+test('campaign attachment: lifecycle validation rejects the removed approval-expired reason', () => {
+  const acceptanceExpired = clone(A_ATTACHMENT_FIXTURES.get('github-atomic-pr-lifecycle-validation'))
+  assert.equal(acceptanceExpired.reason, 'acceptance_expired')
+  assert.deepEqual(validateAttachment('github-atomic-pr-lifecycle-validation', acceptanceExpired), acceptanceExpired)
+  const oldArm = clone(acceptanceExpired); oldArm.reason = 'approval_expired'
+  assert.throws(() => validateAttachment('github-atomic-pr-lifecycle-validation', oldArm), TypeError)
+})
+
+test('campaign attachment: job termination proof binds operation coordination entry to its fence', () => {
+  assert.deepEqual(validateAttachment('wave0a-job-termination-proof', A_PROOF), A_PROOF)
+  for (const change of [
+    v => { v.coordinationEntry.operationInstanceId = 'create-pull-request' },
+    v => { v.coordinationEntry.coordinationFile = clone(scope.worktreeRegistryFence.featureWorktreeGitFile) },
+    v => { v.coordinationFence.coordinationFile = clone(scope.worktreeRegistryFence.featureWorktreeGitFile) }
+  ]) {
+    const bad = clone(A_PROOF); change(bad); assert.throws(() => validateAttachment('wave0a-job-termination-proof', bad), TypeError)
+  }
+})
+
+const inspectionClaim = (ordinal, operationInstanceId = 'publish-branch') => ({ ...clone(A_CLAIM_REF), operationInstanceId, path: `operations/${ATTEMPT}/${operationInstanceId}/claims/${String(ordinal).padStart(4, '0')}.json`, sha256: String(ordinal).repeat(64).slice(0, 64) })
+const inspectionProof = (ordinal, operationInstanceId = 'publish-branch') => ({ owner: 'operation', attemptId: ATTEMPT, operationInstanceId, recordKind: 'termination_proof', label: 'termination-proof', path: `operations/${ATTEMPT}/${operationInstanceId}/termination-proofs/${String(ordinal).padStart(4, '0')}.json`, schemaVersion: `${S}wave0a-job-termination-proof/v1`, byteSize: 1, sha256: String(ordinal + 4).repeat(64).slice(0, 64) })
+const inspectionProcessResult = operationInstanceId => ({ ...clone(A_ATTACHMENT_FIXTURES.get('wave0a-operation-inspection').processResult), operationInstanceId, path: `operations/${ATTEMPT}/${operationInstanceId}/process-result.json` })
+function inspectionFixture(executionChainState) {
+  const claim1 = inspectionClaim(1), proof1 = inspectionProof(1)
+  const base = { schemaVersion: `${S}wave0a-operation-inspection/v1`, operationInstanceId: 'publish-branch', inspectedAt: AT, diagnostics: [], classification: executionChainState === 'result_durable' ? 'receipted' : 'intent_only', intent: A_INTENT_LOCATOR, receipt: executionChainState === 'result_durable' ? A_RECEIPT_LOCATOR : null, executionChainState, claimChain: [], terminationProofChain: [], effectiveClaim: null, processResult: null, terminationProof: null }
+  if (executionChainState === 'proof_required') Object.assign(base, { claimChain: [claim1], effectiveClaim: claim1 })
+  else if (executionChainState === 'result_durable') Object.assign(base, { claimChain: [claim1], effectiveClaim: claim1, processResult: inspectionProcessResult('publish-branch') })
+  else if (executionChainState === 'terminated_without_result') Object.assign(base, { claimChain: [claim1], terminationProofChain: [proof1], effectiveClaim: claim1, terminationProof: proof1 })
+  return base
+}
+
+test('campaign attachment: operation inspection closes every execution-chain state', () => {
+  for (const state of ['unclaimed', 'result_durable', 'terminated_without_result', 'no_spawn_fenced', 'proof_required']) {
+    const good = inspectionFixture(state)
+    assert.deepEqual(validateAttachment('wave0a-operation-inspection', good), good, state)
+  }
+})
+
+test('campaign attachment: operation inspection rejects crossed, gapped, and contradictory chains', () => {
+  const cases = [
+    ['unclaimed claim', 'unclaimed', v => { v.claimChain = [inspectionClaim(1)]; v.effectiveClaim = v.claimChain[0] }],
+    ['no-spawn claim', 'no_spawn_fenced', v => { v.claimChain = [inspectionClaim(1)]; v.effectiveClaim = v.claimChain[0] }],
+    ['proof-required result', 'proof_required', v => { v.processResult = inspectionProcessResult('publish-branch') }],
+    ['result with proof', 'result_durable', v => { v.terminationProofChain = [inspectionProof(1)]; v.terminationProof = v.terminationProofChain[0] }],
+    ['terminated with result', 'terminated_without_result', v => { v.processResult = inspectionProcessResult('publish-branch') }],
+    ['crossed claim operation', 'proof_required', v => { v.claimChain[0] = inspectionClaim(1, 'create-pull-request'); v.effectiveClaim = v.claimChain[0] }],
+    ['gapped claim ordinal', 'proof_required', v => { v.claimChain[0] = inspectionClaim(2); v.effectiveClaim = v.claimChain[0] }],
+    ['crossed proof operation', 'terminated_without_result', v => { v.terminationProofChain[0] = inspectionProof(1, 'create-pull-request'); v.terminationProof = v.terminationProofChain[0] }],
+    ['gapped proof ordinal', 'terminated_without_result', v => { v.terminationProofChain[0] = inspectionProof(2); v.terminationProof = v.terminationProofChain[0] }],
+    ['nonfinal termination proof', 'terminated_without_result', v => { v.terminationProof = inspectionProof(2) }],
+    ['crossed process result', 'result_durable', v => { v.processResult = inspectionProcessResult('create-pull-request') }]
+  ]
+  for (const [reason, state, change] of cases) {
+    const bad = inspectionFixture(state); change(bad)
+    assert.throws(() => validateAttachment('wave0a-operation-inspection', bad), TypeError, reason)
+  }
+})
+
+test('campaign attachment: operation inspection permits only contiguous prior terminated attempts', () => {
+  const claim1 = inspectionClaim(1), claim2 = inspectionClaim(2), proof1 = inspectionProof(1), proof2 = inspectionProof(2)
+  for (const state of ['proof_required', 'result_durable', 'terminated_without_result']) {
+    const good = inspectionFixture(state)
+    good.claimChain = [claim1, claim2]
+    good.terminationProofChain = state === 'terminated_without_result' ? [proof1, proof2] : [proof1]
+    good.effectiveClaim = claim2
+    good.terminationProof = state === 'terminated_without_result' ? proof2 : null
+    assert.deepEqual(validateAttachment('wave0a-operation-inspection', good), good, state)
+  }
+})
 
 function refreshMaterialization(plan) {
   plan.actionCount = plan.actions.length
@@ -1053,19 +1164,19 @@ test('campaign attachment: recovery checkpoint closes cleanup progress and recon
     const bad = clone(partial); change(bad); assert.throws(() => validateAttachment('feature-integration-recovery-checkpoint', bad), TypeError)
   }
 
-  const controllerOrigin = { kind: 'controller_preclaim_spawn_failure', operationInstanceId: 'publish-branch', intentSha256: HASH, failedSupervisorLaunch: checkpointEvidence('failed-supervisor-launch', `${S}wave0a-supervised-operation-result/v1`, 6), authorizedAction: 'observe_only_no_spawn' }
+  const controllerOrigin = { kind: 'controller_preclaim_spawn_failure', operationInstanceId: 'publish-branch', intentSha256: HASH, failedSupervisorLaunch: checkpointEvidence('failed-supervisor-launch', `${S}wave0a-supervised-operation-result/v1`, 6) }
   const mutation = clone(A_CHECKPOINT)
   Object.assign(mutation, { checkpointProfile: 'mutation_reconciliation', failureCode: 'mutation_reconciliation_required', reconciliationOrigin: controllerOrigin })
   mutation.attachments.diagnostics = [checkpointDiagnostic('operation-inspection')]
   assert.deepEqual(validateAttachment('feature-integration-recovery-checkpoint', mutation), mutation)
-  for (const change of [v => { delete v.reconciliationOrigin.authorizedAction }, v => { v.reconciliationOrigin.extra = true }, v => { v.reconciliationOrigin.failedSupervisorLaunch.schemaVersion = `${S}wave0a-local-gates/v1` }]) {
+  for (const change of [v => { v.reconciliationOrigin.authorizedAction = 'observe_only_no_spawn' }, v => { v.reconciliationOrigin.executionPermit = 'resume' }, v => { v.reconciliationOrigin.failedSupervisorLaunch.schemaVersion = `${S}wave0a-local-gates/v1` }]) {
     const bad = clone(mutation); change(bad); assert.throws(() => validateAttachment('feature-integration-recovery-checkpoint', bad), TypeError)
   }
 
   const historical = clone(mutation)
-  historical.reconciliationOrigin = { kind: 'historical_precheckpoint', historicalBootstrapSha256: HASH, sourceHandoffSha256: HASH, intentSha256: HASH, historicalValidation: checkpointEvidence('historical-validation', `${S}wave0a-historical-precheckpoint-validation/v1`, 7), window: 'operation_precheckpoint', operationClass: 'observe_only', operationInstanceId: 'publish-branch', program: 'observe_only_no_spawn', ownerState: 'unclaimed', authorizedAction: 'observe_only_no_spawn' }
+  historical.reconciliationOrigin = { kind: 'historical_precheckpoint', historicalBootstrapSha256: HASH, sourceHandoffSha256: HASH, intentSha256: HASH, historicalValidation: checkpointEvidence('historical-validation', `${S}wave0a-historical-precheckpoint-validation/v1`, 7), window: 'operation_precheckpoint', operationClass: 'observe_only', operationInstanceId: 'publish-branch', program: 'observe_only_no_spawn', ownerState: 'unclaimed' }
   assert.deepEqual(validateAttachment('feature-integration-recovery-checkpoint', historical), historical)
-  for (const change of [v => { delete v.reconciliationOrigin.window }, v => { v.reconciliationOrigin.extra = true }, v => { v.reconciliationOrigin.program = 'generated_cleanup' }]) {
+  for (const change of [v => { delete v.reconciliationOrigin.window }, v => { v.reconciliationOrigin.authorizedAction = 'observe_only_no_spawn' }, v => { v.reconciliationOrigin.program = 'generated_cleanup' }]) {
     const bad = clone(historical); change(bad); assert.throws(() => validateAttachment('feature-integration-recovery-checkpoint', bad), TypeError)
   }
 })

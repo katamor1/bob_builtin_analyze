@@ -618,6 +618,9 @@ for (const [name, value] of attachmentLiteralCorpus.fixtureEntries) attachmentFi
   ]
   Object.assign(removal, { entryCount: 9, maxDepth: 2, totalFileBytes: '58', tupleSha256: hash(removal.entries) })
   attachmentFixtures['worktree-removal-observation'].planSha256 = hash(removal)
+
+  const jobTerminationProof = attachmentFixtures['wave0a-job-termination-proof']
+  jobTerminationProof.coordinationEntry = { operationInstanceId: jobTerminationProof.operationInstanceId, coordinationFile: jobTerminationProof.coordinationFence.coordinationFile }
 }
 Object.freeze(attachmentFixtures)
 
@@ -1307,8 +1310,8 @@ attachmentType('github-atomic-pr-lifecycle-acceptance', {
   const last = value.settlement.at(-1); requireThat(last.liveMainSha === value.mergeSha && last.liveFeatureSha === null && last.pullRequest.state === 'MERGED' && last.pullRequest.mergeCommitOid === value.mergeSha, 'acceptance settlement')
   requireThat(value.after.mainSha === value.mergeSha && value.after.pullRequest.state === 'MERGED' && value.after.pullRequest.mergeCommitOid === value.mergeSha && value.expiresAt > value.observedAt, 'acceptance result/expiry')
 })
-attachmentType('github-atomic-pr-lifecycle-validation', { acceptance: 'FileIdentity', currentTarget: targetAcceptance, result: enumeration(['expired', 'invalid']), reason: enumeration(['acceptance_expired', 'approval_expired', 'target_policy_drift', 'target_topology_drift', 'executable_drift', 'command_template_mismatch']), observedAt: 'CanonicalUtc', diagnostics }, value => {
-  requireThat(value.result === 'expired' ? value.reason === 'acceptance_expired' || value.reason === 'approval_expired' : !['acceptance_expired', 'approval_expired'].includes(value.reason), 'lifecycle validation result/reason')
+attachmentType('github-atomic-pr-lifecycle-validation', { acceptance: 'FileIdentity', currentTarget: targetAcceptance, result: enumeration(['expired', 'invalid']), reason: enumeration(['acceptance_expired', 'target_policy_drift', 'target_topology_drift', 'executable_drift', 'command_template_mismatch']), observedAt: 'CanonicalUtc', diagnostics }, value => {
+  requireThat(value.result === 'expired' ? value.reason === 'acceptance_expired' : value.reason !== 'acceptance_expired', 'lifecycle validation result/reason')
 })
 
 const failureCodes = Object.freeze(['authority_drift', 'archive_drift', 'topology_drift', 'source_drift', 'local_gate_failed', 'review_failed', 'handoff_invalid', 'publication_failed', 'capacity_insufficient', 'pr_identity_drift', 'pr_run_discovery_failed', 'pr_settlement_failed', 'lifecycle_acceptance_invalid', 'ci_failed', 'ci_ambiguous', 'main_dispatch_failed', 'main_run_discovery_failed', 'merge_ambiguous', 'remote_ref_cleanup_failed', 'generated_cleanup_failed', 'artifact_identity_drift', 'mutation_reconciliation_required'])
@@ -1343,7 +1346,7 @@ const attemptEvidenceWithSchema = expectedSchema => value => {
 }
 const reconciliationOrigin = value => {
   if (value?.kind === 'controller_preclaim_spawn_failure') {
-    shape({ kind: literal('controller_preclaim_spawn_failure'), operationInstanceId: 'Wave0aOperationInstanceId', intentSha256: 'LowercaseSha256', failedSupervisorLaunch: attemptEvidenceWithSchema('wave0a-supervised-operation-result'), authorizedAction: literal('observe_only_no_spawn') })(value)
+    shape({ kind: literal('controller_preclaim_spawn_failure'), operationInstanceId: 'Wave0aOperationInstanceId', intentSha256: 'LowercaseSha256', failedSupervisorLaunch: attemptEvidenceWithSchema('wave0a-supervised-operation-result') })(value)
     return
   }
   requireThat(value?.kind === 'historical_precheckpoint', 'reconciliation origin kind')
@@ -1353,10 +1356,9 @@ const reconciliationOrigin = value => {
   const ownerState = value?.ownerState
   requireThat(['unclaimed', 'terminated_without_result', 'result_durable'].includes(ownerState), 'historical reconciliation owner state')
   const resumable = program !== 'observe_only_no_spawn'
-  const expectedAction = ownerState === 'result_durable' ? 'reconcile_durable_result' : resumable ? 'execute_same_intent_suffix' : 'observe_only_no_spawn'
   const fields = {
     kind: literal('historical_precheckpoint'), historicalBootstrapSha256: 'LowercaseSha256', sourceHandoffSha256: 'LowercaseSha256', intentSha256: 'LowercaseSha256', historicalValidation: attemptEvidenceWithSchema('wave0a-historical-precheckpoint-validation'),
-    window: literal('operation_precheckpoint'), operationClass: literal(resumable ? 'resumable_suffix' : 'observe_only'), operationInstanceId: resumable ? literal(specialOperation[program]) : 'Wave0aOperationInstanceId', program: literal(program), ownerState: literal(ownerState), authorizedAction: literal(expectedAction)
+    window: literal('operation_precheckpoint'), operationClass: literal(resumable ? 'resumable_suffix' : 'observe_only'), operationInstanceId: resumable ? literal(specialOperation[program]) : 'Wave0aOperationInstanceId', program: literal(program), ownerState: literal(ownerState)
   }
   shape(fields)(value)
   if (!resumable) requireThat(!Object.values(specialOperation).includes(value.operationInstanceId), 'historical observe-only operation')
@@ -1418,6 +1420,36 @@ const mutationExecutionObservation = value => {
   if (value?.kind === 'single_command') shape({ kind: literal('single_command'), command: value => check('CommandObservation', value) })(value)
   else fail('unsupported execution observation')
 }
+const parentPath = value => pathKey(value).slice(0, pathKey(value).lastIndexOf('/'))
+const releaseBootstrapContext = value => {
+  shape({ envelope: 'FileIdentity', request: 'FileIdentity', companionResult: 'FileIdentity', activation: 'FileIdentity' })(value)
+  const rows = [['envelope', 'envelope.json'], ['request', 'request.json'], ['companionResult', 'result.txt'], ['activation', 'activation.json']]
+  const root = parentPath(value.envelope.canonicalPath)
+  for (const [key, leaf] of rows) {
+    requireThat(samePath(parentPath(value[key].canonicalPath), root), 'controller release parent')
+    pathEquals(value[key].canonicalPath, childPath(root, leaf))
+  }
+  requireThat(new Set(rows.map(([key]) => ordinalFold(pathKey(value[key].canonicalPath)))).size === rows.length, 'controller release paths')
+  requireThat(new Set(rows.map(([key]) => `${value[key].dev}\0${value[key].ino}`)).size === rows.length, 'controller release identities')
+}
+const controllerSession = shape({ sessionId: 'SafeId', supervisor: 'WindowsProcessIdentity', cwd: 'DirectoryHandleIdentity', controllerSessionRoot: 'DirectoryHandleIdentity', controllerGeneration: 'PositiveSafeInteger', jobContract: literal('kill_on_close_one_controller_generation') })
+const controllerProcess = (role, gateOrdinal) => shape({ role: literal(role), process: 'WindowsProcessIdentity', cwd: 'DirectoryHandleIdentity', ticket: 'FileIdentity', gateOrdinal: literal(gateOrdinal) })
+const activeControllerTree = value => {
+  shape({ schemaVersion: literal(`${S}wave0a-active-controller-tree/v1`), session: controllerSession, processes: tuple([controllerProcess('outer', 1), controllerProcess('host', 2), controllerProcess('operator', 3)]) })(value)
+  const allProcesses = [value.session.supervisor, ...value.processes.map(row => row.process)]
+  requireThat(value.processes.every(row => equal(row.process.boot, value.session.supervisor.boot)), 'controller boot identity')
+  requireThat(new Set(allProcesses.map(process => renderJson(process))).size === allProcesses.length, 'controller process identities')
+  requireThat(!samePath(value.session.controllerSessionRoot.canonicalPath, value.session.cwd.canonicalPath), 'controller session root/cwd')
+  same(value.processes[0].cwd, value.session.cwd, 'outer controller cwd')
+  same(value.processes[1].cwd, value.processes[2].cwd, 'host/operator cwd')
+  for (const row of value.processes) {
+    requireThat(inside(row.ticket.canonicalPath, value.session.controllerSessionRoot.canonicalPath), 'controller ticket containment')
+    pathEquals(row.ticket.canonicalPath, childPath(value.session.controllerSessionRoot.canonicalPath, `${row.role}.ticket.json`))
+  }
+  requireThat(new Set(value.processes.map(row => ordinalFold(pathKey(row.ticket.canonicalPath)))).size === value.processes.length, 'controller ticket paths')
+  requireThat(new Set(value.processes.map(row => `${row.ticket.dev}\0${row.ticket.ino}`)).size === value.processes.length, 'controller ticket identities')
+}
+const removeWorktreeControllerProof = shape({ release: releaseBootstrapContext, preIntentActiveTree: activeControllerTree })
 const mutationRequestBase = { schemaVersion: literal(`${S}wave0a-mutation-request/v1`), attemptId: 'SafeAttemptId', subject: 'Wave0aSubject', decisionAuthority: 'Wave0aDecisionAuthority', predecessorState: enumeration(['READY', 'LOCAL', 'PR_ACTIVE', 'MERGED', 'POST_MERGE_VERIFIED', 'MAIN_ONLY']), currentEventSha256: 'LowercaseSha256', topology: operationEvidenceRef, evidence: array(operationEvidenceRef, 0, 7) }
 attachmentUnion('wave0a-mutation-request', value => {
   const operation = value?.operationInstanceId, fields = { ...mutationRequestBase }
@@ -1431,12 +1463,21 @@ attachmentUnion('wave0a-mutation-request', value => {
   else if (operation === 'fetch-after-integration') Object.assign(fields, { phase: literal('after_integration'), mainSha: 'LowercaseSha' })
   else if (operation === 'cleanup-generated-paths') Object.assign(fields, { mode: enumeration(['pre_merge_abort_cleanup', 'main_only_cleanup', 'post_merge_failure_cleanup']), repositoryRoot: 'AbsolutePath', beforeInventory: 'FileIdentity', afterInventory: 'FileIdentity', deletionPlan: operationEvidenceRef })
   else if (operation === 'fast-forward-root') Object.assign(fields, { mode: enumeration(['post_merge_success', 'post_merge_failure_cleanup']), rootWorktreePath: 'AbsolutePath', worktreeRegistryFence: 'WorktreeRegistryFence', materializationPlan: operationEvidenceRef, baseSha: 'LowercaseSha', mergeSha: 'LowercaseSha', headSha: 'LowercaseSha', headTreeOid: 'LowercaseSha' })
-  else if (operation === 'remove-feature-worktree') Object.assign(fields, { mode: enumeration(['post_merge_success', 'post_merge_failure_cleanup']), featureWorktreePath: 'AbsolutePath', branch: 'SafeBranch', expectedHeadSha: 'LowercaseSha', expectedHeadTreeOid: 'LowercaseSha', controllerProof: object => requireThat(object !== null && typeof object === 'object' && !Array.isArray(object), 'controller proof') })
+  else if (operation === 'remove-feature-worktree') Object.assign(fields, { mode: enumeration(['post_merge_success', 'post_merge_failure_cleanup']), featureWorktreePath: 'AbsolutePath', branch: 'SafeBranch', expectedHeadSha: 'LowercaseSha', expectedHeadTreeOid: 'LowercaseSha', controllerProof: removeWorktreeControllerProof })
   else if (operation === 'delete-local-branch') Object.assign(fields, { mode: enumeration(['post_merge_success', 'post_merge_failure_cleanup']), branch: 'SafeBranch', expectedHeadSha: 'LowercaseSha', mergedAncestorSha: 'LowercaseSha', worktreeRegistryFence: 'WorktreeRegistryFence' })
   else fail('mutation request operation')
   mutationOperationIdentity(fields)(value)
   requireThat(value.topology.attemptId === value.attemptId && value.topology.operationInstanceId === operation && value.topology.recordKind === 'precondition' && value.topology.schemaVersion === `${S}slice-topology-evidence/v1`, 'mutation request topology owner')
   for (const ref of value.evidence) requireThat(ref.attemptId === value.attemptId && ref.operationInstanceId === operation, 'mutation request evidence owner')
+  if (operation === 'remove-feature-worktree') {
+    const controllerPaths = [
+      ...Object.values(value.controllerProof.release).map(file => file.canonicalPath),
+      value.controllerProof.preIntentActiveTree.session.cwd.canonicalPath,
+      value.controllerProof.preIntentActiveTree.session.controllerSessionRoot.canonicalPath,
+      ...value.controllerProof.preIntentActiveTree.processes.flatMap(row => [row.cwd.canonicalPath, row.ticket.canonicalPath])
+    ]
+    requireThat(controllerPaths.every(path => !samePath(path, value.featureWorktreePath) && !inside(path, value.featureWorktreePath)), 'controller ownership outside removal target')
+  }
 })
 attachmentUnion('wave0a-mutation-intent', value => {
   const fields = { schemaVersion: literal(`${S}wave0a-mutation-intent/v1`), attemptId: 'SafeAttemptId', subject: 'Wave0aSubject', decisionAuthority: 'Wave0aDecisionAuthority', predecessorState: enumeration(['READY', 'LOCAL', 'PR_ACTIVE', 'MERGED', 'POST_MERGE_VERIFIED', 'MAIN_ONLY']), currentEventSha256: 'LowercaseSha256', requestEvidence: operationEvidenceRef, mutationContractIdentity: 'RepoObjectIdentity', preconditionEvidence: array(operationEvidenceRef, 1, 7), executionPlan: mutationExecutionPlan, executionPlanSha256: 'LowercaseSha256', repositoryExecutionIdentity, pathArgumentIdentities: array(mutationPathIdentity, 0, 64), createdAt: 'CanonicalUtc' }
@@ -1468,8 +1509,10 @@ attachmentUnion('wave0a-operation-claim', value => {
 attachmentType('wave0a-process-result', { operationInstanceId: 'Wave0aOperationInstanceId', intentSha256: 'LowercaseSha256', runPublicationReservationSha256: 'LowercaseSha256', claim: 'OperationClaimLink', execution: mutationExecutionObservation, recordedAt: 'CanonicalUtc' }, value => {
   requireThat(value.claim.path.includes(`/${value.operationInstanceId}/claims/`), 'process result claim owner')
 })
-attachmentType('wave0a-job-termination-proof', { operationInstanceId: 'Wave0aOperationInstanceId', intentSha256: 'LowercaseSha256', proofPublicationReservationSha256: 'LowercaseSha256', claim: 'OperationClaimLink', supervisorExit: processExit, childExit: processExit, jobContract: literal('kill_on_close_single_noninheritable_supervisor_handle'), coordinationFence: operationFence, observation: literal('exclusive_fence_supervisor_and_child_exited'), observedAt: 'CanonicalUtc' }, value => {
-  requireThat(value.claim.path.includes(`/${value.operationInstanceId}/claims/`) && equal(value.coordinationFence.coordinationFile, value.coordinationFence.coordinationFile), 'termination proof owner')
+attachmentType('wave0a-job-termination-proof', { operationInstanceId: 'Wave0aOperationInstanceId', intentSha256: 'LowercaseSha256', proofPublicationReservationSha256: 'LowercaseSha256', claim: 'OperationClaimLink', supervisorExit: processExit, childExit: processExit, jobContract: literal('kill_on_close_single_noninheritable_supervisor_handle'), coordinationEntry: 'OperationCoordinationEntry', coordinationFence: operationFence, observation: literal('exclusive_fence_supervisor_and_child_exited'), observedAt: 'CanonicalUtc' }, value => {
+  requireThat(value.claim.path.includes(`/${value.operationInstanceId}/claims/`) && value.coordinationEntry.operationInstanceId === value.operationInstanceId, 'termination proof owner')
+  same(value.coordinationEntry.coordinationFile, value.coordinationFence.coordinationFile, 'termination proof coordination')
+  requireThat(!equal(value.supervisorExit.expectedProcess, value.childExit.expectedProcess) && equal(value.supervisorExit.expectedProcess.boot, value.childExit.expectedProcess.boot), 'termination proof process identities')
 })
 attachmentUnion('wave0a-mutation-receipt', value => {
   const fields = { schemaVersion: literal(`${S}wave0a-mutation-receipt/v1`), operationInstanceId: 'Wave0aOperationInstanceId', intentSha256: 'LowercaseSha256', postconditionEvidence: array(operationEvidenceRef, 1, 3), recordedAt: 'CanonicalUtc', diagnostics, receiptMode: enumeration(['supervisor', 'reconciler']), execution: mutationExecutionObservation, effectiveClaim: operationEvidenceRef, reconciliation: enumeration(['applied', 'not_applied', 'contradictory', 'ambiguous', 'applied_with_main_drift']), requiresManualDecision: 'Boolean' }
@@ -1489,8 +1532,24 @@ attachmentUnion('wave0a-operation-inspection', value => {
     const fields = { ...common, intent: operationRecordLocator, receipt: value.classification === 'receipted' ? operationRecordLocator : literal(null), executionChainState: enumeration(['result_durable', 'terminated_without_result', 'no_spawn_fenced', 'proof_required', 'unclaimed']), claimChain: array(operationClaimEvidence, 0, 128), terminationProofChain: array(operationProofEvidence, 0, 128), effectiveClaim: value.effectiveClaim === null ? literal(null) : operationClaimEvidence, processResult: value.processResult === null ? literal(null) : operationEvidenceRef, terminationProof: value.terminationProof === null ? literal(null) : operationProofEvidence }
     shape(fields)(value)
     requireThat(value.intent.operationInstanceId === value.operationInstanceId && (value.receipt === null || value.receipt.operationInstanceId === value.operationInstanceId), 'inspection locator owner')
-    if (value.executionChainState !== 'unclaimed') requireThat(value.claimChain.length > 0 && equal(value.effectiveClaim, value.claimChain.at(-1)), 'inspection effective claim chain')
-    if (value.executionChainState === 'result_durable') requireThat(value.processResult !== null && value.processResult.operationInstanceId === value.operationInstanceId && value.processResult.recordKind === 'process_result' && value.terminationProof === null, 'inspection durable result')
+    const attemptId = value.intent.intentPath.split('/')[1]
+    check('SafeAttemptId', attemptId)
+    const root = `operations/${attemptId}/${value.operationInstanceId}`
+    requireThat(value.intent.intentPath === `${root}/intent.json`, 'inspection intent path')
+    if (value.receipt !== null) requireThat(value.receipt.intentPath === value.intent.intentPath && value.receipt.intentSha256 === value.intent.intentSha256 && value.receipt.receiptPath === `${root}/receipt.json`, 'inspection receipt binding')
+    for (const [index, claim] of value.claimChain.entries()) requireThat(claim.attemptId === attemptId && claim.operationInstanceId === value.operationInstanceId && claim.path === `${root}/claims/${String(index + 1).padStart(4, '0')}.json`, 'inspection claim chain')
+    for (const [index, proof] of value.terminationProofChain.entries()) requireThat(proof.attemptId === attemptId && proof.operationInstanceId === value.operationInstanceId && proof.path === `${root}/termination-proofs/${String(index + 1).padStart(4, '0')}.json`, 'inspection proof chain')
+    if (value.processResult !== null) requireThat(value.processResult.attemptId === attemptId && value.processResult.operationInstanceId === value.operationInstanceId && value.processResult.recordKind === 'process_result' && value.processResult.schemaVersion === `${S}wave0a-process-result/v1` && value.processResult.path === `${root}/process-result.json`, 'inspection process result')
+    const emptyState = value.executionChainState === 'unclaimed' || value.executionChainState === 'no_spawn_fenced'
+    if (emptyState) requireThat(value.claimChain.length === 0 && value.terminationProofChain.length === 0 && value.effectiveClaim === null && value.processResult === null && value.terminationProof === null, 'inspection empty execution chain')
+    else {
+      requireThat(value.claimChain.length > 0 && equal(value.effectiveClaim, value.claimChain.at(-1)), 'inspection effective claim chain')
+      if (value.executionChainState === 'proof_required') requireThat(value.terminationProofChain.length === value.claimChain.length - 1 && value.processResult === null && value.terminationProof === null, 'inspection proof required chain')
+      else if (value.executionChainState === 'result_durable') requireThat(value.terminationProofChain.length === value.claimChain.length - 1 && value.processResult !== null && value.terminationProof === null, 'inspection durable result chain')
+      else {
+        requireThat(value.executionChainState === 'terminated_without_result' && value.terminationProofChain.length === value.claimChain.length && value.processResult === null && equal(value.terminationProof, value.terminationProofChain.at(-1)), 'inspection terminated chain')
+      }
+    }
   }
 })
 const commandTermination = value => {

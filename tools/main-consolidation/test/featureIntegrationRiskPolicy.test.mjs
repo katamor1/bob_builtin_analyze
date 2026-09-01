@@ -61,6 +61,30 @@ function eventFor(modelSnapshot, proposalScope, action, overrides = {}) {
   }
 }
 
+function beginApproved(candidate, action, verified) {
+  const model = policy.createTaskProposalModel({ taskId: 'task-1' })
+  const pending = model.open(candidate)
+  model.recordDecision({ taskId: 'task-1', proposalId: pending.proposalId, decision: 'approved' })
+  return model.beginOperation(eventFor(pending, candidate, action, { checks: checks(verified) }))
+}
+
+function scopeForAction(action) {
+  if (action === 'create_local_branch') return scope({ allowedActions: [action], freshResources: { branches: ['feature/new'], worktrees: [], fixtureRoots: [], requireAbsent: true, requireIsolated: true } })
+  if (action === 'create_local_worktree') return scope({ allowedActions: [action], freshResources: { branches: [], worktrees: [{ canonicalPath: 'C:/repos/project/.worktrees/new', branch: 'feature/new' }], fixtureRoots: [], requireAbsent: true, requireIsolated: true } })
+  if (action === 'create_fresh_fixture') return scope({ allowedActions: [action], outputRoots: ['C:/approved-output'], freshResources: { branches: [], worktrees: [], fixtureRoots: ['C:/approved-output/fixture'], requireAbsent: true, requireIsolated: true } })
+  if (action === 'public_dependency_read') return scope({ allowedActions: [action], allowedPublicEndpoints: ['https://registry.npmjs.org'] })
+  const tierC = ['update_main', 'rewrite_history', 'push_remote', 'create_or_update_pr', 'merge_pr', 'delete_branch', 'delete_worktree', 'overwrite_existing_data', 'delete_existing_data', 'write_external_service', 'publish', 'sign', 'use_credentials', 'incur_cost', 'send_nonpublic_data']
+  if (tierC.includes(action)) return tierCScope({ allowedActions: [action], source: { ...tierCScope().source, kind: 'git_revision' }, impact: { ...tierCScope().impact, operations: [action] } })
+  return scope({ allowedActions: [action] })
+}
+
+function assertExactChecks(candidate, action, expected, label) {
+  assert.equal(beginApproved(candidate, action, expected).state, 'executing', label)
+  if (expected.length > 0) assert.throws(() => beginApproved(candidate, action, expected.slice(0, -1)), TypeError, `${label}: missing required`)
+  const nonrequired = CHECK_NAMES.find(name => !expected.includes(name))
+  if (nonrequired) assert.throws(() => beginApproved(candidate, action, [...expected, nonrequired]), TypeError, `${label}: nonrequired verified`)
+}
+
 test('classifyRisk assigns every known action its minimum risk tier', () => {
   const cases = [
     ['inspect', 'A'], ['review', 'A'], ['dry_run', 'A'], ['render_in_chat', 'A'],
@@ -102,6 +126,79 @@ test('Tier B scopes pin fresh targets and public endpoints before classification
 test('Tier B public reads reject private IPv6 literal endpoints', () => {
   for (const endpoint of ['https://[::1]', 'https://[::]', 'https://[fe80::1]', 'https://[fc00::1]']) {
     assert.throws(() => policy.classifyRisk(scope({ allowedActions: ['public_dependency_read'], allowedPublicEndpoints: [endpoint] })), TypeError, endpoint)
+  }
+})
+
+test('canonical absolute paths reject duplicate separators, dot aliases, and Windows-equivalent duplicates', () => {
+  for (const path of [
+    'C:/repos//project/.worktrees/risk/src',
+    'C:/repos/project/.worktrees/risk/src/..',
+    'C:/repos/project/.worktrees/risk/src/.',
+    'C:/repos/project/.worktrees/risk/src. ',
+    'C:/repos/project/.worktrees/risk/src.'
+  ]) assert.throws(() => policy.classifyRisk(scope({ allowedPaths: [path] })), TypeError, path)
+
+  assert.throws(() => policy.classifyRisk(scope({ allowedPaths: ['C:/repos/project/.worktrees/risk/src', 'C:/REPOS/PROJECT/.worktrees/risk/SRC'] })), TypeError)
+  assert.throws(() => policy.classifyRisk(scope({ outputRoots: ['C:/approved-output', 'C:/APPROVED-OUTPUT'] })), TypeError)
+})
+
+test('canonical containment uses Windows path identity instead of case-sensitive text prefixes', () => {
+  const mixedCase = scope({
+    repository: 'C:/REPOS/PROJECT',
+    worktree: 'C:/repos/project/.worktrees/risk',
+    allowedActions: ['create_fresh_fixture'],
+    outputRoots: ['C:/APPROVED-OUTPUT'],
+    freshResources: { branches: [], worktrees: [], fixtureRoots: ['C:/approved-output/fixture'], requireAbsent: true, requireIsolated: true }
+  })
+  assert.equal(policy.classifyRisk(mixedCase), 'B')
+  assert.throws(() => policy.classifyRisk(scope({
+    allowedActions: ['create_local_worktree'],
+    freshResources: { branches: [], worktrees: [{ canonicalPath: 'C:/REPOS/PROJECT/.WORKTREES/RISK', branch: 'feature/new' }], fixtureRoots: [], requireAbsent: true, requireIsolated: true }
+  })), TypeError)
+})
+
+test('preflight action matrix derives exact required checks for every mutable action', () => {
+  const rows = [
+    ['edit_scoped_files', []], ['run_local_test', []], ['build_local_package', []], ['local_commit', ['leaseSatisfied']],
+    ['write_generated_output', ['targetAbsent', 'parentBoundaryStable']],
+    ['create_fresh_fixture', ['scopeContained', 'targetAbsent', 'isolatedTarget', 'parentBoundaryStable']],
+    ['create_local_branch', ['targetAbsent', 'isolatedTarget', 'leaseSatisfied']],
+    ['create_local_worktree', ['targetAbsent', 'isolatedTarget', 'parentBoundaryStable']],
+    ['public_dependency_read', ['endpointAllowed', 'credentialsAbsent']],
+    ['update_main', ['leaseSatisfied']], ['rewrite_history', ['leaseSatisfied']], ['push_remote', ['leaseSatisfied']],
+    ['create_or_update_pr', ['leaseSatisfied']], ['merge_pr', ['leaseSatisfied']], ['delete_branch', ['leaseSatisfied']],
+    ['delete_worktree', ['identityStable', 'parentBoundaryStable']],
+    ['overwrite_existing_data', ['identityStable', 'parentBoundaryStable']], ['delete_existing_data', ['identityStable', 'parentBoundaryStable']],
+    ['write_external_service', []], ['publish', []], ['sign', []], ['use_credentials', []], ['incur_cost', []], ['send_nonpublic_data', []]
+  ]
+  for (const [action, expected] of rows) assertExactChecks(scopeForAction(action), action, expected, action)
+})
+
+test('preflight effect matrix derives exact required checks for every effect arm', () => {
+  const rows = [
+    ['repository', 'none', []], ['repository', 'scoped_worktree', []], ['repository', 'main_or_history', ['leaseSatisfied']],
+    ['filesystem', 'none', []], ['filesystem', 'fresh_output', ['targetAbsent', 'parentBoundaryStable']],
+    ['filesystem', 'existing_external_write', ['identityStable', 'parentBoundaryStable']],
+    ['filesystem', 'existing_external_delete', ['identityStable', 'parentBoundaryStable']],
+    ['filesystem', 'existing_worktree_delete', ['identityStable', 'parentBoundaryStable']],
+    ['network', 'none', []], ['network', 'public_read', ['endpointAllowed', 'credentialsAbsent']], ['network', 'external_write', []],
+    ['credentials', 'none', []], ['credentials', 'use_secret', []], ['publication', 'none', []], ['publication', 'publish', []],
+    ['cost', 'none', []], ['cost', 'may_incur', []], ['nonPublicData', 'none', []], ['nonPublicData', 'send', []]
+  ]
+  for (const [dimension, arm, expected] of rows) {
+    const effects = { ...NO_EFFECTS, [dimension]: arm }
+    const tierCArm = ['main_or_history', 'existing_external_write', 'existing_external_delete', 'existing_worktree_delete', 'external_write', 'use_secret', 'publish', 'may_incur', 'send'].includes(arm)
+    const candidate = tierCArm
+      ? tierCScope({ allowedActions: ['run_local_test'], effects, source: { ...tierCScope().source, kind: 'git_revision' }, impact: { ...tierCScope().impact, operations: ['run_local_test'] } })
+      : scope({ allowedActions: ['run_local_test'], effects, ...(arm === 'public_read' ? { allowedPublicEndpoints: ['https://registry.npmjs.org'] } : {}), ...(arm === 'fresh_output' ? { outputRoots: ['C:/approved-output'] } : {}) })
+    assertExactChecks(candidate, 'run_local_test', expected, `${dimension}:${arm}`)
+  }
+})
+
+test('preflight source matrix requires provenance only for artifact consumption', () => {
+  for (const [kind, expected] of [['git_revision', []], ['artifact', ['provenanceSatisfied']], ['filesystem_identity', []], ['external_version', []]]) {
+    const candidate = tierCScope({ allowedActions: ['write_external_service'], source: { ...tierCScope().source, kind }, impact: { ...tierCScope().impact, operations: ['write_external_service'] } })
+    assertExactChecks(candidate, 'write_external_service', expected, kind)
   }
 })
 
@@ -155,9 +252,9 @@ test('Tier C consumes applied operations but returns to approved after confirmed
   const model = policy.createTaskProposalModel({ taskId: 'task-1' })
   const pending = model.open(candidate)
   model.recordDecision({ taskId: 'task-1', proposalId: pending.proposalId, decision: 'approved' })
-  model.beginOperation(eventFor(pending, candidate, 'update_main', { checks: checks(['leaseSatisfied']) }))
+  model.beginOperation(eventFor(pending, candidate, 'update_main', { checks: checks(['leaseSatisfied', 'provenanceSatisfied']) }))
   assert.equal(model.recordOutcome({ operationId: 'operation-1', idempotencyKey: 'idem-1', outcome: 'confirmed_no_mutation' }).state, 'approved')
-  const second = model.beginOperation(eventFor(pending, candidate, 'update_main', { operationId: 'operation-2', idempotencyKey: null, checks: checks(['leaseSatisfied']) }))
+  const second = model.beginOperation(eventFor(pending, candidate, 'update_main', { operationId: 'operation-2', idempotencyKey: null, checks: checks(['leaseSatisfied', 'provenanceSatisfied']) }))
   assert.equal(second.state, 'executing')
   assert.equal(model.recordOutcome({ operationId: 'operation-2', idempotencyKey: null, outcome: 'applied' }).state, 'consumed')
 })
@@ -176,7 +273,7 @@ test('Tier C preflight uses only retained display bindings after full identities
     observedTargetSet: pending.scope.targetSet,
     observedImpact: pending.scope.impact,
     observedRollback: pending.scope.rollback,
-    checks: checks(['leaseSatisfied'])
+    checks: checks(['leaseSatisfied', 'provenanceSatisfied'])
   })
   assert.equal(Object.hasOwn(preflight.observedSource, 'canonicalId'), false)
   assert.equal(Object.hasOwn(preflight.observedTargetSet, 'canonicalIds'), false)
