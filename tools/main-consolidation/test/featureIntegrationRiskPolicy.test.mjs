@@ -157,6 +157,25 @@ test('canonical containment uses Windows path identity instead of case-sensitive
   })), TypeError)
 })
 
+test('Windows path identity folds non-ASCII ordinal case aliases', () => {
+  assert.throws(() => policy.classifyRisk(scope({
+    allowedPaths: ['C:/repos/project/.worktrees/risk/Å-data', 'C:/repos/project/.worktrees/risk/å-data']
+  })), TypeError, 'duplicate alias')
+
+  assert.equal(policy.classifyRisk(scope({
+    repository: 'C:/repos/Å-project',
+    worktree: 'C:/repos/å-project/.worktrees/risk',
+    allowedPaths: ['C:/repos/å-project/.worktrees/risk/src']
+  })), 'B', 'containment alias')
+
+  assert.throws(() => policy.classifyRisk(scope({
+    worktree: 'C:/repos/project/.worktrees/Å-risk',
+    allowedPaths: ['C:/repos/project/.worktrees/Å-risk/src'],
+    allowedActions: ['create_local_worktree'],
+    freshResources: { branches: [], worktrees: [{ canonicalPath: 'C:/repos/project/.worktrees/å-risk', branch: 'feature/new' }], fixtureRoots: [], requireAbsent: true, requireIsolated: true }
+  })), TypeError, 'fresh worktree overlap alias')
+})
+
 test('preflight action matrix derives exact required checks for every mutable action', () => {
   const rows = [
     ['edit_scoped_files', []], ['run_local_test', []], ['build_local_package', []], ['local_commit', ['leaseSatisfied']],
@@ -166,10 +185,10 @@ test('preflight action matrix derives exact required checks for every mutable ac
     ['create_local_worktree', ['targetAbsent', 'isolatedTarget', 'parentBoundaryStable']],
     ['public_dependency_read', ['endpointAllowed', 'credentialsAbsent']],
     ['update_main', ['leaseSatisfied']], ['rewrite_history', ['leaseSatisfied']], ['push_remote', ['leaseSatisfied']],
-    ['create_or_update_pr', ['leaseSatisfied']], ['merge_pr', ['leaseSatisfied']], ['delete_branch', ['leaseSatisfied']],
+    ['create_or_update_pr', ['leaseSatisfied']], ['merge_pr', ['leaseSatisfied', 'provenanceSatisfied']], ['delete_branch', ['leaseSatisfied']],
     ['delete_worktree', ['identityStable', 'parentBoundaryStable']],
     ['overwrite_existing_data', ['identityStable', 'parentBoundaryStable']], ['delete_existing_data', ['identityStable', 'parentBoundaryStable']],
-    ['write_external_service', []], ['publish', []], ['sign', []], ['use_credentials', []], ['incur_cost', []], ['send_nonpublic_data', []]
+    ['write_external_service', []], ['publish', ['provenanceSatisfied']], ['sign', ['provenanceSatisfied']], ['use_credentials', []], ['incur_cost', []], ['send_nonpublic_data', []]
   ]
   for (const [action, expected] of rows) assertExactChecks(scopeForAction(action), action, expected, action)
 })
@@ -182,7 +201,7 @@ test('preflight effect matrix derives exact required checks for every effect arm
     ['filesystem', 'existing_external_delete', ['identityStable', 'parentBoundaryStable']],
     ['filesystem', 'existing_worktree_delete', ['identityStable', 'parentBoundaryStable']],
     ['network', 'none', []], ['network', 'public_read', ['endpointAllowed', 'credentialsAbsent']], ['network', 'external_write', []],
-    ['credentials', 'none', []], ['credentials', 'use_secret', []], ['publication', 'none', []], ['publication', 'publish', []],
+    ['credentials', 'none', []], ['credentials', 'use_secret', []], ['publication', 'none', []], ['publication', 'publish', ['provenanceSatisfied']],
     ['cost', 'none', []], ['cost', 'may_incur', []], ['nonPublicData', 'none', []], ['nonPublicData', 'send', []]
   ]
   for (const [dimension, arm, expected] of rows) {

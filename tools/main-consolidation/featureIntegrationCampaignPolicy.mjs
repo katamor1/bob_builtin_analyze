@@ -1500,11 +1500,13 @@ const operationFence = shape({ coordinationFile: 'CoordinationLeaseFileIdentity'
 attachmentUnion('wave0a-operation-claim', value => {
   const common = { schemaVersion: literal(`${S}wave0a-operation-claim/v1`), operationInstanceId: 'Wave0aOperationInstanceId', intentSha256: 'LowercaseSha256', runPublicationReservationSha256: 'LowercaseSha256', claimOrdinal: 'OperationClaimOrdinal', claimPath: 'SafeOperationClaimPath', priorClaim: nullable('OperationClaimLink'), priorTerminationProof: nullable('OperationTerminationProofLink'), coordinationFile: 'CoordinationLeaseFileIdentity', executionPlanSha256: 'LowercaseSha256', deadlineAt: 'CanonicalUtc', deadlineBoot: 'WindowsBootIdentity', deadlineUnbiased100ns: 'DecimalString', processResultPath: 'SafeRepositoryPath', recordedAt: 'CanonicalUtc', kind: literal(value?.kind) }
   if (value?.kind === 'supervisor') shape({ ...common, coordinationLease: literal('shared_supervisor'), supervisorProcess: processIdentity, childProcess: processIdentity, jobContract: literal('kill_on_close_single_noninheritable_supervisor_handle') })(value)
+  else if (value?.kind === 'reconciler') shape({ ...common, claimOrdinal: literal(1), priorClaim: literal(null), priorTerminationProof: literal(null), coordinationFence: operationFence, recoveryCheckpointSha256: 'LowercaseSha256', recoveryAction: literal('observe_only_no_spawn'), processResultSha256: literal(null) })(value)
   else fail('unsupported operation claim kind')
   const owner = `operations/${value.claimPath.split('/')[1]}/${value.operationInstanceId}/`
   requireThat(value.claimPath.startsWith(owner) && value.processResultPath === `${owner}process-result.json` && Number(value.claimPath.split('/').at(-1).slice(0, 4)) === value.claimOrdinal, 'claim owned paths')
   requireThat(value.claimOrdinal === 1 ? value.priorClaim === null && value.priorTerminationProof === null : value.priorClaim?.ordinal === value.claimOrdinal - 1 && value.priorTerminationProof?.ordinal === value.claimOrdinal - 1, 'claim predecessor')
-  requireThat(!equal(value.supervisorProcess, value.childProcess) && equal(value.deadlineBoot, value.supervisorProcess.boot), 'claim process/deadline identity')
+  if (value.kind === 'supervisor') requireThat(!equal(value.supervisorProcess, value.childProcess) && equal(value.deadlineBoot, value.supervisorProcess.boot), 'claim process/deadline identity')
+  else same(value.coordinationFile, value.coordinationFence.coordinationFile, 'reconciler claim coordination')
 })
 attachmentType('wave0a-process-result', { operationInstanceId: 'Wave0aOperationInstanceId', intentSha256: 'LowercaseSha256', runPublicationReservationSha256: 'LowercaseSha256', claim: 'OperationClaimLink', execution: mutationExecutionObservation, recordedAt: 'CanonicalUtc' }, value => {
   requireThat(value.claim.path.includes(`/${value.operationInstanceId}/claims/`), 'process result claim owner')
@@ -1529,7 +1531,10 @@ attachmentUnion('wave0a-operation-inspection', value => {
   if (value?.classification === 'absent') shape({ ...common, intent: literal(null), receipt: literal(null), executionChainState: literal('unclaimed'), claimChain: tuple([]), terminationProofChain: tuple([]), effectiveClaim: literal(null), processResult: literal(null), terminationProof: literal(null) })(value)
   else {
     requireThat(value?.classification === 'intent_only' || value?.classification === 'receipted', 'inspection classification')
-    const fields = { ...common, intent: operationRecordLocator, receipt: value.classification === 'receipted' ? operationRecordLocator : literal(null), executionChainState: enumeration(['result_durable', 'terminated_without_result', 'no_spawn_fenced', 'proof_required', 'unclaimed']), claimChain: array(operationClaimEvidence, 0, 128), terminationProofChain: array(operationProofEvidence, 0, 128), effectiveClaim: value.effectiveClaim === null ? literal(null) : operationClaimEvidence, processResult: value.processResult === null ? literal(null) : operationEvidenceRef, terminationProof: value.terminationProof === null ? literal(null) : operationProofEvidence }
+    const state = value?.executionChainState
+    const allowedStates = value.classification === 'receipted' ? ['result_durable', 'terminated_without_result', 'no_spawn_fenced'] : ['result_durable', 'terminated_without_result', 'no_spawn_fenced', 'proof_required', 'unclaimed']
+    requireThat(allowedStates.includes(state), 'inspection classification/state')
+    const fields = { ...common, intent: operationRecordLocator, receipt: value.classification === 'receipted' ? operationRecordLocator : literal(null), executionChainState: literal(state), claimChain: array(operationClaimEvidence, 0, 128), terminationProofChain: array(operationProofEvidence, 0, 128), effectiveClaim: value.effectiveClaim === null ? literal(null) : operationClaimEvidence, processResult: value.processResult === null ? literal(null) : operationEvidenceRef, terminationProof: value.terminationProof === null ? literal(null) : operationProofEvidence }
     shape(fields)(value)
     requireThat(value.intent.operationInstanceId === value.operationInstanceId && (value.receipt === null || value.receipt.operationInstanceId === value.operationInstanceId), 'inspection locator owner')
     const attemptId = value.intent.intentPath.split('/')[1]
@@ -1540,14 +1545,14 @@ attachmentUnion('wave0a-operation-inspection', value => {
     for (const [index, claim] of value.claimChain.entries()) requireThat(claim.attemptId === attemptId && claim.operationInstanceId === value.operationInstanceId && claim.path === `${root}/claims/${String(index + 1).padStart(4, '0')}.json`, 'inspection claim chain')
     for (const [index, proof] of value.terminationProofChain.entries()) requireThat(proof.attemptId === attemptId && proof.operationInstanceId === value.operationInstanceId && proof.path === `${root}/termination-proofs/${String(index + 1).padStart(4, '0')}.json`, 'inspection proof chain')
     if (value.processResult !== null) requireThat(value.processResult.attemptId === attemptId && value.processResult.operationInstanceId === value.operationInstanceId && value.processResult.recordKind === 'process_result' && value.processResult.schemaVersion === `${S}wave0a-process-result/v1` && value.processResult.path === `${root}/process-result.json`, 'inspection process result')
-    const emptyState = value.executionChainState === 'unclaimed' || value.executionChainState === 'no_spawn_fenced'
-    if (emptyState) requireThat(value.claimChain.length === 0 && value.terminationProofChain.length === 0 && value.effectiveClaim === null && value.processResult === null && value.terminationProof === null, 'inspection empty execution chain')
+    if (state === 'unclaimed') requireThat(value.claimChain.length === 0 && value.terminationProofChain.length === 0 && value.effectiveClaim === null && value.processResult === null && value.terminationProof === null, 'inspection empty execution chain')
+    else if (state === 'no_spawn_fenced') requireThat(value.claimChain.length === 1 && value.terminationProofChain.length === 0 && equal(value.effectiveClaim, value.claimChain[0]) && value.processResult === null && value.terminationProof === null, 'inspection no-spawn fenced chain')
     else {
       requireThat(value.claimChain.length > 0 && equal(value.effectiveClaim, value.claimChain.at(-1)), 'inspection effective claim chain')
-      if (value.executionChainState === 'proof_required') requireThat(value.terminationProofChain.length === value.claimChain.length - 1 && value.processResult === null && value.terminationProof === null, 'inspection proof required chain')
-      else if (value.executionChainState === 'result_durable') requireThat(value.terminationProofChain.length === value.claimChain.length - 1 && value.processResult !== null && value.terminationProof === null, 'inspection durable result chain')
+      if (state === 'proof_required') requireThat(value.terminationProofChain.length === value.claimChain.length - 1 && value.processResult === null && value.terminationProof === null, 'inspection proof required chain')
+      else if (state === 'result_durable') requireThat(value.terminationProofChain.length === value.claimChain.length - 1 && value.processResult !== null && value.terminationProof === null, 'inspection durable result chain')
       else {
-        requireThat(value.executionChainState === 'terminated_without_result' && value.terminationProofChain.length === value.claimChain.length && value.processResult === null && equal(value.terminationProof, value.terminationProofChain.at(-1)), 'inspection terminated chain')
+        requireThat(state === 'terminated_without_result' && value.terminationProofChain.length === value.claimChain.length && value.processResult === null && equal(value.terminationProof, value.terminationProofChain.at(-1)), 'inspection terminated chain')
       }
     }
   }

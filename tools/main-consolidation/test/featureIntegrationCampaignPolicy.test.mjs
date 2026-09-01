@@ -556,6 +556,7 @@ const A_CLAIM = { schemaVersion: `${S}wave0a-operation-claim/v1`, operationInsta
 const A_CLAIM_REF = operationAttachment('publish-branch', 'claim', 'claim', A_CLAIM)
 const A_PROCESS_RESULT = { schemaVersion: `${S}wave0a-process-result/v1`, operationInstanceId: 'publish-branch', intentSha256: hash(A_INTENT), runPublicationReservationSha256: hash(reservation), claim: { ...claim(), sha256: hash(A_CLAIM) }, execution: { kind: 'single_command', command: A_COMMAND }, recordedAt: AT }
 const A_FENCE = { coordinationFile: coordination.coordinationFile, lease: 'exclusive_owner_death_observation', byteOffset: 0, byteLength: 1, acquiredAt: AT }
+const A_NO_SPAWN_CLAIM = { schemaVersion: `${S}wave0a-operation-claim/v1`, operationInstanceId: 'publish-branch', intentSha256: hash(A_INTENT), runPublicationReservationSha256: hash(reservation), claimOrdinal: 1, claimPath: claim().path, priorClaim: null, priorTerminationProof: null, coordinationFile: coordination.coordinationFile, executionPlanSha256: A_INTENT.executionPlanSha256, deadlineAt: '2026-08-23T00:00:01.100Z', deadlineBoot: processIdentity.boot, deadlineUnbiased100ns: '10000000', processResultPath: `operations/${ATTEMPT}/publish-branch/process-result.json`, recordedAt: AT, kind: 'reconciler', coordinationFence: A_FENCE, recoveryCheckpointSha256: HASH, recoveryAction: 'observe_only_no_spawn', processResultSha256: null }
 const A_PROOF = { schemaVersion: `${S}wave0a-job-termination-proof/v1`, operationInstanceId: 'publish-branch', intentSha256: hash(A_INTENT), proofPublicationReservationSha256: HASH, claim: A_PROCESS_RESULT.claim, supervisorExit: { expectedProcess: A_CLAIM.supervisorProcess, state: 'signaled' }, childExit: { expectedProcess: A_CLAIM.childProcess, state: 'not_found' }, jobContract: A_CLAIM.jobContract, coordinationEntry: coordination, coordinationFence: A_FENCE, observation: 'exclusive_fence_supervisor_and_child_exited', observedAt: AT }
 const A_PUBLISHED_TOPOLOGY = { ...clone(A_TOPOLOGY), request: { ...clone(A_TOPOLOGY_REQUEST), snapshotProfile: 'LOCAL_PUBLISHED' }, before: { ...clone(A_TOPOLOGY_OBSERVATION), remoteHeads: [{ ref: A_BRANCH, sha: H }, { ref: 'main', sha: B }] }, after: { ...clone(A_TOPOLOGY_OBSERVATION), remoteHeads: [{ ref: A_BRANCH, sha: H }, { ref: 'main', sha: B }] } }
 const A_RECEIPT = { schemaVersion: `${S}wave0a-mutation-receipt/v1`, operationInstanceId: 'publish-branch', intentSha256: hash(A_INTENT), postconditionEvidence: [operationAttachment('publish-branch', 'postcondition', 'topology', A_PUBLISHED_TOPOLOGY)], recordedAt: AT, diagnostics: [], receiptMode: 'supervisor', execution: A_PROCESS_RESULT.execution, effectiveClaim: A_CLAIM_REF, reconciliation: 'applied', requiresManualDecision: false }
@@ -799,41 +800,70 @@ test('campaign attachment: job termination proof binds operation coordination en
   }
 })
 
+test('campaign attachment: operation claim closes the no-supervisor reconciler arm', () => {
+  assert.deepEqual(validateAttachment('wave0a-operation-claim', A_NO_SPAWN_CLAIM), A_NO_SPAWN_CLAIM)
+  for (const [reason, change] of [
+    ['supervisor field', v => { v.supervisorProcess = clone(processIdentity) }],
+    ['missing fence', v => { delete v.coordinationFence }],
+    ['noninitial ordinal', v => { v.claimOrdinal = 2 }],
+    ['prior claim', v => { v.priorClaim = claim() }],
+    ['coordination crossing', v => { v.coordinationFence.coordinationFile.canonicalPath = 'C:/wave0a/coordination/other.lock'; v.coordinationFence.coordinationFile.ino = '9999' }],
+    ['spawn action', v => { v.recoveryAction = 'execute_same_intent_suffix' }],
+    ['result digest', v => { v.processResultSha256 = HASH }]
+  ]) {
+    const bad = clone(A_NO_SPAWN_CLAIM); change(bad)
+    assert.throws(() => validateAttachment('wave0a-operation-claim', bad), TypeError, reason)
+  }
+  const supervisorWithReconcilerField = clone(A_CLAIM)
+  supervisorWithReconcilerField.recoveryAction = 'observe_only_no_spawn'
+  assert.throws(() => validateAttachment('wave0a-operation-claim', supervisorWithReconcilerField), TypeError)
+})
+
 const inspectionClaim = (ordinal, operationInstanceId = 'publish-branch') => ({ ...clone(A_CLAIM_REF), operationInstanceId, path: `operations/${ATTEMPT}/${operationInstanceId}/claims/${String(ordinal).padStart(4, '0')}.json`, sha256: String(ordinal).repeat(64).slice(0, 64) })
 const inspectionProof = (ordinal, operationInstanceId = 'publish-branch') => ({ owner: 'operation', attemptId: ATTEMPT, operationInstanceId, recordKind: 'termination_proof', label: 'termination-proof', path: `operations/${ATTEMPT}/${operationInstanceId}/termination-proofs/${String(ordinal).padStart(4, '0')}.json`, schemaVersion: `${S}wave0a-job-termination-proof/v1`, byteSize: 1, sha256: String(ordinal + 4).repeat(64).slice(0, 64) })
 const inspectionProcessResult = operationInstanceId => ({ ...clone(A_ATTACHMENT_FIXTURES.get('wave0a-operation-inspection').processResult), operationInstanceId, path: `operations/${ATTEMPT}/${operationInstanceId}/process-result.json` })
-function inspectionFixture(executionChainState) {
+function inspectionFixture(executionChainState, classification = 'intent_only') {
   const claim1 = inspectionClaim(1), proof1 = inspectionProof(1)
-  const base = { schemaVersion: `${S}wave0a-operation-inspection/v1`, operationInstanceId: 'publish-branch', inspectedAt: AT, diagnostics: [], classification: executionChainState === 'result_durable' ? 'receipted' : 'intent_only', intent: A_INTENT_LOCATOR, receipt: executionChainState === 'result_durable' ? A_RECEIPT_LOCATOR : null, executionChainState, claimChain: [], terminationProofChain: [], effectiveClaim: null, processResult: null, terminationProof: null }
+  const base = { schemaVersion: `${S}wave0a-operation-inspection/v1`, operationInstanceId: 'publish-branch', inspectedAt: AT, diagnostics: [], classification, intent: A_INTENT_LOCATOR, receipt: classification === 'receipted' ? A_RECEIPT_LOCATOR : null, executionChainState, claimChain: [], terminationProofChain: [], effectiveClaim: null, processResult: null, terminationProof: null }
   if (executionChainState === 'proof_required') Object.assign(base, { claimChain: [claim1], effectiveClaim: claim1 })
   else if (executionChainState === 'result_durable') Object.assign(base, { claimChain: [claim1], effectiveClaim: claim1, processResult: inspectionProcessResult('publish-branch') })
   else if (executionChainState === 'terminated_without_result') Object.assign(base, { claimChain: [claim1], terminationProofChain: [proof1], effectiveClaim: claim1, terminationProof: proof1 })
+  else if (executionChainState === 'no_spawn_fenced') Object.assign(base, { claimChain: [claim1], effectiveClaim: claim1 })
   return base
 }
 
-test('campaign attachment: operation inspection closes every execution-chain state', () => {
-  for (const state of ['unclaimed', 'result_durable', 'terminated_without_result', 'no_spawn_fenced', 'proof_required']) {
-    const good = inspectionFixture(state)
-    assert.deepEqual(validateAttachment('wave0a-operation-inspection', good), good, state)
+test('campaign attachment: operation inspection accepts only retained classification and state combinations', () => {
+  for (const [classification, state] of [
+    ['intent_only', 'unclaimed'], ['intent_only', 'result_durable'], ['intent_only', 'terminated_without_result'], ['intent_only', 'no_spawn_fenced'], ['intent_only', 'proof_required'],
+    ['receipted', 'result_durable'], ['receipted', 'terminated_without_result'], ['receipted', 'no_spawn_fenced']
+  ]) {
+    const good = inspectionFixture(state, classification)
+    assert.deepEqual(validateAttachment('wave0a-operation-inspection', good), good, `${classification}:${state}`)
   }
 })
 
 test('campaign attachment: operation inspection rejects crossed, gapped, and contradictory chains', () => {
   const cases = [
-    ['unclaimed claim', 'unclaimed', v => { v.claimChain = [inspectionClaim(1)]; v.effectiveClaim = v.claimChain[0] }],
-    ['no-spawn claim', 'no_spawn_fenced', v => { v.claimChain = [inspectionClaim(1)]; v.effectiveClaim = v.claimChain[0] }],
-    ['proof-required result', 'proof_required', v => { v.processResult = inspectionProcessResult('publish-branch') }],
-    ['result with proof', 'result_durable', v => { v.terminationProofChain = [inspectionProof(1)]; v.terminationProof = v.terminationProofChain[0] }],
-    ['terminated with result', 'terminated_without_result', v => { v.processResult = inspectionProcessResult('publish-branch') }],
-    ['crossed claim operation', 'proof_required', v => { v.claimChain[0] = inspectionClaim(1, 'create-pull-request'); v.effectiveClaim = v.claimChain[0] }],
-    ['gapped claim ordinal', 'proof_required', v => { v.claimChain[0] = inspectionClaim(2); v.effectiveClaim = v.claimChain[0] }],
-    ['crossed proof operation', 'terminated_without_result', v => { v.terminationProofChain[0] = inspectionProof(1, 'create-pull-request'); v.terminationProof = v.terminationProofChain[0] }],
-    ['gapped proof ordinal', 'terminated_without_result', v => { v.terminationProofChain[0] = inspectionProof(2); v.terminationProof = v.terminationProofChain[0] }],
-    ['nonfinal termination proof', 'terminated_without_result', v => { v.terminationProof = inspectionProof(2) }],
-    ['crossed process result', 'result_durable', v => { v.processResult = inspectionProcessResult('create-pull-request') }]
+    ['receipted unclaimed', 'receipted', 'unclaimed', () => {}],
+    ['receipted proof-required', 'receipted', 'proof_required', () => {}],
+    ['unclaimed claim', 'intent_only', 'unclaimed', v => { v.claimChain = [inspectionClaim(1)]; v.effectiveClaim = v.claimChain[0] }],
+    ['no-spawn empty', 'intent_only', 'no_spawn_fenced', v => { v.claimChain = []; v.effectiveClaim = null }],
+    ['no-spawn second claim', 'intent_only', 'no_spawn_fenced', v => { v.claimChain.push(inspectionClaim(2)); v.effectiveClaim = v.claimChain[1] }],
+    ['no-spawn proof', 'intent_only', 'no_spawn_fenced', v => { v.terminationProofChain = [inspectionProof(1)] }],
+    ['no-spawn result', 'intent_only', 'no_spawn_fenced', v => { v.processResult = inspectionProcessResult('publish-branch') }],
+    ['no-spawn final proof', 'intent_only', 'no_spawn_fenced', v => { v.terminationProof = inspectionProof(1) }],
+    ['proof-required result', 'intent_only', 'proof_required', v => { v.processResult = inspectionProcessResult('publish-branch') }],
+    ['result with proof', 'intent_only', 'result_durable', v => { v.terminationProofChain = [inspectionProof(1)]; v.terminationProof = v.terminationProofChain[0] }],
+    ['terminated with result', 'intent_only', 'terminated_without_result', v => { v.processResult = inspectionProcessResult('publish-branch') }],
+    ['crossed claim operation', 'intent_only', 'proof_required', v => { v.claimChain[0] = inspectionClaim(1, 'create-pull-request'); v.effectiveClaim = v.claimChain[0] }],
+    ['gapped claim ordinal', 'intent_only', 'proof_required', v => { v.claimChain[0] = inspectionClaim(2); v.effectiveClaim = v.claimChain[0] }],
+    ['crossed proof operation', 'intent_only', 'terminated_without_result', v => { v.terminationProofChain[0] = inspectionProof(1, 'create-pull-request'); v.terminationProof = v.terminationProofChain[0] }],
+    ['gapped proof ordinal', 'intent_only', 'terminated_without_result', v => { v.terminationProofChain[0] = inspectionProof(2); v.terminationProof = v.terminationProofChain[0] }],
+    ['nonfinal termination proof', 'intent_only', 'terminated_without_result', v => { v.terminationProof = inspectionProof(2) }],
+    ['crossed process result', 'intent_only', 'result_durable', v => { v.processResult = inspectionProcessResult('create-pull-request') }]
   ]
-  for (const [reason, state, change] of cases) {
-    const bad = inspectionFixture(state); change(bad)
+  for (const [reason, classification, state, change] of cases) {
+    const bad = inspectionFixture(state, classification); change(bad)
     assert.throws(() => validateAttachment('wave0a-operation-inspection', bad), TypeError, reason)
   }
 })
