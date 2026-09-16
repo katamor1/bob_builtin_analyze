@@ -1,1 +1,0 @@
-Find our change log at the [Bob website](https://bob.ibm.com/docs/ide/changelog).

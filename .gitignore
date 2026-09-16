@@ -23,3 +23,4 @@
 /extensions/bob-code-consistency-review/out
 /.worktrees/
 /.superpowers/
+.bob/workflows/runs/

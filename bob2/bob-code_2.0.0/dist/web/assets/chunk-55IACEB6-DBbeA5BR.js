@@ -1,1 +1,0 @@
-import{_ as o,d as e}from"./MarkdownBlock-BucVxj4A.js";var t=o((o,t)=>{let a;"sandbox"===t&&(a=e("#i"+o));return e("sandbox"===t?a.nodes()[0].contentDocument.body:"body").select(`[id="${o}"]`)},"getDiagramElement");export{t as g};
