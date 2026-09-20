@@ -24,3 +24,5 @@
 /.worktrees/
 /.superpowers/
 .bob/workflows/runs/
+/artifacts/bob-extension-guide/.build/node_modules/pnpm/artifacts/exe/dist/node_modules
+/artifacts/bob-extension-guide/.build
