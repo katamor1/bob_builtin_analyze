@@ -47,7 +47,7 @@ const vscode = {
     getExtension: () => ({
       id: "IBM.bob-code",
       isActive: true,
-      packageJSON: { version: "2.0.1" },
+      packageJSON: { version: runtime.bobVersion ?? "2.0.1" },
       exports: {
         registerSource: () => {
           runtime.registerSourceCalls += 1
@@ -271,6 +271,46 @@ test("registration rejects a schema-valid workflow with duplicate step ids befor
     registerWorkflowCalls: 0,
     missingRegistrationDiagnostics: []
   })
+})
+
+test("Bob 2.1 registration loads a Markdown workflow and executes with its actual task capabilities", async (t) => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "workflow-bob21-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const file = await writeWorkflow(root, "legacy-workflow", legacyWorkflow)
+  resetRuntime(root, [file])
+  runtime.bobVersion = "2.1.0"
+  const { registerWorkflows } = requireWithVscode("workflowRegistrationService.js")
+  let received
+  const update = await registerWorkflows({ createRunner: () => ({
+    ...runnerStub(), runSingleWorkflowStep: async (task) => { received = task; return true }
+  }) })
+  assert.equal(runtime.registeredWorkflows.length, 1, update.result.lines.join("\n"))
+  assert.ok(update.result.lines.some((line) => line.includes("Bob extension version: 2.1.0")))
+  assert.ok(update.result.lines.some((line) => line.includes(">=2.0.0 <3.0.0")))
+  const task = { getAllMetadata() { return {} }, getMessages() { return [] }, sendMessage() {}, setStepComplete() {}, startSubagent() {} }
+  assert.equal(await runtime.registeredWorkflows[0].getSteps()[0].execution(task), true)
+  assert.equal(received, task)
+})
+
+test("unsupported Bob version diagnostics clear previous registration without registering a source", async (t) => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "workflow-bob-version-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const file = await writeWorkflow(root, "legacy-workflow", legacyWorkflow)
+  resetRuntime(root, [file])
+  runtime.bobVersion = "3.0.0"
+  let deactivated = 0
+  const { registerWorkflows } = requireWithVscode("workflowRegistrationService.js")
+  const update = await registerWorkflows({
+    createRunner: runnerStub,
+    previousSource: { deactivate() { deactivated += 1 }, log() {}, registerWorkflow() {} }
+  })
+  assert.equal(deactivated, 1)
+  assert.equal(runtime.registerSourceCalls, 0)
+  assert.equal(update.registeredIds.size, 0)
+  assert.equal(update.registeredSource, undefined)
+  assert.ok(runtime.commandCalls.some((call) => call[0] === "setContext" && call[1] === "bob-code.hasWorkflows" && call[2] === false))
+  assert.ok(update.result.lines.some((line) => line.includes("Bob extension version: 3.0.0")))
+  assert.ok(update.result.lines.some((line) => line.includes("Bob activation error:") && line.includes("version")))
 })
 
 test("mixed registration adapts and registers only valid workflow documents", async (t) => {

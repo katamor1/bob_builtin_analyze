@@ -1,7 +1,7 @@
 import * as vscode from "vscode"
 import { loadBobApi } from "./bobApi"
 import type { BobSourceLike } from "./bobApi"
-import { BOB_2_0_1_PROFILE_DIGEST } from "./core/contractV2/bobProfile"
+import { BOB_2_0_1_PROFILE_DIGEST, BOB_SUPPORTED_VERSION_RANGE } from "./core/contractV2/bobProfile"
 import { createBobWorkflow } from "./bobWorkflowFactory"
 import type { WorkflowDefinition } from "./bobWorkflowTypes"
 import type { CoreWorkflowDefinition } from "./core/model"
@@ -54,11 +54,13 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
   const bob = await loadBobApi(BOB_EXTENSION_ID)
   lines.push(`- Bob extension found: ${bob.found}`)
   lines.push(`- Bob extension active: ${bob.active}`)
+  lines.push(`- Bob extension version: ${bob.extensionVersion ?? "unknown"}`)
+  lines.push(`- Bob supported versions: ${BOB_SUPPORTED_VERSION_RANGE} (stable releases only)`)
   lines.push(`- Bob activation error: ${bob.activationError}`)
-  lines.push(`- Bob audited profile: ${BOB_2_0_1_PROFILE_DIGEST}`)
+  lines.push(`- Bob compatibility baseline: bob/2.0.1; ${BOB_2_0_1_PROFILE_DIGEST}`)
   const api = bob.api
   if (!api) {
-    lines.push("- fail: IBM Bob 2.0.1 audited registerSource API is not available.")
+    lines.push("- fail: Compatible IBM Bob 2.x registerSource API is not available.")
     await deactivateRegisteredSource(input.previousSource, lines)
     await vscode.commands.executeCommand("setContext", "bob-code.hasWorkflows", false)
     return {

@@ -27,6 +27,14 @@ manifestの`main`は`./out/extensionWithAuthoring.js`である。`extensionWithA
 
 停止時はservice、panel、watcher、diagnostic collection、timer、provider registrationを`ExtensionContext.subscriptions`から破棄する。late async completionはgeneration tokenを確認し、dispose済みstateへ書き戻さない。
 
+### Bob 2.xの実行互換性
+
+`bobApi`は拡張ID`IBM.bob-code`と正規SemVerの正式版`>=2.0.0 <3.0.0`を検証する。ビルドメタデータは許可し、プレリリース、空白、`v` prefix、桁の先頭ゼロは拒否する。`LoadedBobApi.extensionVersion`は検出した文字列、`BoundBobCapabilities.extensionVersion`は検証済みの実バージョンを保持する。登録診断はバージョン、対応範囲、activation / capabilityの失敗理由を出力する。
+
+`BOB_REQUIRED_CAPABILITIES`はsourceの3件と`BOB_REQUIRED_TASK_CAPABILITIES`の5件からなる。taskの標準必須集合は`getAllMetadata`、`getMessages`、`sendMessage`、`setStepComplete`、`startSubagent`であり、API読込、既定probe、factory、既存Markdown loaderで共用する。`toSerializable`は任意のsnapshot exportとして扱う。明示的な契約のrequiredCapabilitiesは省略せず検査する。
+
+`BOB_2_0_1_PROFILE`と既存の9 capability、digest、package / lockの`bob/2.0.1`は変更しない。保存済みの互換性基準とlive taskの必須集合を分離し、実バージョンをロックへ暗黙転記しない。Proxy / accessor拒否、関数の所有者保持、失敗時のsource解除・登録ID消去・context無効化も維持する。
+
 ## 3. 実装構成
 
 ```text

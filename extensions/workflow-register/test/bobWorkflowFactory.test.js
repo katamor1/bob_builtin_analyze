@@ -17,7 +17,6 @@ class AuditedTask {
   sendMessage() { return undefined }
   setStepComplete() { return undefined }
   startSubagent() { return Promise.resolve("ok") }
-  toSerializable() { return { id: this.id } }
   unrelatedTaskMethod() { throw new Error("The task probe must not invoke unrelated methods.") }
 }
 
@@ -81,6 +80,20 @@ test("Bob workflow factory probes an audited task before dispatching a Todo step
   assert.equal(calls.length, 1)
   assert.deepEqual(calls[0].slice(0, 3), ["todo", "todo-only", 0])
   assert.equal(calls[0][3], originalTask)
+})
+
+test("Bob workflow factory accepts the five-method wrapper for fallback execution", async () => {
+  const task = new AuditedTask()
+  let received
+  const workflow = createBobWorkflow(definition({
+    stepExecution: { mode: "engineSteps", showInBob: false }
+  }), {
+    runSingleWorkflowStep: async (value) => { received = value; return true },
+    runTodoStep: async () => { throw new Error("Unexpected Todo dispatch") },
+    runEngineStep: async () => { throw new Error("Unexpected engine dispatch") }
+  })
+  assert.equal(await workflow.getSteps()[0].execution(task), true)
+  assert.equal(received, task)
 })
 
 test("Bob workflow factory fails closed before runner dispatch when a required task capability is missing", async () => {
