@@ -24,6 +24,14 @@ Command Paletteに常時表示する入口は次の2件だけです。
 - `bob-bazaar-review`と`bob-code-consistency-review`もoptional integrationです。
 - optional extensionがない場合、`Bob 操作ハブ`はcommand not found例外に頼らず、操作を無効化して理由を表示します。
 
+## Bob バージョン互換性
+
+Bob UI連携は`IBM.bob-code`の正式版`>=2.0.0 <3.0.0`を許可します。`2.1.0+build.42`のようなビルドメタデータ付き正式版も対象です。beta / rc、1.x / 3.x、不完全なバージョンや`v2.1.0`などの非正規表記は拒否します。バージョンが範囲内でも、必須APIが不足する場合は登録または実行を停止して理由を表示します。
+
+workflow taskの標準必須APIは`getAllMetadata`、`getMessages`、`sendMessage`、`setStepComplete`、`startSubagent`です。Bob 2.1.0のworkflow taskが公開しない`toSerializable`は任意とし、存在しなくてもmetadata / messagesからsnapshotを保存できます。契約が明示的に要求する場合は存在検査を維持します。
+
+既存の`bob/2.0.1`プロファイルとdigest、ロック形式は保存互換性の基準として保持します。これは実行中のBobバージョンを意味しません。診断には実バージョンと対応範囲を別に表示します。既存ロックの再生成・移行は不要です。
+
 ## Bob 操作ハブ
 
 `Bob 操作ハブ`はworkflow運用の単一panelです。Explorerの重複viewや別のrun status UIはありません。

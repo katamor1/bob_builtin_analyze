@@ -1,6 +1,6 @@
 import {
   BOB_2_0_1_PROFILE_DIGEST,
-  BOB_2_0_1_TASK_CAPABILITIES,
+  BOB_REQUIRED_TASK_CAPABILITIES,
   probeBobTaskCapabilities
 } from "./core/contractV2/bobProfile"
 import type {
@@ -14,7 +14,7 @@ import type {
 
 const DEFAULT_BOB_TASK_BINDING: BobWorkflowTaskBinding = Object.freeze({
   profileDigest: BOB_2_0_1_PROFILE_DIGEST,
-  taskCapabilities: BOB_2_0_1_TASK_CAPABILITIES
+  taskCapabilities: BOB_REQUIRED_TASK_CAPABILITIES
 })
 
 export interface BobWorkflowStepRunner {

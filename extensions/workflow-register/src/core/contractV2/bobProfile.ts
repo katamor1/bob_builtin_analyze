@@ -1,10 +1,13 @@
 import { types as utilTypes } from "node:util"
+import { parse as parseSemver } from "semver"
 import { canonicalJsonDigest } from "./canonicalJson"
 import { cloneAndFreezeJsonValue } from "./jsonValue"
 
 const isProxy = utilTypes.isProxy
 const arrayIsArray = Array.isArray
 const arrayPrototype = Array.prototype
+const arrayJoin = Array.prototype.join
+const semverParse = parseSemver
 const objectCreate = Object.create
 const objectFreeze = Object.freeze
 const objectGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor
@@ -44,6 +47,25 @@ export const BOB_2_0_1_TASK_CAPABILITIES = objectFreeze([
   "task.setStepComplete",
   "task.startSubagent",
   "task.toSerializable"
+] as const)
+
+export const BOB_SUPPORTED_VERSION_RANGE = ">=2.0.0 <3.0.0" as const
+
+// The immutable 2.0.1 profile above is persisted contract evidence, not a list
+// of methods every live workflow task exposes. toSerializable is optional.
+export const BOB_REQUIRED_TASK_CAPABILITIES = objectFreeze([
+  "task.getAllMetadata",
+  "task.getMessages",
+  "task.sendMessage",
+  "task.setStepComplete",
+  "task.startSubagent"
+] as const)
+
+export const BOB_REQUIRED_CAPABILITIES = objectFreeze([
+  "source.deactivate",
+  "source.log",
+  "source.registerWorkflow",
+  ...BOB_REQUIRED_TASK_CAPABILITIES
 ] as const)
 
 const ACTIVATION_NAMES = objectFreeze(["registerSource"] as const)
@@ -112,7 +134,7 @@ export interface BoundBobCapabilities {
   readonly ok: true
   readonly profile: "bob/2.0.1"
   readonly extensionId: "IBM.bob-code"
-  readonly extensionVersion: "2.0.1"
+  readonly extensionVersion: string
   readonly profileDigest: typeof BOB_2_0_1_PROFILE_DIGEST
   readonly capabilities: typeof BOB_2_0_1_CAPABILITIES
   readonly requiredCapabilities: readonly BobCapabilityName[]
@@ -162,10 +184,10 @@ export function bindBobCapabilities(input: BindBobCapabilitiesInput): BindBobCap
     BIND_OPTIONAL_FIELDS,
     "Bob capability binding input"
   )
-  assertProfileIdentity(snapshot.extensionId, snapshot.extensionVersion, snapshot.expectedProfileDigest)
+  const extensionVersion = assertProfileIdentity(snapshot.extensionId, snapshot.extensionVersion, snapshot.expectedProfileDigest)
   const requiredCapabilities = objectHasOwn(snapshot, "requiredCapabilities")
     ? snapshotCapabilitySubset(snapshot.requiredCapabilities, BOB_2_0_1_CAPABILITIES, "Bob required capabilities")
-    : BOB_2_0_1_CAPABILITIES
+    : BOB_REQUIRED_CAPABILITIES
   const taskCapabilities = deriveTaskCapabilities(requiredCapabilities)
   const liveExport = snapshot.liveExport
   const activation = snapshotOwnRequiredFunctions(liveExport, ACTIVATION_NAMES, "Bob activation export")
@@ -174,7 +196,7 @@ export function bindBobCapabilities(input: BindBobCapabilitiesInput): BindBobCap
     ok: true as const,
     profile: "bob/2.0.1" as const,
     extensionId: "IBM.bob-code" as const,
-    extensionVersion: "2.0.1" as const,
+    extensionVersion,
     profileDigest: BOB_2_0_1_PROFILE_DIGEST,
     capabilities: BOB_2_0_1_CAPABILITIES,
     requiredCapabilities,
@@ -199,7 +221,7 @@ export function probeBobTaskCapabilities(
   }
   const requiredCapabilities = objectHasOwn(snapshot, "requiredCapabilities")
     ? snapshotCapabilitySubset(snapshot.requiredCapabilities, BOB_2_0_1_TASK_CAPABILITIES, "Bob task required capabilities")
-    : BOB_2_0_1_TASK_CAPABILITIES
+    : BOB_REQUIRED_TASK_CAPABILITIES
   const task = snapshot.task
   assertInspectableObject(task, "Bob task")
   for (let index = 0; index < requiredCapabilities.length; index += 1) {
@@ -221,14 +243,21 @@ function bindBobSource(source: unknown): BoundBobSource {
   }) as BoundBobSource
 }
 
-function assertProfileIdentity(extensionId: unknown, extensionVersion: unknown, digest: unknown): void {
-  if (
-    extensionId !== "IBM.bob-code"
-    || extensionVersion !== "2.0.1"
-    || digest !== BOB_2_0_1_PROFILE_DIGEST
-  ) {
-    throw new TypeError("IBM Bob capability binding requires IBM.bob-code@2.0.1 and the audited profile digest.")
+function assertProfileIdentity(extensionId: unknown, extensionVersion: unknown, digest: unknown): string {
+  if (extensionId !== "IBM.bob-code") {
+    throw new TypeError("IBM Bob capability binding requires extension id IBM.bob-code.")
   }
+  if (digest !== BOB_2_0_1_PROFILE_DIGEST) {
+    throw new TypeError("IBM Bob capability binding profile digest does not match the compatibility baseline.")
+  }
+  const parsed = typeof extensionVersion === "string" ? semverParse(extensionVersion, { loose: false }) : null
+  const canonical = parsed === null
+    ? undefined
+    : `${parsed.version}${parsed.build.length > 0 ? `+${reflectApply(arrayJoin, parsed.build, ["."]) as string}` : ""}`
+  if (parsed === null || canonical !== extensionVersion || parsed.major !== 2 || parsed.prerelease.length !== 0) {
+    throw new TypeError(`IBM Bob extension version must be canonical stable SemVer in ${BOB_SUPPORTED_VERSION_RANGE}.`)
+  }
+  return extensionVersion as string
 }
 
 function snapshotInputWithOptionalFields<

@@ -18,6 +18,7 @@ node_modules/**
 !node_modules/js-yaml/LICENSE
 !node_modules/js-yaml/lib/**
 !node_modules/argparse/**
+!node_modules/semver/**
 npm-debug.log*
 yarn.lock
 package-lock.json

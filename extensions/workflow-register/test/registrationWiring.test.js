@@ -37,17 +37,16 @@ test("Bob registration deactivates the previous audited source before replacing 
   assert.match(source, /if \(update\.sourceChanged\) this\.registeredSource = update\.registeredSource/)
 })
 
-test("Bob registration binds the exact audited profile before source registration", () => {
+test("Bob registration binds the compatibility baseline and required capabilities before source registration", () => {
   const source = registrationSource()
 
   assert.match(source, /const BOB_EXTENSION_ID = "IBM\.bob-code"/)
   assert.match(source, /"sha256:aea18a3b1d19f2a1231c7d5e6ac7a416f0ace09ffa823fe4ceb0f43733492b73"/)
-  assert.match(source, /extensionVersion !== "2\.0\.1"/)
   assert.match(source, /const api = bindBobCapabilities\(\{/)
   assert.match(source, /extensionId: ext\.id/)
-  assert.match(source, /extensionVersion: packageJson\?\.version/)
+  assert.match(source, /extensionVersion: version/)
   assert.match(source, /expectedProfileDigest: BOB_2_0_1_PROFILE_DIGEST/)
-  assert.match(source, /requiredCapabilities: BOB_2_0_1_CAPABILITIES/)
+  assert.match(source, /requiredCapabilities: BOB_REQUIRED_CAPABILITIES/)
   assert.match(source, /liveExport: exportsValue/)
   assert.doesNotMatch(source, /as BobWorkflowApi/)
   assert.doesNotMatch(source, /asSource\(/)

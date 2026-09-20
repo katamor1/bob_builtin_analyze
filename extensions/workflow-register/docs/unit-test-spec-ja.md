@@ -17,6 +17,13 @@
 | filesystem | `fs.mkdtemp()`でtestごとに独立workspaceを作る |
 | external API | VS Code / IBM BobはmockまたはExtension Host testで置換する |
 
+### Bob 2.x互換性の回帰テスト
+
+- `bobVersionCompatibility.test.js`: 2.0.0 / 2.0.1 / 2.1.0 / 将来の2.x / ビルドメタデータ付き正式版の許可、実バージョン保持、範囲外・プレリリース・非正規形式の拒否。
+- Bob実物と同じ5メソッドのtaskを使い、既定probe、必須API欠落の拒否、明示的な`toSerializable`要求の検査、snapshot保存・再読込を確認する。
+- `bobWorkflowFactory.test.js`と`workflowCompilerParity.test.js`: engine / Todo / fallback、Markdown読込からBob 2.1.0への登録・step実行、実バージョンと対応範囲の診断、登録失敗時の後片付け。
+- 既存profileのgolden digestとlock生成・読込、Proxy / getter / 拡張ID検査は従来のcontractテストで維持する。
+
 ## 3. 最上位surface contract
 
 ### WR-UT-SURFACE-001 manifest entry point

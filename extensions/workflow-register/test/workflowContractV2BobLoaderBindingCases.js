@@ -2,10 +2,10 @@ const assert = require("node:assert/strict")
 const { test } = require("node:test")
 const { readSourceSet } = require("./helpers/sourceReader")
 
-test("legacy workflow loading supplies the audited six-capability binding explicitly", () => {
+test("legacy workflow loading supplies the five required task capabilities explicitly", () => {
   const loader = readSourceSet(["workflowDefinitionLoader.ts"])
 
-  assert.match(loader, /const LEGACY_BOB_TASK_BINDING: BobWorkflowTaskBinding = Object\.freeze\(\{[\s\S]*profileDigest: BOB_2_0_1_PROFILE_DIGEST,[\s\S]*taskCapabilities: BOB_2_0_1_TASK_CAPABILITIES/)
+  assert.match(loader, /const LEGACY_BOB_TASK_BINDING: BobWorkflowTaskBinding = Object\.freeze\(\{[\s\S]*profileDigest: BOB_2_0_1_PROFILE_DIGEST,[\s\S]*taskCapabilities: BOB_REQUIRED_TASK_CAPABILITIES/)
   assert.match(loader, /adaptCoreWorkflowForBob\(\s*coreWorkflow,\s*candidate\.file,\s*LEGACY_BOB_TASK_BINDING\s*\)/)
   assert.doesNotMatch(loader, /compiled\.workflow as/)
   assert.doesNotMatch(loader, /compiledWorkflow\.bobTaskBinding/)

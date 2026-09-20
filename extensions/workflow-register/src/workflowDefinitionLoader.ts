@@ -6,7 +6,7 @@ import type {
 } from "./bobWorkflowTypes"
 import {
   BOB_2_0_1_PROFILE_DIGEST,
-  BOB_2_0_1_TASK_CAPABILITIES
+  BOB_REQUIRED_TASK_CAPABILITIES
 } from "./core/contractV2/bobProfile"
 import type { CoreWorkflowDefinition } from "./core/model"
 import {
@@ -28,7 +28,7 @@ import { validateAndDescribeWorkflow } from "./workflowDiagnostics"
 // pretend that compileWorkflowDocument produced v2 lock evidence.
 const LEGACY_BOB_TASK_BINDING: BobWorkflowTaskBinding = Object.freeze({
   profileDigest: BOB_2_0_1_PROFILE_DIGEST,
-  taskCapabilities: BOB_2_0_1_TASK_CAPABILITIES
+  taskCapabilities: BOB_REQUIRED_TASK_CAPABILITIES
 })
 
 export async function loadWorkspaceWorkflows(sourceId: string): Promise<LoadResult> {

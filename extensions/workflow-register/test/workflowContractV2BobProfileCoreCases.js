@@ -258,7 +258,7 @@ test("activation binding rejects wrong identity, drift, proxy, inherited, access
 
   const invalid = [
     ["wrong id", { ...bindInput(valid), extensionId: "ibm.bob-code" }],
-    ["wrong version", { ...bindInput(valid), extensionVersion: "2.0.0" }],
+    ["wrong version", { ...bindInput(valid), extensionVersion: "3.0.0" }],
     ["profile drift", { ...bindInput(valid), expectedProfileDigest: `sha256:${"0".repeat(64)}` }],
     ["proxy export", bindInput(new Proxy(valid, {}))],
     ["inherited", bindInput(inherited)],
@@ -309,11 +309,11 @@ test("binding and task-probe wrappers reject proxies, accessors, and unknown fie
   assert.equal(getterCalls, 0)
 })
 
-test("task probe validates the six prototype methods without invoking or retaining the task", () => {
+test("task probe validates six explicitly required prototype methods without invoking or retaining the task", () => {
   const { probeBobTaskCapabilities } = subject()
   const calls = []
   const task = new AuditedTask(calls)
-  const probed = probeBobTaskCapabilities({ expectedProfileDigest: GOLDEN_DIGEST, task })
+  const probed = probeBobTaskCapabilities({ expectedProfileDigest: GOLDEN_DIGEST, task, requiredCapabilities: TASK_CAPABILITIES })
   assert.deepEqual(probed, {
     ok: true,
     profileDigest: GOLDEN_DIGEST,
@@ -343,7 +343,7 @@ test("task probe rejects drift, missing methods, inherited accessors, non-functi
     const value = new AuditedTask([])
     Object.defineProperty(value, missing, { value: undefined })
     assert.throws(
-      () => probeBobTaskCapabilities({ expectedProfileDigest: GOLDEN_DIGEST, task: value }),
+      () => probeBobTaskCapabilities({ expectedProfileDigest: GOLDEN_DIGEST, task: value, requiredCapabilities: TASK_CAPABILITIES }),
       new RegExp(missing)
     )
   })
@@ -373,7 +373,7 @@ test("task probe rejects drift, missing methods, inherited accessors, non-functi
   const callableProxy = new AuditedTask([])
   Object.defineProperty(callableProxy, "toSerializable", { value: new Proxy(() => undefined, {}) })
   assert.throws(
-    () => probeBobTaskCapabilities({ expectedProfileDigest: GOLDEN_DIGEST, task: callableProxy }),
+    () => probeBobTaskCapabilities({ expectedProfileDigest: GOLDEN_DIGEST, task: callableProxy, requiredCapabilities: TASK_CAPABILITIES }),
     /toSerializable/
   )
 })

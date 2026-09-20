@@ -18,6 +18,12 @@ Node単体テストではmock化するVS Code command、Webview、IBM Bob、Bob 
 
 片方だけの成功をrelease passにしない。IBM Bob実環境を利用できないrunは`pending`とし、Node / Extension Host gateの成功と混同しない。
 
+### Bob 2.1.0互換性の確認
+
+Bob 2.1.0ではsource登録・解除、workflow開始、command / agent step、subagent結果取得、手動完了、snapshot保存・再開を確認する。taskの`toSerializable`がなくても実行できること、presetなしsubagentが親modeの権限・制限を継承して動作することを確認する。Bazaarのcontext追加、Bazaar / consistency reviewのprovider登録・結果取込も対象とする。
+
+診断には実バージョン`2.1.0`と許可範囲`>=2.0.0 <3.0.0`が表示されること。保存用profileの`bob/2.0.1`は互換性基準であり、実バージョンの表示と区別する。認証や接続が必要な実行を完了できない場合、その項目は未検証として記録し、mockテストの成功で代替しない。
+
 ## 3. buildと事前gate
 
 各OSで次を実行する。
