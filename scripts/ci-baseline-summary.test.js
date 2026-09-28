@@ -60,6 +60,11 @@ test("collectBaseline marks missing values unavailable", () => {
   })
 })
 
+test("collectBaseline records the verified checkout instead of the PR synthetic merge", () => {
+  const record = collectBaseline({ ...completeEnv, CI_VERIFIED_HEAD_SHA: "f".repeat(40) }, "v22.23.1")
+  assert.equal(record.commit, "f".repeat(40))
+})
+
 test("renderMarkdown keeps fixed order and escapes table control text", () => {
   const markdown = renderMarkdown({
     ...collectBaseline(completeEnv, "v22.23.1"),

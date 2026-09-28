@@ -1,6 +1,9 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 
+# The Program generator compares this canonical JSON as exact LF bytes.
+tools/main-consolidation/feature-integration-program-index.json text eol=lf
+
 # Reproducible Runtime characterization fixtures are reviewed as exact LF bytes.
 extensions/workflow-register/test/fixtures/reproducible-runtime/** text eol=lf
 

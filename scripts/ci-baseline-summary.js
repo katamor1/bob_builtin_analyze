@@ -10,7 +10,7 @@ function normalizeEvidenceValue(value) {
 
 function collectBaseline(env = process.env, nodeVersion = process.version) {
   return {
-    commit: normalizeEvidenceValue(env.GITHUB_SHA),
+    commit: normalizeEvidenceValue(env.CI_VERIFIED_HEAD_SHA || env.GITHUB_SHA),
     runId: normalizeEvidenceValue(env.GITHUB_RUN_ID),
     runAttempt: normalizeEvidenceValue(env.GITHUB_RUN_ATTEMPT),
     runnerOs: normalizeEvidenceValue(env.RUNNER_OS),
