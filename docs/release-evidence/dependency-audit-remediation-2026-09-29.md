@@ -6,7 +6,7 @@
 - Base: `5b345a0aa4e58296d3fe55f4876cab151f9f24aa`.
 - Local branch: `codex/v2-dependency-audit`.
 - This is a maintenance prerequisite for V2 migration M1 / Wave 0A. The separate CI candidate remains on `codex/v2-migration-wave0a`; this change does not enable V2 execution.
-- Three extension lockfiles change, plus a workflow-register packaging allowlist correction. Product runtime source, manifests, dependency declarations, overrides, test deadlines and package budgets are unchanged.
+- Three extension lockfiles change, plus a workflow-register packaging allowlist correction and its contract test. Product runtime source, manifests, dependency declarations, overrides, test deadlines and package budgets are unchanged.
 - Logs are local under `.superpowers/sdd/2026-09-28-v2-migration-remaining-work/`; hosted CI and merge acceptance are separate evidence.
 
 ## Lockfile changes
@@ -110,9 +110,43 @@ the passing unchanged budget gate and the extracted-artifact runtime checks;
 it did not change those reviewed dependency versions. No extension-host UAT,
 remote CI or main acceptance is claimed by these local results.
 
+## First hosted CI and packaging-test correction
+
+The initial full-suite results above preceded the final fast-uri packaging
+allowlist change. The packaged-runtime smoke verified the regenerated VSIX, but
+the static packaging contract test was not rerun at that point. Those results
+did not establish a passing full suite for the published `70ef1cd2` revision.
+
+[extensions-quality run 36495203770](https://github.com/katamor1/bob_builtin_analyze/actions/runs/36495203770)
+exposed the missed assertion in `test/workflowRegister.test.js`: it still
+required the broad `!node_modules/fast-uri/**` pattern. Both Linux and Windows
+failed only that test (Linux: 1,883 passed / 1 failed / 2 skipped; Windows:
+1,884 passed / 1 failed / 1 skipped). All three production audits passed.
+The other nine jobs across the three triggered workflows passed. The separate
+`workflow-contracts` workflow is not path-triggered by the maintenance diff;
+this result is not Wave 0A acceptance.
+
+A focused local run reproduced the same failure. The corrected assertion now
+requires fast-uri's runtime entry point, manifest, license and `lib/`, and
+rejects the broad pattern, following the existing js-yaml contract. All 13
+tests in `workflowRegister.test.js` then passed. No product source, dependency,
+packaging configuration, deadline or budget changed in this follow-up.
+The existing VSIX SHA-256 still matches the artifact recorded above.
+
+After the test correction, compile and the full workflow-register suite were
+rerun with `node --test --test-concurrency=2 test/*.test.js`: 1,885 passed,
+one Windows O_NOFOLLOW skip, zero failures/cancellations, 162.3 seconds.
+This fresh result supersedes the workflow-register test row above for the local
+follow-up. Logs: `packaging-contract-red.log`, `packaging-contract-green.log`,
+`post-ci-compile.log` and `post-ci-bounded-tests.log`. Bazaar and Consistency
+source, tests and dependency artifacts are unchanged by the follow-up.
+
 ## Integration boundary
 
-This local candidate must be independently reviewed and validated by hosted CI
-before main acceptance. Push, PR creation and main merge have not occurred.
+Draft [PR #173](https://github.com/katamor1/bob_builtin_analyze/pull/173)
+was created from `70ef1cd2147bfff0f1e01bf8540cafa7b9471efe`. Its initial CI
+completed with nine successful jobs and two failures described above. The local
+follow-up still requires a separately approved push and fresh hosted CI. Main
+acceptance has not occurred.
 After maintenance is accepted on main, refresh the separate Wave 0A branch
 against that main and rerun its exact-head CI checks before Wave 0B or P4.

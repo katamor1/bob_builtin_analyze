@@ -215,13 +215,17 @@ test("runtime dependencies are not excluded from VSIX packaging", () => {
   for (const moduleName of [
     "ajv",
     "fast-deep-equal",
-    "fast-uri",
     "json-schema-traverse",
     "require-from-string",
     "argparse"
   ]) {
     assert.match(vscodeIgnore, new RegExp(`^!node_modules/${moduleName}/\\*\\*$`, "m"))
   }
+  assert.match(vscodeIgnore, /^!node_modules\/fast-uri\/index\.js$/m)
+  assert.match(vscodeIgnore, /^!node_modules\/fast-uri\/package\.json$/m)
+  assert.match(vscodeIgnore, /^!node_modules\/fast-uri\/LICENSE$/m)
+  assert.match(vscodeIgnore, /^!node_modules\/fast-uri\/lib\/\*\*$/m)
+  assert.doesNotMatch(vscodeIgnore, /^!node_modules\/fast-uri\/\*\*$/m)
   assert.match(vscodeIgnore, /^!node_modules\/js-yaml\/index\.js$/m)
   assert.match(vscodeIgnore, /^!node_modules\/js-yaml\/package\.json$/m)
   assert.match(vscodeIgnore, /^!node_modules\/js-yaml\/LICENSE$/m)
