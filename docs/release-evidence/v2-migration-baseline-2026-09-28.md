@@ -172,3 +172,43 @@ verified merge parent/tree, matching main dispatch results, and topology/archive
 acceptance. Baseline audit failures must be resolved before claiming these
 gates pass. Wave 0B selection/status documents and M2 compiler implementation
 must not be presented as completed before these prerequisites.
+
+## Maintenance prerequisite accepted — 2026-09-29
+
+The baseline audit failures above were remediated separately in
+[PR #173](https://github.com/katamor1/bob_builtin_analyze/pull/173).
+Its reviewed head `ddff028430c958b75f797de930ae9461b6e69c4d` passed all eleven
+PR jobs. The merge commit is `fc231038e3bc398da918488a7bd78ac46e663ad4`, with
+parents `5b345a0aa4e58296d3fe55f4876cab151f9f24aa` and that reviewed head.
+The merged Git tree equals the reviewed tree
+`b5a779c67f0cda1f976066154a2356f083152b63`.
+
+All three applicable push workflows succeeded on that exact main commit:
+
+- [Extensions quality 36578785710](https://github.com/katamor1/bob_builtin_analyze/actions/runs/36578785710).
+- [Scaffold 36578785950](https://github.com/katamor1/bob_builtin_analyze/actions/runs/36578785950).
+- [UI contracts 36578785741](https://github.com/katamor1/bob_builtin_analyze/actions/runs/36578785741).
+
+Across those workflows, ten jobs succeeded and only the PR-only
+`Extension source metrics` job was skipped, as configured. Production audits,
+Linux/Windows tests, VSIX budgets and Extension Host smoke passed. The
+`workflow-contracts` workflow was not path-triggered by this maintenance diff;
+these results therefore do not establish Wave 0A's four-workflow acceptance.
+The dependency changes and first-CI packaging-test correction are documented in
+[the maintenance evidence](dependency-audit-remediation-2026-09-29.md).
+
+The Wave 0A candidate has been refreshed on this accepted main without changing
+its CI implementation. Its `extensions/` diff against this main is empty.
+Candidate PR CI, merge/main dispatch and topology acceptance still remain;
+Wave 0B and M2 have not started. The original local main checkout and its
+user-owned untracked files have been preserved.
+
+After refreshing the candidate, a single bounded run of the ten CI/UI contract
+test files and five existing Program/risk/campaign/generator/legacy-policy test
+files passed all 728 tests (zero failures, cancellations or skips; 27.7 seconds).
+Command: `node --test --test-concurrency=2` with those fifteen explicit paths;
+log: `m1-post-maintenance-regressions.log`. This includes the 38 focused CI tests
+within 68 CI/UI tests and the 660 existing policy tests, without double counting.
+All 26 local Markdown links in this evidence and the migration plan resolve.
+The canonical Program file's raw disk bytes match Git blob
+`84d8d434fd77642847cb959fbac84b1c4b3f0f46`; changed-file whitespace also passes.

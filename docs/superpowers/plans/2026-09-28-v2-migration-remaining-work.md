@@ -13,6 +13,7 @@
 ## Global Constraints
 
 - 調査基準は2026-09-28、local `main` HEAD `5b345a0aa4e58296d3fe55f4876cab151f9f24aa`。計画作成時は静的照合のみ。実行時に追加したremote／archive／CI／テスト／auditの確認結果は[基盤証跡](../../release-evidence/v2-migration-baseline-2026-09-28.md)を正本とし、計画と受入完了を区別する。
+- 実行基準mainを `fc231038e3bc398da918488a7bd78ac46e663ad4` へ更新した。依存監査の保守PR #173は統合済みで、同じmainの3 workflowは成功（10 jobs成功、PR専用metrics 1件skip）。Wave 0A候補はこのmainを取り込んだが、候補のhosted CI／main受入とWave 0Bは未完了。詳細は基盤証跡の9/29追記を参照。
 - 「実装あり」は受入完了を意味しない。M0の調査完了、M1のローカル差分完成、hosted CI／main統合の成功を別々に記録する。
 - Contractの現行Programでは `WF2-P6-ENTRYPOINT_MAX_SHADOW`、`WF2-R2-INVOKE_PRODUCT_REACHABILITY_ZERO` を維持する。V2 package追加やworkspace設定だけで製品実行を有効化しない。
 - V2 slotの失敗から同一slotのlegacy定義へfallbackしない。段階導入中は既存V1 command／API／保存schemaを保つ。
