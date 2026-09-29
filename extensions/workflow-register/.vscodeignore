@@ -10,7 +10,10 @@ tsconfig.json
 node_modules/**
 !node_modules/ajv/**
 !node_modules/fast-deep-equal/**
-!node_modules/fast-uri/**
+!node_modules/fast-uri/index.js
+!node_modules/fast-uri/package.json
+!node_modules/fast-uri/LICENSE
+!node_modules/fast-uri/lib/**
 !node_modules/json-schema-traverse/**
 !node_modules/require-from-string/**
 !node_modules/js-yaml/index.js
