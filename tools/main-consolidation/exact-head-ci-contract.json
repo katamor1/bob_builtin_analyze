@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "bob-builtin-analyze/exact-head-ci-contract/v1",
+  "repository": "katamor1/bob_builtin_analyze",
+  "verificationStep": "Verify checked-out commit",
+  "dispatch": {
+    "requiredInputs": [
+      "expectedHeadSha",
+      "dispatchNonce"
+    ],
+    "runName": "wave0a-{expectedHeadSha}-{dispatchNonce}",
+    "headShaPattern": "^[0-9a-f]{40}$",
+    "noncePattern": "^[0-9a-f]{32}$",
+    "triggerShaMustEqualExpectedHead": true
+  },
+  "workflows": [
+    {
+      "id": "extensions-quality",
+      "path": ".github/workflows/extensions-quality.yml",
+      "jobs": [
+        {
+          "name": "workflow-register",
+          "runner": "ubuntu-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        },
+        {
+          "name": "bob-bazaar-review",
+          "runner": "ubuntu-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        },
+        {
+          "name": "bob-code-consistency-review",
+          "runner": "ubuntu-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        },
+        {
+          "name": "Windows / workflow-register",
+          "runner": "windows-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        },
+        {
+          "name": "Windows / bob-bazaar-review",
+          "runner": "windows-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        },
+        {
+          "name": "Windows / bob-code-consistency-review",
+          "runner": "windows-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        },
+        {
+          "name": "Real-machine environment contracts",
+          "runner": "windows-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        },
+        {
+          "name": "Extension source metrics",
+          "runner": "ubuntu-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "skipped"
+        }
+      ]
+    },
+    {
+      "id": "workflow-contracts",
+      "path": ".github/workflows/workflow-contracts.yml",
+      "jobs": [
+        {
+          "name": "Strict workflow validation",
+          "runner": "ubuntu-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        }
+      ]
+    },
+    {
+      "id": "code-consistency-review-scaffold",
+      "path": ".github/workflows/code-consistency-review-scaffold.yml",
+      "jobs": [
+        {
+          "name": "Validate scaffold",
+          "runner": "ubuntu-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        },
+        {
+          "name": "Validate VS Code extension",
+          "runner": "ubuntu-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        }
+      ]
+    },
+    {
+      "id": "three-extension-ui-contracts",
+      "path": ".github/workflows/three-extension-ui-contracts.yml",
+      "jobs": [
+        {
+          "name": "UI and documentation contracts",
+          "runner": "ubuntu-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        }
+      ]
+    }
+  ]
+}

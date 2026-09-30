@@ -1,4 +1,5 @@
 name: code-consistency-review-scaffold
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('wave0a-{0}-{1}', inputs.expectedHeadSha, inputs.dispatchNonce) || github.event.pull_request.title || github.event.head_commit.message || github.workflow }}
 
 on:
   pull_request:
@@ -10,6 +11,9 @@ on:
       - "scripts/check-export-star-policy.js"
       - "scripts/ci-baseline-summary.js"
       - ".bob/workflows/code-consistency-review/WORKFLOW.md"
+      - "scripts/verify-ci-head*.js"
+      - "scripts/exact-head-ci-contract.test.js"
+      - "tools/main-consolidation/exact-head-ci-contract.json"
       - ".github/workflows/code-consistency-review-scaffold.yml"
   push:
     branches:
@@ -22,8 +26,20 @@ on:
       - "scripts/check-export-star-policy.js"
       - "scripts/ci-baseline-summary.js"
       - ".bob/workflows/code-consistency-review/WORKFLOW.md"
+      - "scripts/verify-ci-head*.js"
+      - "scripts/exact-head-ci-contract.test.js"
+      - "tools/main-consolidation/exact-head-ci-contract.json"
       - ".github/workflows/code-consistency-review-scaffold.yml"
   workflow_dispatch:
+    inputs:
+      expectedHeadSha:
+        description: Full commit SHA to check out and verify
+        required: true
+        type: string
+      dispatchNonce:
+        description: Machine-generated 32-character lowercase hex correlation ID
+        required: true
+        type: string
   # Manual dispatch is retained for explicit post-evidence scaffold verification.
 
 concurrency:
@@ -42,6 +58,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify checked-out commit
+        working-directory: ${{ github.workspace }}
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}
+          DISPATCH_HEAD_SHA: ${{ inputs.expectedHeadSha }}
+          DISPATCH_NONCE: ${{ inputs.dispatchNonce }}
+        run: node scripts/verify-ci-head.js
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -76,6 +102,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify checked-out commit
+        working-directory: ${{ github.workspace }}
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}
+          DISPATCH_HEAD_SHA: ${{ inputs.expectedHeadSha }}
+          DISPATCH_NONCE: ${{ inputs.dispatchNonce }}
+        run: node scripts/verify-ci-head.js
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

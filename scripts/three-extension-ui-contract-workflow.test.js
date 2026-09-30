@@ -12,17 +12,17 @@ const workflow = fs.readFileSync(
 test("dedicated UI contract workflow checks out and verifies the exact triggering head", () => {
   assert.match(
     workflow,
-    /ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\|\|\s*github\.sha\s*\}\}/
+    /ref:\s*\$\{\{\s*github\.event_name == 'workflow_dispatch' && inputs\.expectedHeadSha \|\| github\.event\.pull_request\.head\.sha \|\| github\.sha\s*\}\}/
   )
   assert.match(
     workflow,
-    /EXPECTED_HEAD_SHA:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\|\|\s*github\.sha\s*\}\}/
+    /EXPECTED_HEAD_SHA:\s*\$\{\{\s*github\.event_name == 'workflow_dispatch' && inputs\.expectedHeadSha \|\| github\.event\.pull_request\.head\.sha \|\| github\.sha\s*\}\}/
   )
   assert.match(workflow, /actual_head="\$\(git rev-parse HEAD\)"/)
-  assert.match(workflow, /test "\$actual_head" = "\$EXPECTED_HEAD_SHA"/)
+  assert.match(workflow, /run: node scripts\/verify-ci-head\.js/)
   assert.match(
     workflow,
-    /HEAD_SHA:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\|\|\s*github\.sha\s*\}\}/
+    /HEAD_SHA:\s*\$\{\{\s*github\.event_name == 'workflow_dispatch' && inputs\.expectedHeadSha \|\| github\.event\.pull_request\.head\.sha \|\| github\.sha\s*\}\}/
   )
   const whitespaceStepStart = workflow.indexOf("      - name: Verify changed-file whitespace")
   assert.notEqual(whitespaceStepStart, -1)
@@ -49,7 +49,7 @@ test("dedicated UI contract workflow checks out and verifies the exact triggerin
   const exactEnvironmentLines = [
     '          EVENT_NAME: ${{ github.event_name }}',
     '          BASE_SHA: ${{ github.event.pull_request.base.sha }}',
-    '          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}',
+    "          HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}",
     "          HISTORICAL_PATCH: docs/release-evidence/workflow-contract-v2-foundation-doc-sync.patch",
     "          EXPECTED_HISTORICAL_PATCH_BLOB: e0946c6a29f7aa17538b1bc89e8160892845fb44"
   ]
