@@ -3,13 +3,14 @@ import {fileURLToPath} from 'node:url'
 import {buildProgramIndex} from './featureIntegrationProgramPolicy.mjs'
 import {renderSelectionLedgerMarkdown,validateSelectionLedger,checkSelectionLedgerArtifacts} from './featureSelectionLedgerPolicy.mjs'
 import {parseArguments} from './create-feature-integration-program-index.mjs'
+import {parseCanonicalArtifact} from './featureSelectionSourcePolicy.mjs'
 const UNIVERSE=fileURLToPath(new URL('./feature-selection-source-universe.json',import.meta.url))
 const LEDGER=fileURLToPath(new URL('../../docs/release-evidence/feature-selection-ledger-2026-08-23.json',import.meta.url))
 const MARKDOWN=fileURLToPath(new URL('../../docs/release-evidence/feature-selection-ledger-2026-08-23.md',import.meta.url))
 export async function runGenerator(argv,{readFile:readInput,writeStdout}) {
  const {mode}=parseArguments(argv)
- const universe=JSON.parse(await readInput(UNIVERSE)); const programIndex=buildProgramIndex()
- const ledgerBytes=Buffer.from(await readInput(LEDGER)); const ledger=JSON.parse(ledgerBytes)
+ const universe=parseCanonicalArtifact(await readInput(UNIVERSE)); const programIndex=buildProgramIndex()
+ const ledgerBytes=Buffer.from(await readInput(LEDGER)); const ledger=parseCanonicalArtifact(ledgerBytes)
  validateSelectionLedger(ledger,{universe,programIndex})
  if(mode==='print') return writeStdout(renderSelectionLedgerMarkdown(ledger))
  checkSelectionLedgerArtifacts({ledgerBytes,markdownBytes:Buffer.from(await readInput(MARKDOWN)),universe,programIndex})

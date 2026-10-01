@@ -11,6 +11,12 @@ export function exactKeys(value, keys, label = 'record') {
 export function same(actual, expected, label) {
   if (!canonicalJson(actual).equals(canonicalJson(expected))) throw new TypeError(`${label}: identity mismatch`)
 }
+export function parseCanonicalArtifact(bytes, label = 'artifact') {
+  const original = Buffer.from(bytes)
+  const value = JSON.parse(original)
+  if (!original.equals(canonicalJson(value))) throw new TypeError(`${label}: noncanonical bytes`)
+  return value
+}
 const sha = value => { if (!/^[a-f0-9]{40}$/.test(value)) throw new TypeError('invalid Git SHA'); return value }
 const unique = values => [...new Set(values)].sort()
 const safePath = value => {
@@ -22,6 +28,10 @@ export function sourceItemId({ path, family }) {
   if (typeof family !== 'string' || !family.trim()) throw new TypeError('semantic family required')
   return `source-${digest({ path, family }).slice(0, 24)}`
 }
+
+// symbols includes representative identifiers and historical aliases from the
+// bound full-range history. An origin is the family's owner-stage contract
+// snapshot; renamed test titles need not all survive in that one blob.
 
 // Full reachable range, without path-limited history simplification. Merge changes
 // are compared with the first parent; rename source and destination both count.
@@ -88,7 +98,7 @@ export function buildSourceUniverse(inputs) {
     const manifests = { commitOids: row.history.commits.map(commit => commit.sha).sort(), paths: row.history.changedPaths, tests: row.history.sourceTests }
     return { id: row.id, carrierId: row.carrierId, fromSha: row.fromSha, toSha: row.toSha, history: row.history, historySha256: digest(row.history), manifests, manifestDigests: { commitsSha256: digest(manifests.commitOids), pathsSha256: digest(manifests.paths), testsSha256: digest(manifests.tests) }, legacyHeads: row.legacyHeads }
   })
-  return { schemaVersion: 'bob-builtin-analyze/feature-selection-source-universe/v1', planningBaselineMainSha: program.planningBaselineMainSha, archiveIdentities, trustChainIdentities: program.trustChainIdentities, provenanceMetadata: [{ id:'open-prs-rest-before',sha256:'5179b26aa1431b35178c5325d62b87cb00efc06880eafdbe664664bb8b8d48c1',binding:'remote_archive_manifest' }, { id:'pr-close-results',sha256:'47967f86095d770ab6dc6b3e0889bf560d3f423c8636dfa0b9aaf64f5b7aa2bd',binding:'remote_cleanup_execution_result' }], carrierRanges, inputSha256: SOURCE_INVENTORY_SHA256, tranches, items: [...items.values()].sort((a, b) => a.sourceItemId.localeCompare(b.sourceItemId, 'en')) }
+  return structuredClone({ schemaVersion: 'bob-builtin-analyze/feature-selection-source-universe/v1', planningBaselineMainSha: program.planningBaselineMainSha, archiveIdentities, trustChainIdentities: program.trustChainIdentities, provenanceMetadata: [{ id:'open-prs-rest-before',sha256:'5179b26aa1431b35178c5325d62b87cb00efc06880eafdbe664664bb8b8d48c1',binding:'remote_archive_manifest' }, { id:'pr-close-results',sha256:'47967f86095d770ab6dc6b3e0889bf560d3f423c8636dfa0b9aaf64f5b7aa2bd',binding:'remote_cleanup_execution_result' }], carrierRanges, inputSha256: SOURCE_INVENTORY_SHA256, tranches, items: [...items.values()].sort((a, b) => a.sourceItemId.localeCompare(b.sourceItemId, 'en')) })
 }
 
 export function validateSourceUniverse(universe, { programIndex, archiveIdentities }) {

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { buildProgramIndex, canonicalJson } from './featureIntegrationProgramPolicy.mjs'
-import { buildSourceUniverse, validateSourceUniverse } from './featureSelectionSourcePolicy.mjs'
+import { buildSourceUniverse, validateSourceUniverse, parseCanonicalArtifact } from './featureSelectionSourcePolicy.mjs'
 import { parseArguments } from './create-feature-integration-program-index.mjs'
 
 const INPUT = fileURLToPath(new URL('./feature-selection-semantic-inventory.json', import.meta.url))
@@ -14,7 +14,7 @@ export function renderSourceUniverse(inputs) {
 }
 export async function runGenerator(argv, { readFile: readInput, writeStdout }) {
   const { mode } = parseArguments(argv)
-  const bytes = renderSourceUniverse(JSON.parse(await readInput(INPUT)))
+  const bytes = renderSourceUniverse(parseCanonicalArtifact(await readInput(INPUT), 'semantic inventory'))
   if (mode === 'print') return writeStdout(bytes)
   if (!Buffer.from(await readInput(OUTPUT)).equals(bytes)) throw new Error('source universe drift')
 }

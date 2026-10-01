@@ -7,6 +7,13 @@ const input = () => JSON.parse(readFileSync(new URL('../feature-selection-semant
 const build = () => buildSourceUniverse(input())
 const context = () => ({ programIndex: buildProgramIndex(), archiveIdentities: buildProgramIndex().immutableArchives })
 
+test('returned_source_artifact_is_detached_from_read_only_input', () => {
+ const seed=input();const universe=buildSourceUniverse(seed)
+ seed.archiveIdentities[0].manifestSha256='0'.repeat(64)
+ seed.historyManifests[0].history.commits.pop()
+ validateSourceUniverse(universe,context())
+})
+
 test('binds_sorted_commit_path_and_test_manifests_individually', () => {
  const universe=JSON.parse(readFileSync(new URL('../feature-selection-source-universe.json',import.meta.url)))
  for(const tranche of universe.tranches) {
