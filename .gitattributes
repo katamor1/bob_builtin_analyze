@@ -4,6 +4,12 @@
 # The Program generator compares this canonical JSON as exact LF bytes.
 tools/main-consolidation/feature-integration-program-index.json text eol=lf
 
+# Wave 0B projections and their reviewed input use exact canonical LF bytes.
+tools/main-consolidation/feature-selection-*.json text eol=lf
+docs/release-evidence/feature-selection-ledger-2026-08-23.* text eol=lf
+docs/release-evidence/feature-integration-status.json text eol=lf
+docs/release-evidence/wave0a-completion-2026-10-01.json text eol=lf
+
 # Reproducible Runtime characterization fixtures are reviewed as exact LF bytes.
 extensions/workflow-register/test/fixtures/reproducible-runtime/** text eol=lf
 
