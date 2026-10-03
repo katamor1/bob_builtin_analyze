@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-23-feature-selection-and-sequential-main-integration-design.md` §7.1・§8–12（technical-only）、`docs/superpowers/specs/2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md`、`docs/superpowers/specs/2026-07-17-workflow-contract-v2-design.md` §15–16、`docs/superpowers/specs/2026-07-24-workflow-contract-v2-generation-directory-amendment.md`。詳細入力は既存 `2026-07-17-workflow-contract-v2-package-compiler.md` のP4 sectionのみ。
 
-**Status:** main `88c5f2ee7489f45182e74df778896daf66101ffd` をexecution baseとしてP4 local実装・検証を完了。独立whole-branch review待ち。公開・main統合・activationは未実施。
+**Status:** main `88c5f2ee7489f45182e74df778896daf66101ffd` をexecution baseとしてP4 local実装・検証を完了。独立whole-branch reviewのImportant 2件を回帰テストで修正し、local全体検証を完了。公開・main統合・activationは未実施。
 
 ## Global Constraints
 
@@ -118,7 +118,7 @@ private helpersは `requireCompiledWorkflowPlanState(handle)`、`readCompiledWor
 - [x] **Step 5: Implement frozen plan and lowering.** public planはcanonical pure JSON・deep frozen、`planDigest` fieldなし。input `requiredWhen`はinputsのみ、entry/templates/context/resultはstrictly earlier lexical value outputsのみ、outgoing transitionはowning value outputを許し `postCommit` とする。unit/current-at-entry/future/transient referencesとraw source predicate残存を拒否する。private prompt bytesはfresh detached read。
 - [x] **Step 6: Implement sole pipeline/public facade.** Task 1 adaptersとStep 3–5を `compiler.ts` へordered接続する。nonruntimeはordinary F6 handle＋throwing compile-only dispatchでnonleasable。private planのleaseabilityは `purpose==="runtime" && publication==="published"`。P5 acquire/cacheやproduct consumerは作らない。
 - [x] **Step 7: Run GREEN and local full checks.** compile、compiler suite全13 families、現行10 foundation `workflowContractV2*.test.js`、`npm run architecture:policy` / `source:policy` / `dependency:policy`、workflow-register `npm test` を実行し、failure 0。影響がある三拡張のquality gatesを既存repo commandで実行し、`git diff --check`、27 owned paths以外のproduct diffをreviewする。
-- [ ] **Step 8: Review and commit.** source item/blob/omission mappingと独立reviewを行い、Critical/Important 0にする。Task 2 owned filesのみを明示stageし、`feat(workflow): add single immutable package compiler`。
+- [x] **Step 8: Review and commit.** source item/blob/omission mappingと独立reviewを行い、Critical/Important 0にする。Task 2 owned filesのみを明示stageし、`feat(workflow): add single immutable package compiler`。
 
 ## Integration and Handoff
 

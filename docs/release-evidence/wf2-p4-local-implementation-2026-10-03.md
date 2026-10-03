@@ -1,30 +1,45 @@
 # WF2 P4 local implementation — 2026-10-03
 
-P4 compilerのlocal実装・検証を完了した。現在は独立whole-branch review待ちであり、P4のprogram VERIFIED、公開、main統合、product activationを意味しない。本文とJSONは技術観測であり mutationAuthority:false。
+P4 compilerのlocal実装、独立whole-branch reviewと指摘修正、全体検証を完了した。P4のprogram VERIFIED、候補公開、main統合、product activationは未実施。本文とJSONは技術観測であり mutationAuthority:false。
 
-- Execution base: `88c5f2ee7489f45182e74df778896daf66101ffd`。
-- 実装commit head: `32830e2a0df48ecceddce0325ddf0ba1661e4b4e`。branch: `codex/v2-p4-compiler`。
-- Predecessor: Wave 0B registry recoveryの受入・cleanup完了。hard dependency: `BASE-WF2-A`。
-- Source: PR #153 owner-stage `683e794eb4a39eea7bc3630bedbd2a557f4af8af` → `e0766f9448033688964fabbcfa6ae73b3d849ed0`。
-- 30 source items / 27 product-test paths。14 source blobsをそのまま再構成し、13 pathsを現行契約・テストに適合した。Workflow Bの他51 itemsを除外した。
-- 一回のF3 catalog、opaque roles/environment/handle、immutable raw snapshot、lexical/schema role resolution、F6 exact binding、lock verification、compiled predicate AST lowering、canonical frozen plan、fresh private prompt readを追加した。
-- 既存foundation、v1 entrypoint、Bob stable 2.x・optional toSerializable、product manifestは変更していない。P5–P7・R2 invocation・conditional R3–R5は含まない。
+- Execution base: 88c5f2ee7489f45182e74df778896daf66101ffd。branch: codex/v2-p4-compiler。
+- 独立review head: d7669b6a06f2ae0f63fd2f33df9b1bdcb8ec6114。指摘修正を含む実装head: ebd902b2f8045835a698477ae10ee1864f77dc0f。
+- 30 source items / 27 product-test paths。12 source blobsをそのまま再構成し、15 pathsを現行契約に適合。Workflow Bの他51 itemsを除外。
+- 一回のF3 catalog、opaque roles/environment/handle、immutable raw snapshot、lexical/schema role resolution、F6 exact binding、lock verification、validated predicate AST lowering、canonical frozen plan、fresh private prompt readsを追加。
+- 既存foundation、v1 entrypoint、Bob stable 2.xとoptional toSerializable、manifest/UIは変更していない。
 
 ## 検証
 
 | 対象 | pass | skip | fail |
 | --- | ---: | ---: | ---: |
-| P4 compiler: 13 families / 41 top-level cases | 66 | 0 | 0 |
+| P4 compiler: 13 families / 41 top-level cases | 72 | 0 | 0 |
 | 既存10 Contract v2 foundation suites | 556 | 1 | 0 |
-| workflow-register full (npm test -- --test-concurrency=2) | 1951 | 1 | 0 |
+| workflow-register full (npm test -- --test-concurrency=2) | 1957 | 1 | 0 |
 | bob-bazaar-review full | 753 | 1 | 0 |
 | bob-code-consistency-review full | 328 | 0 | 0 |
 
-foundation/compilerはworkflow fullに含まれるため二重加算しない。三拡張full合計は3032 pass / 2既存skip / 0 fail。三拡張architecture/source/dependency policy、bazaar unused/artifact policy、branch diff-checkも成功した。
+compiler/foundationはworkflow fullに含まれるため二重加算しない。三拡張full合計3040 tests / 3038 pass / 2既存skip / 0 failure。三拡張architecture/source/dependency、bazaar unused/artifact、workflow schema policy、branch diff-checkも成功。
 
-workflow baselineは三拡張のfull suiteを同時・default concurrencyで実行した際、Bob lifecycleの既存10秒timeoutが3件発生した。変更していない同suiteの単独実行は27/27成功し、並行度2のworkflow fullは0 failureになった。timeout値や製品コードを変更していない。
+変更のない他二拡張は既に成功した全体結果を再利用し、review修正後はcompiler、foundation、workflow fullと影響policyを再実行した。全27 pathsの実bytesとGit blob identityをsource mappingに再結合した。
 
-REDは新catalog/role不在 (5 failures)、新compiler不在 (41 top-level / 61 including nested failures)、validated predicate ASTをsourceから再読する境界 (true != false) を確認した。history内の型・test instrumentation/fixtures/assertions差分は以下の判断で適合した。
+workflow baselineは三拡張同時・default concurrency時に既存Bob lifecycle 10秒timeoutが3件発生。同suite単独27/27成功、最終workflow fullは並行度2で0 failure。timeout値や既存製品コードは変更していない。
+
+| Local VSIX | bytes | 上限 | policy |
+| --- | ---: | ---: | --- |
+| workflow-register 0.1.0 | 1191671 | 1200000 | passed |
+| bob-bazaar-review 0.3.0 | 3767456 | 12000000 | passed |
+| bob-code-consistency-review 0.1.0 | 3721538 | 11000000 | passed |
+
+VSIXは承認済みfixture root内へ生成し、upload/activationは行っていない。Bazaarは未変更policyのVSIX入力pathだけをadapterでfixtureへ向け、original package-lock/production dependency rootsの検証も維持した。JSONに実VSIX・policy・adapterのSHA256を保持する。
+
+## 独立reviewと修正
+
+独立reviewは31変更pathsを対象にし、Critical 0 / Important 2 / Minor 0、verdict With fixes。既存12 Rulingsとsource/log identitiesは妥当と確認された。
+
+1. 128 form fieldsにapprovalを加えるとrole上限128を超えて失敗。回帰RED後、128 forms＋1 approvalを許可し、129 formsや複数approvalは引き続き拒否。
+2. manual schemaのsole local field/root referenceを未解決のtype/enumで比較して失敗。回帰RED後、catalog-owned detached stateから解決。root chains、別schema document、escaped pointer tokens、annotation、select/approval enum、不正enum、mixed validation sibling拒否、caller変更への耐性、original digest bindingを検証。
+
+修正は一回のlocal passで実施し、72/72 compilerとworkflow fullで検証。executing-plansに従い再reviewは行っていない。Critical/Importantの未解決件数は0。Deferred minors: none。
 
 ## 判断記録
 
@@ -52,12 +67,22 @@ REDは新catalog/role不在 (5 failures)、新compiler不在 (41 top-level / 61 
 
 - Ruling: Commit the implementation before the one final whole-branch review — executing-plans calls for a fresh immutable branch review after tasks, while Task 2 combines review/commit in its last step — cost if wrong: review issues remain local and must be fixed before publication; Task 2 Step 8 stays unchecked until the review disposition is complete.
 
-## Reviewと統合境界
+- Final: Ruling: P5 cache/lease, P6 routing, and P7 manifest behavior remain later-slice gates — users get a passive compiler with no product consumer and no claim of later runtime behavior — cost if wrong: integration cannot accept P4 as sufficient for runtime; later slices must test those contracts before activation.
 
-独立reviewは実装と本記録を含むbranch全体を対象にする。Critical/Importantはlocalで解消し、Minorとdeclined-to-judgeの処置をexecution workspaceへ記録する。
+- Final: Ruling: Live provider/Bob execution and run/artifact transactions remain prohibited activation and later runtime work — this slice compiles without dispatching or creating runs; zero-side-effect tests cover its observable behavior — cost if wrong: future invocation/transaction regressions remain undetected here and must block activation until separately verified.
 
-今回の追加compilerはentrypointから到達せず、UI/manifest変更もない。local段階の検証代替は上記behavioral/foundation/full/policy checksとする。公開・main受入にはcandidateとmerged-mainのexact-head Ubuntu/Windows CIが必要。最終三拡張実機UATは後続programに残す。
+- Final: Ruling: Remote publication/main acceptance, hosted Ubuntu/Windows CI, and real-machine UAT remain separate future gates — local results prove local compiler behavior only; programVerified stays false and no product entrypoint/UI/manifest changed — cost if wrong: cross-platform or real-host problems escape local tests; candidate/main CI and final three-extension UAT must still gate acceptance.
 
-新worktreeとignored technical evidenceを継続workspaceとして保管する。公開・main統合・archive/ref削除は承認済みlocal範囲に含まれない。
+- Final: Ruling: Workspace archival and ref cleanup remain deferred — the authorized continuous local workspace retains source, ignored logs, and packages for publication/review follow-up — cost if wrong: local storage persists and later cleanup must preserve needed ignored evidence before native archival and guarded ref removal.
+
+- Ruling: Adapt only the Bazaar policy's VSIX input path to the approved fixture output — its CLI otherwise expects the VSIX beside package-lock and installed production dependencies; execute unchanged policy source against original dependency roots and redirect only exact VSIX exists/stat/read — cost if wrong: packaging validation could inspect different bytes; require three input redirections and bind policy source, adapter, and actual VSIX hashes. No product policy modification.
+
+- Ruling: Present one concrete candidate publication proposal instead of the generic finishing-branch menu — repository risk-tier design section 4-C requires canonical targets and separate execution-time confirmation for remote/main/cleanup effects; the approved local proposal excludes those effects — cost if wrong: an additional integration choice is needed; retain the local branch and perform no unconfirmed remote or main action.
+
+## 残る受入境界
+
+P5/P6/P7、live provider/Bob/run/artifact executionは後続slice/activation設計の対象。新compilerはentrypointから未到達でUI/manifest変更もないため、local代替検証はbehavioral/foundation/full/policy/package checks。candidateとmerged-mainのexact-head Ubuntu/Windows CIおよび最終三拡張実機UATを後続受入gateに残す。
+
+worktreeとignored technical evidenceはcontinuous-slice workspaceとして保管。公開・main統合・archive/ref cleanupは別対象のC確認を要する。
 
 詳細: [source mapping](wf2-p4-local-source-mapping-2026-10-03.json)、[local implementation observation](wf2-p4-local-implementation-2026-10-03.json)、[P4 plan](../superpowers/plans/2026-10-03-wf2-p4-compiler.md)。

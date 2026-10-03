@@ -4,9 +4,9 @@
   "sliceId": "WF2-P4-COMPILER",
   "programOrdinal": 2,
   "executionBase": "88c5f2ee7489f45182e74df778896daf66101ffd",
-  "implementationHead": "32830e2a0df48ecceddce0325ddf0ba1661e4b4e",
+  "implementationHead": "ebd902b2f8045835a698477ae10ee1864f77dc0f",
   "branch": "codex/v2-p4-compiler",
-  "status": "local-checks-complete-review-pending",
+  "status": "local-implementation-review-fixes-verified",
   "predecessor": {
     "sliceId": "WAVE-0B-SELECTION-LEDGER",
     "acceptedMain": "88c5f2ee7489f45182e74df778896daf66101ffd"
@@ -20,11 +20,11 @@
   "checks": [
     {
       "file": "task2-green.log",
-      "tests": 66,
-      "passed": 66,
+      "tests": 72,
+      "passed": 72,
       "failed": 0,
       "skipped": 0,
-      "sha256": "9d5f20211fc49999e9a1f847067ae1023efd425123f3ed49b8829bd1e013d37b"
+      "sha256": "ab0154d4266b291de3696e3d6c843ac62c2c6b9c3e15b48ed1527d7d61ec9803"
     },
     {
       "file": "foundation-full.log",
@@ -32,15 +32,15 @@
       "passed": 556,
       "failed": 0,
       "skipped": 1,
-      "sha256": "6ed8248f5a73108be5f6302a4a6e2286fea2d5b3c0c839cec1072323d988b13a"
+      "sha256": "3bee7f587626f12e4ee42af4707f948b95d8bf009d68282fe140e0e33dc112cc"
     },
     {
       "file": "workflow-full.log",
-      "tests": 1952,
-      "passed": 1951,
+      "tests": 1958,
+      "passed": 1957,
       "failed": 0,
       "skipped": 1,
-      "sha256": "ff9d109a4c84b7e243cde6c7ca9c5ed9f8d5167fc394769e8874f499e52e2d5f"
+      "sha256": "6d46a751b00ad38b433c2ab87c816ec30f561257ddadcec75961a3d22937c498"
     },
     {
       "file": "baseline-bob-bazaar-review.log",
@@ -60,7 +60,8 @@
     }
   ],
   "threeExtensionFullTotal": {
-    "passed": 3032,
+    "tests": 3040,
+    "passed": 3038,
     "skipped": 2,
     "failed": 0
   },
@@ -81,15 +82,39 @@
       "failed": 0
     },
     "boundedWorkflowFull": {
-      "passed": 1951,
+      "passed": 1957,
       "skipped": 1,
       "failed": 0
     }
   },
   "review": {
-    "status": "pending",
+    "status": "important-findings-fixed-and-tested",
     "scope": "one fresh-context whole-branch review",
-    "reviewFocus": "five conditions in the P4 plan"
+    "base": "88c5f2ee7489f45182e74df778896daf66101ffd",
+    "reviewedHead": "d7669b6a06f2ae0f63fd2f33df9b1bdcb8ec6114",
+    "independentVerdict": "With fixes",
+    "findings": {
+      "critical": 0,
+      "important": 2,
+      "minor": 0
+    },
+    "fixHead": "ebd902b2f8045835a698477ae10ee1864f77dc0f",
+    "unresolved": {
+      "critical": 0,
+      "important": 0,
+      "minor": 0
+    },
+    "verification": "One local RED-to-GREEN fix pass; 72/72 compiler, 1957 pass / 1 existing skip / 0 failure workflow full; no second review",
+    "fixed": [
+      "128 form fields plus one approval",
+      "Sole local manual-schema references resolved from detached catalog private state; original schema identity retained"
+    ],
+    "declinedToJudge": [
+      "P5/P6/P7",
+      "Live provider/Bob execution, run/artifact transactions",
+      "Remote/main/hosted CI/real-machine UAT",
+      "Workspace archival/ref cleanup"
+    ]
   },
   "rulings": [
     "Ruling: Retain the continuous P4 workspace and technical test/review evidence — user-approved proposal excludes cleanup and publication requires exact candidate evidence — cost if wrong: later native cleanup must preserve ignored evidence before archive.",
@@ -103,7 +128,13 @@
     "Ruling: Preserve earlier P1 diagnostics for invisible predicates and output-kind mismatch, compare public provider evidence canonically, and read prompt bytes through the fresh-copy helper — historical assertions conflict with closed P1 precedence, null-prototype canonical JSON, and hardened private prompt boundary — cost if wrong: exact pointer/canonical equality/fresh-byte behavioral checks fail.",
     "Ruling: Lower the successful F5 AST rather than raw source predicate nodes — requirement forbids raw predicate remnants; remove only private catalog pointer prefixes — cost if wrong: validated-AST boundary RED and actual predicate evaluation on owning committed values detect source reuse or pointer drift. RED first case true != false confirmed.",
     "Ruling: Verify stored full-check results and exact product bytes through task-done instead of rerunning completed suites — developer instructions avoid redundant passing checks; compiler regression rerun covers the subsequent whitespace-only test change — cost if wrong: log counters, source mapping hashes, or final branch ownership checks detect incomplete evidence; no behavioral full-suite claim on changed production bytes.",
-    "Ruling: Commit the implementation before the one final whole-branch review — executing-plans calls for a fresh immutable branch review after tasks, while Task 2 combines review/commit in its last step — cost if wrong: review issues remain local and must be fixed before publication; Task 2 Step 8 stays unchecked until the review disposition is complete."
+    "Ruling: Commit the implementation before the one final whole-branch review — executing-plans calls for a fresh immutable branch review after tasks, while Task 2 combines review/commit in its last step — cost if wrong: review issues remain local and must be fixed before publication; Task 2 Step 8 stays unchecked until the review disposition is complete.",
+    "Final: Ruling: P5 cache/lease, P6 routing, and P7 manifest behavior remain later-slice gates — users get a passive compiler with no product consumer and no claim of later runtime behavior — cost if wrong: integration cannot accept P4 as sufficient for runtime; later slices must test those contracts before activation.",
+    "Final: Ruling: Live provider/Bob execution and run/artifact transactions remain prohibited activation and later runtime work — this slice compiles without dispatching or creating runs; zero-side-effect tests cover its observable behavior — cost if wrong: future invocation/transaction regressions remain undetected here and must block activation until separately verified.",
+    "Final: Ruling: Remote publication/main acceptance, hosted Ubuntu/Windows CI, and real-machine UAT remain separate future gates — local results prove local compiler behavior only; programVerified stays false and no product entrypoint/UI/manifest changed — cost if wrong: cross-platform or real-host problems escape local tests; candidate/main CI and final three-extension UAT must still gate acceptance.",
+    "Final: Ruling: Workspace archival and ref cleanup remain deferred — the authorized continuous local workspace retains source, ignored logs, and packages for publication/review follow-up — cost if wrong: local storage persists and later cleanup must preserve needed ignored evidence before native archival and guarded ref removal.",
+    "Ruling: Adapt only the Bazaar policy's VSIX input path to the approved fixture output — its CLI otherwise expects the VSIX beside package-lock and installed production dependencies; execute unchanged policy source against original dependency roots and redirect only exact VSIX exists/stat/read — cost if wrong: packaging validation could inspect different bytes; require three input redirections and bind policy source, adapter, and actual VSIX hashes. No product policy modification.",
+    "Ruling: Present one concrete candidate publication proposal instead of the generic finishing-branch menu — repository risk-tier design section 4-C requires canonical targets and separate execution-time confirmation for remote/main/cleanup effects; the approved local proposal excludes those effects — cost if wrong: an additional integration choice is needed; retain the local branch and perform no unconfirmed remote or main action."
   ],
   "activation": "none",
   "maxPlannedActivation": "shadow",
@@ -117,5 +148,41 @@
     "changedUiSurfaces": 0,
     "localAlternative": "Compiler behavioral cases, ten foundation suites, all three extension tests and relevant policy gates. Candidate/main exact-head Ubuntu/Windows CI remain required before acceptance.",
     "finalThreeExtensionRealMachineUat": "still-required-in-later-integration-program"
-  }
+  },
+  "localPackages": [
+    {
+      "name": "workflow-register",
+      "version": "0.1.0",
+      "path": ".superpowers/sdd/2026-10-03-wf2-p4-compiler/fixtures/package-check/workflow-register/workflow-register-0.1.0.vsix",
+      "bytes": 1191671,
+      "maxBytes": 1200000,
+      "sha256": "8c33e727eb43f56a610ae262712d02bb7b7331049db7bedef8fa9be905a752f7",
+      "policy": "passed",
+      "policySourceSha256": "7cea3673c952f9bc0b8171c58d5ca2422de4a45c41d8f3906dd62f8efeee06e0"
+    },
+    {
+      "name": "bob-bazaar-review",
+      "version": "0.3.0",
+      "path": ".superpowers/sdd/2026-10-03-wf2-p4-compiler/fixtures/package-check/bob-bazaar-review/bob-bazaar-review-0.3.0.vsix",
+      "bytes": 3767456,
+      "maxBytes": 12000000,
+      "sha256": "ea8c91d464f16de9cb6f814ece1fefda628bf5f8ee864413d4f95366ba58d1bb",
+      "policy": "passed",
+      "policySourceSha256": "362ebdaa2a95c53f899fcf5a6e27d73f93bb563fb2f28eacce081728cd37280b",
+      "inputAdapter": {
+        "scope": "exact VSIX exists/stat/read path only; original production dependency roots",
+        "sha256": "3b33dfbab1c3370752f4c1d2ecfddff2f0f86b68ef748dba3b7de153220d0a7f"
+      }
+    },
+    {
+      "name": "bob-code-consistency-review",
+      "version": "0.1.0",
+      "path": ".superpowers/sdd/2026-10-03-wf2-p4-compiler/fixtures/package-check/bob-code-consistency-review/bob-code-consistency-review-0.1.0.vsix",
+      "bytes": 3721538,
+      "maxBytes": 11000000,
+      "sha256": "c67437382a6249bd7589bd192945813631c5344d962fcf222605dfee864bc694",
+      "policy": "passed",
+      "policySourceSha256": "7cea3673c952f9bc0b8171c58d5ca2422de4a45c41d8f3906dd62f8efeee06e0"
+    }
+  ]
 }

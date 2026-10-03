@@ -254,9 +254,9 @@
       ],
       "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
       "sourceBlob": "d1f78bfcdcc3c7977fce25936aaa4af27fa2c95b",
-      "targetBlob": "d1f78bfcdcc3c7977fce25936aaa4af27fa2c95b",
-      "targetFileSha256": "d1fc9ec2cb303cd774c4536f7543614b8dd6d40a88cd135980b3938413607d5a",
-      "disposition": "reconstructed"
+      "targetBlob": "fe7a315d1814434d7acb9fe4371a5c4972e0353f",
+      "targetFileSha256": "b49597e8997f1d202e4b991366b5af210e5e1088a4350897061aab60fc47ac8b",
+      "disposition": "adapted"
     },
     {
       "path": "extensions/workflow-register/src/core/contractV2/jsonSchemaRole.ts",
@@ -276,9 +276,9 @@
       ],
       "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
       "sourceBlob": "7ba808dcdee1a9307b4210b6dbee94e3a073ddba",
-      "targetBlob": "7ba808dcdee1a9307b4210b6dbee94e3a073ddba",
-      "targetFileSha256": "7e4b1de0f300c5d27bd9b85bc72c6596aa335029179c81ad3d88dde8bcf32e9d",
-      "disposition": "reconstructed"
+      "targetBlob": "7d6ce8ba1347b265f9263303230a77e3f532d674",
+      "targetFileSha256": "c72641bb04bf3a30c54f66b43b2a4094e1f3bbcad9458cac0447e022bb3d8e5e",
+      "disposition": "adapted"
     },
     {
       "path": "extensions/workflow-register/test/fixtures/workflow-contract-v2/compiler/valid-source/files.json",
@@ -477,8 +477,8 @@
       ],
       "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
       "sourceBlob": "739c1c311c4d61724048ea03f50705519db20142",
-      "targetBlob": "f157c3cd187bce7cc67e54be95210dc34b663222",
-      "targetFileSha256": "467c9bcf2ec5ca6ddf2006f2c21624a469a541fca788e4ccf70b8a065eda92a4",
+      "targetBlob": "4e259f6eedfb9abfe05c397aaa057f362b1ef5a9",
+      "targetFileSha256": "c333f6c7b9e993b4db818d444041dd54f5ef988349fa048fe6192f5e80dd45ec",
       "disposition": "adapted"
     },
     {
@@ -516,8 +516,8 @@
       ],
       "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
       "sourceBlob": "796fc3ddab268b53c035c3d860284ff13c009c7e",
-      "targetBlob": "2a69596a86dca7abeb8ee5535322fa6b5b5618f9",
-      "targetFileSha256": "57ac6dbdbb7e3fb2c297e6dfc74c5d2963249888c964d7967daff36bed5e226e",
+      "targetBlob": "e97f798d6d96af32a51aa8ca0cc2d23acaf251d9",
+      "targetFileSha256": "c3bf99f13dfb5e1752a03e6fb83d9039fe021e4d040b487a6a002bdeca2fd415",
       "disposition": "adapted"
     },
     {
