@@ -7,6 +7,7 @@ import {buildProgramIndex} from '../featureIntegrationProgramPolicy.mjs'
 import {digest} from '../featureSelectionSourcePolicy.mjs'
 const json=path=>JSON.parse(readFileSync(new URL(path,import.meta.url)))
 const completion=()=>json('../../../docs/release-evidence/wave0a-completion-2026-10-01.json')
+const wave0bCompletion=()=>json('../../../docs/release-evidence/wave0b-completion-2026-10-03.json')
 const context=()=>({programIndex:buildProgramIndex(),ledger:json('../../../docs/release-evidence/feature-selection-ledger-2026-08-23.json'),completionObservations:[completion()]})
 const digests=record=>Object.fromEntries(record.externalEvidence.map(row=>[row.id,{bytes:row.bytes,sha256:row.sha256}]))
 test('replays_verified_wave0a_and_planned_slices',()=>{
@@ -17,6 +18,54 @@ test('replays_verified_wave0a_and_planned_slices',()=>{
  assert.ok(p.capabilities.filter(c=>c.disposition==='conditional').every(c=>c.observedActivationStatus==='inactive'))
  assert.deepEqual(deriveNextSlice({programIndex:c.programIndex,statusProjection:p}),c.programIndex.programAtomicSlices[0])
  assert.equal(p.mutationAuthority,false)
+})
+
+test('replays_verified_wave0b_and_admits_p4_only',()=>{
+ const c=context();c.completionObservations.push(wave0bCompletion())
+ const p=projectIntegrationStatus(c)
+ assert.equal(p.acceptedMainSha,'b8876b2714d74bd8bbe686b66d17f2f76467f041')
+ assert.deepEqual(p.boundaries.filter(row=>row.state==='VERIFIED').map(row=>row.id),['WAVE-0A-CONTROL-PLANE','WAVE-0B-SELECTION-LEDGER'])
+ assert.deepEqual(p.slices.filter(row=>row.state==='VERIFIED').map(row=>row.sliceId),['WAVE-0B-SELECTION-LEDGER'])
+ assert.equal(p.slices.length,20);assert.equal(p.slices.filter(row=>row.state==='planned').length,19)
+ assert.ok(p.slices.every(row=>row.observedActivationStatus==='inactive'))
+ assert.equal(p.capabilities.find(row=>row.id==='WAVE-0B-SELECTION-LEDGER').executionState,'VERIFIED')
+ assert.ok(p.capabilities.filter(row=>row.id!=='WAVE-0B-SELECTION-LEDGER').every(row=>row.executionState!=='VERIFIED'&&row.observedActivationStatus==='inactive'))
+ const next=deriveNextSlice({programIndex:c.programIndex,statusProjection:p})
+ assert.equal(next.sliceId,'WF2-P4-COMPILER');assert.equal(next.ordinal,2)
+ assert.equal(p.nextSliceId,'WF2-P4-COMPILER');assert.equal(p.automaticCleanup,false);assert.equal(p.mutationAuthority,false)
+ assert.deepEqual(p.activeSliceIds,[])
+ p.completionReferences[1].acceptedMainSha='a'.repeat(40)
+ next.sliceId='caller-mutation'
+ assert.equal(deriveNextSlice({programIndex:c.programIndex,statusProjection:projectIntegrationStatus(c)}).sliceId,'WF2-P4-COMPILER')
+})
+
+test('rejects_nonprefix_or_duplicate_completions',()=>{
+ for(const records of [[wave0bCompletion()],[wave0bCompletion(),completion()],[completion(),completion()],[completion(),wave0bCompletion(),wave0bCompletion()]]) {
+  assert.throws(()=>projectIntegrationStatus({...context(),completionObservations:records}))
+ }
+})
+
+test('rejects_sparse_completion_collections',()=>{
+ const holeBeforeWave0b=Array(2);holeBeforeWave0b[1]=wave0bCompletion()
+ for(const records of [Array(1),holeBeforeWave0b]) {
+  assert.throws(()=>projectIntegrationStatus({...context(),completionObservations:records}))
+ }
+})
+
+test('rejects_wave0b_evidence_tamper_and_future_promotion',()=>{
+ for(const mutate of [r=>r.acceptedMainSha='a'.repeat(40),r=>r.ci[0].workflows[0].jobs[0].checkout.actualHeadSha='b'.repeat(40),r=>r.externalEvidence[0].sha256='0'.repeat(64),r=>r.topology.worktreeCount=2,r=>r.requestHash='historical']) {
+  const record=wave0bCompletion();mutate(record)
+  assert.throws(()=>validateCompletionObservation(record,{programIndex:buildProgramIndex(),evidenceDigests:digests(record)}))
+ }
+ const record=wave0bCompletion();const evidenceDigests=digests(record)
+ evidenceDigests[record.externalEvidence[0].id].bytes++
+ assert.throws(()=>validateCompletionObservation(record,{programIndex:buildProgramIndex(),evidenceDigests}))
+ const c=context();c.completionObservations.push(wave0bCompletion())
+ const p=projectIntegrationStatus(c);p.slices[1].state='VERIFIED'
+ assert.throws(()=>deriveNextSlice({programIndex:c.programIndex,statusProjection:p}))
+ const forgedReference=projectIntegrationStatus(c)
+ forgedReference.completionReferences[1].boundaryId='WORKFLOW-B-GATE-P'
+ assert.throws(()=>deriveNextSlice({programIndex:c.programIndex,statusProjection:forgedReference}))
 })
 test('rejects_forged_terminal_or_stale_main',()=>{
  for(const mutate of [r=>r.acceptedMainSha='a'.repeat(40),r=>r.ci[0].workflows[0].jobs[0].checkout.actualHeadSha='b'.repeat(40),r=>r.externalEvidence[0].sha256='0'.repeat(64)]) {
@@ -49,7 +98,8 @@ test('read_only_generators_reject_input_byte_drift_and_arbitrary_output_flags',a
  const cases=[
   ['../create-feature-selection-source-universe.mjs','../feature-selection-semantic-inventory.json'],
   ['../create-feature-selection-ledger.mjs','../../../docs/release-evidence/feature-selection-ledger-2026-08-23.json'],
-  ['../create-feature-integration-status.mjs','../../../docs/release-evidence/wave0a-completion-2026-10-01.json']
+  ['../create-feature-integration-status.mjs','../../../docs/release-evidence/wave0a-completion-2026-10-01.json'],
+  ['../create-feature-integration-status.mjs','../../../docs/release-evidence/wave0b-completion-2026-10-03.json']
  ]
  for(const [modulePath,inputPath] of cases) {
   const {runGenerator}=await import(modulePath);const driftPath=fileURLToPath(new URL(inputPath,import.meta.url))
