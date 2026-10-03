@@ -1,0 +1,4 @@
+{
+  "workflow.yaml": "schemaVersion: workflow-register/v2\nid: minimal\nname: Minimal workflow\ndescription: A minimal Contract v2 workflow.\ninputs: []\nsteps:\n  - id: finish\n    title: Finish\n    type: result\n    required: true\n    source:\n      source: literal\n      value: null\n    artifacts: []\nrequiredArtifacts: []\nresumePolicy:\n  mode: fail-closed\n  maxAttempts: 1\n  retainCommittedOutputs: false\n  allowArtifactReuse: false\nproviders: []\nbob:\n  profile: bob/2.0.1\n  requiredCapabilities: []\n  taskCapabilities: []\n",
+  "workflow.lock.json": "{}"
+}
