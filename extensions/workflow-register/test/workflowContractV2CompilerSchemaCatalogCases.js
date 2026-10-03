@@ -7,10 +7,13 @@ function schema(id, type) {
   return { $schema: DIALECT, $id: id, type }
 }
 
-test("F3 compiles all requested roots from one AJV catalog construction", () => {
+function assertOneCatalogConstruction() {
+  const assert = require("node:assert/strict")
+  const DIALECT = "https://json-schema.org/draft/2020-12/schema"
+  function schema(id, type) { return { $schema: DIALECT, $id: id, type } }
   const ajvPath = require.resolve("ajv/dist/2020")
-  const schemaPath = require.resolve("../out/core/contractV2/jsonSchema.js")
-  const catalogPath = require.resolve("../out/core/contractV2/jsonSchemaCatalog.js")
+  const schemaPath = require.resolve("./out/core/contractV2/jsonSchema.js")
+  const catalogPath = require.resolve("./out/core/contractV2/jsonSchemaCatalog.js")
   const originalExports = require(ajvPath)
   const Original = originalExports.default ?? originalExports
   let constructions = 0
@@ -58,6 +61,13 @@ test("F3 compiles all requested roots from one AJV catalog construction", () => 
     delete require.cache[schemaPath]
     delete require.cache[catalogPath]
   }
+}
+
+test("F3 compiles all requested roots from one AJV catalog construction", () => {
+  // Keep constructor instrumentation in a fresh module graph; opaque views retain their owning module.
+  require("node:child_process").execFileSync(process.execPath, [
+    "-e", `(${assertOneCatalogConstruction.toString()})()`
+  ], { cwd: require("node:path").join(__dirname, ".."), stdio: "pipe" })
 })
 
 test("F3 catalog root IDs are dense canonical sorted and duplicate-free", () => {
