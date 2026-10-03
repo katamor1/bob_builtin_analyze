@@ -6,6 +6,10 @@ const EVIDENCE_REGISTRY_SHA256 = '00cb4ee6fcc2504808e1ac9c8f7f835c4b22fc6c0e4b21
 const LEDGER_SHA256 = 'e7603655a9f356d36938fc6d722061aa9a616fcfd8258bde05ad6c30ac9ae894'
 const DECISIONS_SHA256 = 'f84cba62c8a7aa29ca5bac8eea95d1004e7274dc447df00465d985ca1dfc300f'
 const COMPLETION_REFERENCE = Object.freeze({boundaryId:'WAVE-0A-CONTROL-PLANE',sha256:COMPLETION_SHA256,state:'VERIFIED',acceptedMainSha:'ec136225bf2737a2f2c8053dce69d3acb6f4be3d'})
+const COMPLETION_REGISTRY = Object.freeze([
+  Object.freeze({sha256:COMPLETION_SHA256,evidenceSha256:EVIDENCE_REGISTRY_SHA256,reference:COMPLETION_REFERENCE}),
+  Object.freeze({sha256:'df2f2dbfeef64c65fafcf9834998c914949b5c19ba539dccd8dfcd8dac9a91ae',evidenceSha256:'54e570330a0a679c1a11f6216747ff235cf6d282989efd561952657819c06f85',reference:Object.freeze({boundaryId:'WAVE-0B-SELECTION-LEDGER',sha256:'df2f2dbfeef64c65fafcf9834998c914949b5c19ba539dccd8dfcd8dac9a91ae',state:'VERIFIED',acceptedMainSha:'b8876b2714d74bd8bbe686b66d17f2f76467f041'})})
+])
 const hashes = record => Object.fromEntries(record.externalEvidence.map(row=>[row.id,{bytes:row.bytes,sha256:row.sha256}]))
 const gitSha = value => {if(typeof value!=='string'||!/^[a-f0-9]{40}$/.test(value))throw new TypeError('invalid Git identity')}
 const hash256 = value => {if(typeof value!=='string'||!/^[a-f0-9]{64}$/.test(value))throw new TypeError('invalid evidence digest')}
@@ -14,18 +18,21 @@ export function validateCompletionObservation(record,{programIndex,evidenceDiges
   validateProgramIndex(programIndex)
   // This is a read-only recovery import, pinned after actual CI/log/archive/ref
   // readback. A new completion needs an additive reviewed registry entry.
-  if(digest(record)!==COMPLETION_SHA256) throw new TypeError('unregistered completion observation')
-  if(digest(evidenceDigests)!==EVIDENCE_REGISTRY_SHA256) throw new TypeError('actual evidence digest registry mismatch')
+  const recordDigest=digest(record)
+  const registration=COMPLETION_REGISTRY.find(entry=>entry.sha256===recordDigest)
+  if(!registration) throw new TypeError('unregistered completion observation')
+  if(digest(evidenceDigests)!==registration.evidenceSha256) throw new TypeError('actual evidence digest registry mismatch')
   same(hashes(record),evidenceDigests,'completion evidence binding')
-  if(record.mutationAuthority!==false||record.repository!==programIndex.repository||record.boundaryId!==programIndex.planBoundaries[0].id) throw new TypeError('completion subject mismatch')
+  if(record.mutationAuthority!==false||record.repository!==programIndex.repository||record.boundaryId!==registration.reference.boundaryId) throw new TypeError('completion subject mismatch')
 }
 
 function projectReferences(programIndex,decisions,completionReferences) {
   if(digest(decisions)!==DECISIONS_SHA256) throw new TypeError('static capability decision partition mismatch')
-  if(!Array.isArray(completionReferences)||completionReferences.length>1) throw new TypeError('unregistered or duplicate completion')
-  for(const reference of completionReferences) same(reference,COMPLETION_REFERENCE,'registered completion reference')
-  const wave0aVerified=completionReferences.length===1
-  return {schemaVersion:'bob-builtin-analyze/feature-integration-status/v1',programIndexSha256:digest(programIndex),selectionLedgerSha256:LEDGER_SHA256,completionReferences:structuredClone(completionReferences),acceptedMainSha:wave0aVerified?COMPLETION_REFERENCE.acceptedMainSha:null,boundaries:programIndex.planBoundaries.map(boundary=>({id:boundary.id,state:boundary.id==='WAVE-0A-CONTROL-PLANE'&&wave0aVerified?'VERIFIED':'planned'})),slices:programIndex.programAtomicSlices.map(slice=>({sliceId:slice.sliceId,ordinal:slice.ordinal,boundaryId:slice.boundaryId,state:'planned',observedActivationStatus:'inactive',immediatePredecessor:structuredClone(slice.immediatePredecessor)})),capabilities:decisions.map(cap=>({...cap,executionState:cap.disposition==='selected'||cap.disposition==='conditional'?'planned':'not_applicable',observedActivationStatus:'inactive'})),gateP:structuredClone(programIndex.downstreamProtocolPolicy.gateP),activeSliceIds:[],nextSliceId:wave0aVerified?programIndex.programAtomicSlices[0].sliceId:null,automaticCleanup:false,mutationAuthority:false,limits:'Historical observation only. Local implementation is not VERIFIED. Descriptor derivation is not human approval or execution permission.'}
+  if(!Array.isArray(completionReferences)||completionReferences.length>COMPLETION_REGISTRY.length) throw new TypeError('unregistered or duplicate completion')
+  completionReferences.forEach((reference,index)=>same(reference,COMPLETION_REGISTRY[index].reference,'registered completion prefix'))
+  const verifiedIds=new Set(completionReferences.map(reference=>reference.boundaryId))
+  const wave0aVerified=verifiedIds.has('WAVE-0A-CONTROL-PLANE')
+  return {schemaVersion:'bob-builtin-analyze/feature-integration-status/v1',programIndexSha256:digest(programIndex),selectionLedgerSha256:LEDGER_SHA256,completionReferences:structuredClone(completionReferences),acceptedMainSha:completionReferences.at(-1)?.acceptedMainSha??null,boundaries:programIndex.planBoundaries.map(boundary=>({id:boundary.id,state:verifiedIds.has(boundary.id)?'VERIFIED':'planned'})),slices:programIndex.programAtomicSlices.map(slice=>({sliceId:slice.sliceId,ordinal:slice.ordinal,boundaryId:slice.boundaryId,state:verifiedIds.has(slice.sliceId)?'VERIFIED':'planned',observedActivationStatus:'inactive',immediatePredecessor:structuredClone(slice.immediatePredecessor)})),capabilities:decisions.map(cap=>({...cap,executionState:verifiedIds.has(cap.id)?'VERIFIED':cap.disposition==='selected'||cap.disposition==='conditional'?'planned':'not_applicable',observedActivationStatus:'inactive'})),gateP:structuredClone(programIndex.downstreamProtocolPolicy.gateP),activeSliceIds:[],nextSliceId:wave0aVerified?programIndex.programAtomicSlices.find(slice=>!verifiedIds.has(slice.sliceId))?.sliceId??null:null,automaticCleanup:false,mutationAuthority:false,limits:'Historical observation only. Local implementation is not VERIFIED. Descriptor derivation is not human approval or execution permission.'}
 }
 
 export function projectIntegrationStatus(inputs) {
@@ -33,10 +40,10 @@ export function projectIntegrationStatus(inputs) {
   const {programIndex,ledger,completionObservations}=inputs
   validateProgramIndex(programIndex)
   if(digest(ledger)!==LEDGER_SHA256) throw new TypeError('reviewed static ledger mismatch')
-  if(!Array.isArray(completionObservations)||completionObservations.length>1) throw new TypeError('unregistered completion collection')
+  if(!Array.isArray(completionObservations)||completionObservations.length>COMPLETION_REGISTRY.length) throw new TypeError('unregistered completion collection')
   const references=completionObservations.map(record=>{
     validateCompletionObservation(record,{programIndex,evidenceDigests:hashes(record)})
-    return {...COMPLETION_REFERENCE}
+    return {...COMPLETION_REGISTRY.find(entry=>entry.sha256===digest(record)).reference}
   })
   return projectReferences(programIndex,ledger.capabilities.map(cap=>({id:cap.id,disposition:cap.disposition})),references)
 }
