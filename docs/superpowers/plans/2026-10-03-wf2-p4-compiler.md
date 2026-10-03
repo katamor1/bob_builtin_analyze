@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-23-feature-selection-and-sequential-main-integration-design.md` §7.1・§8–12（technical-only）、`docs/superpowers/specs/2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md`、`docs/superpowers/specs/2026-07-17-workflow-contract-v2-design.md` §15–16、`docs/superpowers/specs/2026-07-24-workflow-contract-v2-generation-directory-amendment.md`。詳細入力は既存 `2026-07-17-workflow-contract-v2-package-compiler.md` のP4 sectionのみ。
 
-**Status:** review用の計画。P4実装は未着手。Wave 0B registry recovery publicationのmain統合・検証・cleanupを完了してからexecutionへ進む。
+**Status:** main `88c5f2ee7489f45182e74df778896daf66101ffd` をexecution baseとしてP4 local実装・検証を完了。独立whole-branch review待ち。公開・main統合・activationは未実施。
 
 ## Global Constraints
 
@@ -83,11 +83,11 @@ test pathsはfixture `fixtures/workflow-contract-v2/compiler/valid-source/files.
 - `validateLocalJsonSchemaManualContract({role,fields:readonly LocalJsonSchemaManualFieldContract[]}): ValidateLocalJsonSchemaManualContractResult`。
 - Task 2はopaque viewのpointer/dependency/value/predicate adaptersを利用する。private base validatorやrole rootはpublic compiler facadeへexportしない。
 
-- [ ] **Step 1: Write failing behavioral tests.** 二つのdirect module case filesで一回AJV construction、全root identity、root並べ替え/重複/sparse/proxy拒否、opaque role/source bytes mismatch、hostile manual fields/getterを実schema入力に対してassertする。
-- [ ] **Step 2: Run RED.** extension rootで `npm run compile`、`node --test test/workflowContractV2CompilerSchemaCatalogCases.js test/workflowContractV2CompilerSchemaRoleOwnershipCases.js`。新catalog/role不在による失敗を確認し、既存F3だけの別validatorで代替しない。
-- [ ] **Step 3: Implement catalog and role contracts.** P4 source-owned functionsと現在のF3 `jsonSchema.ts` を接続し、schema root/source evidenceを一度clone/freezeしてopaque WeakMapへ保管する。全rootを一catalogから構築し、manual roleのclosed reasonとschema digest/$id一致を検証する。
-- [ ] **Step 4: Run GREEN.** compile、二つのdirect module case files、`test/workflowContractV2JsonSchema.test.js`、`npm run architecture:policy`、`npm run source:policy` が成功。
-- [ ] **Step 5: Commit.** Task 1の4 owned filesのみを明示stageし、`feat(workflow): add compiler schema catalog views`。
+- [x] **Step 1: Write failing behavioral tests.** 二つのdirect module case filesで一回AJV construction、全root identity、root並べ替え/重複/sparse/proxy拒否、opaque role/source bytes mismatch、hostile manual fields/getterを実schema入力に対してassertする。
+- [x] **Step 2: Run RED.** extension rootで `npm run compile`、`node --test test/workflowContractV2CompilerSchemaCatalogCases.js test/workflowContractV2CompilerSchemaRoleOwnershipCases.js`。新catalog/role不在による失敗を確認し、既存F3だけの別validatorで代替しない。
+- [x] **Step 3: Implement catalog and role contracts.** P4 source-owned functionsと現在のF3 `jsonSchema.ts` を接続し、schema root/source evidenceを一度clone/freezeしてopaque WeakMapへ保管する。全rootを一catalogから構築し、manual roleのclosed reasonとschema digest/$id一致を検証する。
+- [x] **Step 4: Run GREEN.** compile、二つのdirect module case files、`test/workflowContractV2JsonSchema.test.js`、`npm run architecture:policy`、`npm run source:policy` が成功。
+- [x] **Step 5: Commit.** Task 1の4 owned filesのみを明示stageし、`feat(workflow): add compiler schema catalog views`。
 
 ### Task 2: Immutable Compiler, Environment and Public Facade
 
@@ -111,13 +111,13 @@ successはopaque frozen `CompiledWorkflowPlanHandle`。public `plan`はpure JSON
 
 private helpersは `requireCompiledWorkflowPlanState(handle)`、`readCompiledWorkflowPromptBytes(handle,id):Uint8Array`、`compiledWorkflowPlanBelongsToEnvironment(handle,environment):boolean`、`isCompiledWorkflowPlanLeasable(handle):boolean`、`requireWorkflowCompilerEnvironmentState(environment)`。public barrelはcompile/environment facade、そのinput/result/environment types、`CompiledWorkflowPlan`/`CompiledWorkflowPlanHandle`/`CompiledWorkflowPlanPredicateRecord` typesだけを明示exportする。
 
-- [ ] **Step 1: Write failing contract tests and fixture.** historical 13 familiesの41 top-level casesを現行foundationへ合わせ、Task 1以外の11 families、support、suite entry、valid-source fixtureを追加。次StepのGREENをfacade/import不在だけで判定せず、failure precedence・canonical plan・private identity・zero side effectsの実behaviorをassertする。
-- [ ] **Step 2: Run RED.** extension rootでcompileと `node --test test/workflowContractV2Compiler.test.js`。pipeline順序 raw snapshot/layout→strict YAML→closed package shape→one catalog→references/schema roles/predicates→provider/Bob bind→lock→policy→canonical plan/deep freeze の新契約が未実装で失敗することを記録する。
-- [ ] **Step 3: Implement immutable semantic inputs.** raw publication/generation/filesを一度detached snapshotし、strict UTF-8/LF prompt normalization、missing/unreferenced declarations、full schema-role identityとlexical pointerを検証する。後段lock verifierにcaller packageを再読させない。
-- [ ] **Step 4: Implement environment and binding.** constructorがprivate identityを新設し、purposeはpublic digestsから除外する。F6が最高versionを一回選び、schema/effect/idempotency/capability mismatch時にlower-version fallbackしない。live registry dispose/re-register後もsnapshot generation/bound-handle identityを保持する。
-- [ ] **Step 5: Implement frozen plan and lowering.** public planはcanonical pure JSON・deep frozen、`planDigest` fieldなし。input `requiredWhen`はinputsのみ、entry/templates/context/resultはstrictly earlier lexical value outputsのみ、outgoing transitionはowning value outputを許し `postCommit` とする。unit/current-at-entry/future/transient referencesとraw source predicate残存を拒否する。private prompt bytesはfresh detached read。
-- [ ] **Step 6: Implement sole pipeline/public facade.** Task 1 adaptersとStep 3–5を `compiler.ts` へordered接続する。nonruntimeはordinary F6 handle＋throwing compile-only dispatchでnonleasable。private planのleaseabilityは `purpose==="runtime" && publication==="published"`。P5 acquire/cacheやproduct consumerは作らない。
-- [ ] **Step 7: Run GREEN and local full checks.** compile、compiler suite全13 families、現行10 foundation `workflowContractV2*.test.js`、`npm run architecture:policy` / `source:policy` / `dependency:policy`、workflow-register `npm test` を実行し、failure 0。影響がある三拡張のquality gatesを既存repo commandで実行し、`git diff --check`、27 owned paths以外のproduct diffをreviewする。
+- [x] **Step 1: Write failing contract tests and fixture.** historical 13 familiesの41 top-level casesを現行foundationへ合わせ、Task 1以外の11 families、support、suite entry、valid-source fixtureを追加。次StepのGREENをfacade/import不在だけで判定せず、failure precedence・canonical plan・private identity・zero side effectsの実behaviorをassertする。
+- [x] **Step 2: Run RED.** extension rootでcompileと `node --test test/workflowContractV2Compiler.test.js`。pipeline順序 raw snapshot/layout→strict YAML→closed package shape→one catalog→references/schema roles/predicates→provider/Bob bind→lock→policy→canonical plan/deep freeze の新契約が未実装で失敗することを記録する。
+- [x] **Step 3: Implement immutable semantic inputs.** raw publication/generation/filesを一度detached snapshotし、strict UTF-8/LF prompt normalization、missing/unreferenced declarations、full schema-role identityとlexical pointerを検証する。後段lock verifierにcaller packageを再読させない。
+- [x] **Step 4: Implement environment and binding.** constructorがprivate identityを新設し、purposeはpublic digestsから除外する。F6が最高versionを一回選び、schema/effect/idempotency/capability mismatch時にlower-version fallbackしない。live registry dispose/re-register後もsnapshot generation/bound-handle identityを保持する。
+- [x] **Step 5: Implement frozen plan and lowering.** public planはcanonical pure JSON・deep frozen、`planDigest` fieldなし。input `requiredWhen`はinputsのみ、entry/templates/context/resultはstrictly earlier lexical value outputsのみ、outgoing transitionはowning value outputを許し `postCommit` とする。unit/current-at-entry/future/transient referencesとraw source predicate残存を拒否する。private prompt bytesはfresh detached read。
+- [x] **Step 6: Implement sole pipeline/public facade.** Task 1 adaptersとStep 3–5を `compiler.ts` へordered接続する。nonruntimeはordinary F6 handle＋throwing compile-only dispatchでnonleasable。private planのleaseabilityは `purpose==="runtime" && publication==="published"`。P5 acquire/cacheやproduct consumerは作らない。
+- [x] **Step 7: Run GREEN and local full checks.** compile、compiler suite全13 families、現行10 foundation `workflowContractV2*.test.js`、`npm run architecture:policy` / `source:policy` / `dependency:policy`、workflow-register `npm test` を実行し、failure 0。影響がある三拡張のquality gatesを既存repo commandで実行し、`git diff --check`、27 owned paths以外のproduct diffをreviewする。
 - [ ] **Step 8: Review and commit.** source item/blob/omission mappingと独立reviewを行い、Critical/Important 0にする。Task 2 owned filesのみを明示stageし、`feat(workflow): add single immutable package compiler`。
 
 ## Integration and Handoff

@@ -1,0 +1,121 @@
+{
+  "schemaVersion": "wf2-p4-local-implementation/v1",
+  "mutationAuthority": false,
+  "sliceId": "WF2-P4-COMPILER",
+  "programOrdinal": 2,
+  "executionBase": "88c5f2ee7489f45182e74df778896daf66101ffd",
+  "implementationHead": "32830e2a0df48ecceddce0325ddf0ba1661e4b4e",
+  "branch": "codex/v2-p4-compiler",
+  "status": "local-checks-complete-review-pending",
+  "predecessor": {
+    "sliceId": "WAVE-0B-SELECTION-LEDGER",
+    "acceptedMain": "88c5f2ee7489f45182e74df778896daf66101ffd"
+  },
+  "hardDependency": "BASE-WF2-A",
+  "sourceMapping": "docs/release-evidence/wf2-p4-local-source-mapping-2026-10-03.json",
+  "ownedProductPaths": 27,
+  "sourceItems": 30,
+  "historicalCompilerFamilies": 13,
+  "historicalTopLevelCases": 41,
+  "checks": [
+    {
+      "file": "task2-green.log",
+      "tests": 66,
+      "passed": 66,
+      "failed": 0,
+      "skipped": 0,
+      "sha256": "9d5f20211fc49999e9a1f847067ae1023efd425123f3ed49b8829bd1e013d37b"
+    },
+    {
+      "file": "foundation-full.log",
+      "tests": 557,
+      "passed": 556,
+      "failed": 0,
+      "skipped": 1,
+      "sha256": "6ed8248f5a73108be5f6302a4a6e2286fea2d5b3c0c839cec1072323d988b13a"
+    },
+    {
+      "file": "workflow-full.log",
+      "tests": 1952,
+      "passed": 1951,
+      "failed": 0,
+      "skipped": 1,
+      "sha256": "ff9d109a4c84b7e243cde6c7ca9c5ed9f8d5167fc394769e8874f499e52e2d5f"
+    },
+    {
+      "file": "baseline-bob-bazaar-review.log",
+      "tests": 754,
+      "passed": 753,
+      "failed": 0,
+      "skipped": 1,
+      "sha256": "dc0978e50cc51d6d20b1500e737b101953de6a59fd41fe88ac20f66fa8a53578"
+    },
+    {
+      "file": "baseline-bob-code-consistency-review.log",
+      "tests": 328,
+      "passed": 328,
+      "failed": 0,
+      "skipped": 0,
+      "sha256": "cf2a1a035f53c8496d53f45408044e297bd039868400f8506c646b237e12b585"
+    }
+  ],
+  "threeExtensionFullTotal": {
+    "passed": 3032,
+    "skipped": 2,
+    "failed": 0
+  },
+  "qualityGates": {
+    "architecture": "three extensions passed",
+    "source": "three extensions passed",
+    "dependency": "three extensions passed",
+    "bazaarUnused": "passed",
+    "bazaarArtifact": "passed",
+    "workflowSchema": "covered by workflowAuthoring.test.js in successful full suite",
+    "diffCheck": "passed"
+  },
+  "baselineFailure": {
+    "failed": 3,
+    "cause": "Bob lifecycle 10-second status timeouts during simultaneous default-concurrency full suites",
+    "isolatedLifecycle": {
+      "passed": 27,
+      "failed": 0
+    },
+    "boundedWorkflowFull": {
+      "passed": 1951,
+      "skipped": 1,
+      "failed": 0
+    }
+  },
+  "review": {
+    "status": "pending",
+    "scope": "one fresh-context whole-branch review",
+    "reviewFocus": "five conditions in the P4 plan"
+  },
+  "rulings": [
+    "Ruling: Retain the continuous P4 workspace and technical test/review evidence — user-approved proposal excludes cleanup and publication requires exact candidate evidence — cost if wrong: later native cleanup must preserve ignored evidence before archive.",
+    "Ruling: Preserve AJV non-enumerable __esModule in the construction-count test replacement — historical object spread loses the marker, so TS default import receives a non-constructor and fails before catalog behavior — cost if wrong: construction-count assertion and real-schema success/pointer checks detect invalid instrumentation. Reproduced standalone RED (1/2 failed); production foundation unchanged.",
+    "Ruling: Use explicit Git Bash and Node check runners — system bash uses WSL path semantics and unsigned PowerShell fixture scripts cannot execute — cost if wrong: failing check is not recorded by task-done; no policy/config changes.",
+    "Ruling: Use block YAML for semantic workflow test fixtures — current strict F4 rejects historical JSON flow mapping fixtures before their intended semantics; schema/lock fixtures remain JSON and malformed YAML fixtures unchanged — cost if wrong: semantic error-location assertions and successful pipeline/schema cases expose wrong serialization. No alternate parser or foundation edit.",
+    "Ruling: Isolate AJV construction counter in a child process — deleting cached catalog creates a second private WeakMap and breaks existing opaque roles; reproduced same-suite failure — cost if wrong: child process assertion fails, while parent role/provider cases retain their original module identity.",
+    "Ruling: First lock snapshot input is detached, not caller identity — historical Pipeline assertion contradicts Review Focus 1 and Snapshot case — cost if wrong: caller bytes are mutated after first snapshot and successful compile plus downstream non-identity assertions prove no reread.",
+    "Ruling: Lock receives the already-validated Bob binding's three-field subset and structural narrowing handles predicate groups — source snapshot has TypeScript errors against pinned current type checker — cost if wrong: exact Bob lock comparison/predicate cases fail; no unsafe evidence cast or foundation change.",
+    "Ruling: Observe the verifier's actual argument instead of module-local resnapshot count — lock verifier calls its own lexical snapshot, so historical export-hook expected a second hook call incorrectly — cost if wrong: mutated caller lock bytes cause failure or verifier argument identity assertion fails.",
+    "Ruling: Preserve earlier P1 diagnostics for invisible predicates and output-kind mismatch, compare public provider evidence canonically, and read prompt bytes through the fresh-copy helper — historical assertions conflict with closed P1 precedence, null-prototype canonical JSON, and hardened private prompt boundary — cost if wrong: exact pointer/canonical equality/fresh-byte behavioral checks fail.",
+    "Ruling: Lower the successful F5 AST rather than raw source predicate nodes — requirement forbids raw predicate remnants; remove only private catalog pointer prefixes — cost if wrong: validated-AST boundary RED and actual predicate evaluation on owning committed values detect source reuse or pointer drift. RED first case true != false confirmed.",
+    "Ruling: Verify stored full-check results and exact product bytes through task-done instead of rerunning completed suites — developer instructions avoid redundant passing checks; compiler regression rerun covers the subsequent whitespace-only test change — cost if wrong: log counters, source mapping hashes, or final branch ownership checks detect incomplete evidence; no behavioral full-suite claim on changed production bytes.",
+    "Ruling: Commit the implementation before the one final whole-branch review — executing-plans calls for a fresh immutable branch review after tasks, while Task 2 combines review/commit in its last step — cost if wrong: review issues remain local and must be fixed before publication; Task 2 Step 8 stays unchecked until the review disposition is complete."
+  ],
+  "activation": "none",
+  "maxPlannedActivation": "shadow",
+  "programVerified": false,
+  "publication": "not-performed",
+  "mainIntegration": "not-performed",
+  "workspaceDisposition": "continuous-slice-retained",
+  "compilerOnlyUatAssessment": {
+    "changedPublicEntrypoints": 0,
+    "changedManifests": 0,
+    "changedUiSurfaces": 0,
+    "localAlternative": "Compiler behavioral cases, ten foundation suites, all three extension tests and relevant policy gates. Candidate/main exact-head Ubuntu/Windows CI remain required before acceptance.",
+    "finalThreeExtensionRealMachineUat": "still-required-in-later-integration-program"
+  }
+}

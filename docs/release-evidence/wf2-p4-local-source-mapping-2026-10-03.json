@@ -1,0 +1,932 @@
+{
+  "schemaVersion": "wf2-p4-local-source-mapping/v1",
+  "mutationAuthority": false,
+  "sliceId": "WF2-P4-COMPILER",
+  "executionBase": "88c5f2ee7489f45182e74df778896daf66101ffd",
+  "sourceBase": "683e794eb4a39eea7bc3630bedbd2a557f4af8af",
+  "sourceHead": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+  "sourceUniverse": {
+    "path": "tools/main-consolidation/feature-selection-source-universe.json",
+    "sha256": "c69adc6b82d1d6d40719e10c116e985890f17d45ee4b99e0feabe76b00d08c79"
+  },
+  "provenanceAudit": {
+    "mode": "read-only",
+    "verifiedBy": "p4_source_provenance",
+    "sourceItemCount": 30,
+    "targetPathCount": 27,
+    "archiveManifestSha256": "36e477ee9b752ebf7f07a208c166fec24e14a89bf7ba6a7921cf6bdf708c9f31",
+    "workflowBCarrierPatchSha256": "59eca51331f3c580a63435021e03c05780ffbe6b65db76949cb0d4bff8c428c7",
+    "originalBundleSha256": "55db2865e7795d9192e75bfb3dbaadc47d28366128c241edda512aef4ca599a1",
+    "remoteRecoveryBundleSha256": "06a338f28879218a8cbae247a3b4c5b951f152cd46caca4d81b7b07504cfbf1f",
+    "bundleHeadRef": "refs/remotes/origin/codex/workflow-contract-v2-p4",
+    "bundleHead": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+    "bothBundleHistoriesComplete": true
+  },
+  "items": [
+    {
+      "path": "extensions/workflow-register/src/core/contractV2/compiledPlan.ts",
+      "task": 2,
+      "sourceItemIds": [
+        "source-78f752cc0e5f73accb3136e0",
+        "source-bee0458df16f3bebdc583818"
+      ],
+      "families": [
+        "immutable-public-plan-contract",
+        "private-branded-plan-handle-and-detached-prompt-bytes"
+      ],
+      "symbols": [
+        "CompiledWorkflowDefinition",
+        "CompiledWorkflowInput",
+        "CompiledWorkflowPlan",
+        "CompiledWorkflowPlanPredicateRecord",
+        "CompiledWorkflowStep",
+        "CompiledWorkflowTransition",
+        "CompiledWorkflowPlanHandle",
+        "CompiledWorkflowPlanPrivateState",
+        "CreateCompiledWorkflowPlanHandleInput",
+        "compiledWorkflowPlanBelongsToEnvironment",
+        "createCompiledWorkflowPlanHandle",
+        "isCompiledWorkflowPlanLeasable",
+        "readCompiledWorkflowPromptBytes",
+        "requireCompiledWorkflowPlanState"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "6aa0e465e9283117063a0be71b8140a85f42b65c",
+      "targetBlob": "3d2b95c00fb97e4a303cace69d53d8a155e66d2d",
+      "targetFileSha256": "29c7e23776e3f33eef13d8830c5a95c47b72605590dea08677381f3c8ff5043b",
+      "disposition": "adapted"
+    },
+    {
+      "path": "extensions/workflow-register/src/core/contractV2/compiler.ts",
+      "task": 2,
+      "sourceItemIds": [
+        "source-bcda8a354f3057f49558f404"
+      ],
+      "families": [
+        "sole-compiler-ordered-fail-closed-pipeline"
+      ],
+      "symbols": [
+        "CompileWorkflowPackageInput",
+        "WorkflowPackageCompileResult",
+        "compileWorkflowPackage"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "d5209fa07f70d84f5979f983d6fbb45dd7f56d80",
+      "targetBlob": "1226774ef01b400dfb3e3a73b7f81e37f462a622",
+      "targetFileSha256": "ea7551c784b4778f85684eb8ee28686af94d0da41c0bae038f73bcf353c04feb",
+      "disposition": "adapted"
+    },
+    {
+      "path": "extensions/workflow-register/src/core/contractV2/compilerBindings.ts",
+      "task": 2,
+      "sourceItemIds": [
+        "source-40739e59ed46d2e99caf17db"
+      ],
+      "families": [
+        "exact-provider-and-bob-compile-binding"
+      ],
+      "symbols": [
+        "CompilerBindings",
+        "CompilerProviderBinding",
+        "bindCompilerEnvironment"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "e19f2cb131bc459a2b7f77f1114cdcf3c466b42d",
+      "targetBlob": "e19f2cb131bc459a2b7f77f1114cdcf3c466b42d",
+      "targetFileSha256": "734e1c733b92e61c53f851497a7fcc5d63e3c1cbd951ee3ef2a84c0e9343aac8",
+      "disposition": "reconstructed"
+    },
+    {
+      "path": "extensions/workflow-register/src/core/contractV2/compilerEnvironment.ts",
+      "task": 2,
+      "sourceItemIds": [
+        "source-e3a6350764da6b82cdda693e"
+      ],
+      "families": [
+        "opaque-purpose-scoped-audited-compiler-environment"
+      ],
+      "symbols": [
+        "CreateAuditedWorkflowCompilerEnvironmentInput",
+        "WorkflowCompilerEnvironment",
+        "WorkflowCompilerEnvironmentState",
+        "WorkflowCompilerPurpose",
+        "createAuditedWorkflowCompilerEnvironment",
+        "isWorkflowCompilerEnvironment",
+        "requireWorkflowCompilerEnvironmentState"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "a9d0ff77f27f655bb0c869468e2e93e574b370f6",
+      "targetBlob": "a9d0ff77f27f655bb0c869468e2e93e574b370f6",
+      "targetFileSha256": "eb5d24c3b66295cca365345776822954b2d1e3706beea61391d62f640b9b981e",
+      "disposition": "reconstructed"
+    },
+    {
+      "path": "extensions/workflow-register/src/core/contractV2/compilerFiles.ts",
+      "task": 2,
+      "sourceItemIds": [
+        "source-0cf0e1be0378d8d47d574ce7",
+        "source-68f5463300aecabb2ee9a102"
+      ],
+      "families": [
+        "semantic-prompt-and-schema-file-evidence",
+        "schema-evidence-resolution-for-compiled-bindings"
+      ],
+      "symbols": [
+        "CompilerPromptEvidence",
+        "CompilerSchemaEvidence",
+        "CompilerSemanticFailure",
+        "CompilerSemanticFiles",
+        "compileSemanticFiles",
+        "schemaById"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "faa2250460c3b697f9390c05bc4ca92b9a29fff0",
+      "targetBlob": "faa2250460c3b697f9390c05bc4ca92b9a29fff0",
+      "targetFileSha256": "48c0591eb0d3a266524b4f05740e1c3a551bc7122bbae63d335106a5b851af1c",
+      "disposition": "reconstructed"
+    },
+    {
+      "path": "extensions/workflow-register/src/core/contractV2/compilerReferences.ts",
+      "task": 2,
+      "sourceItemIds": [
+        "source-4c7b24ff190c560443c24d6c"
+      ],
+      "families": [
+        "lexical-compiled-reference-validation"
+      ],
+      "symbols": [
+        "validateCompilerValueReferences"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "cd81fcd8a3fa3bb76fb0b0421e772f55f62f5298",
+      "targetBlob": "cd81fcd8a3fa3bb76fb0b0421e772f55f62f5298",
+      "targetFileSha256": "9fac7c0be44d9a9799efa7375bad045d351b766589eeb428967b108a16d9973a",
+      "disposition": "reconstructed"
+    },
+    {
+      "path": "extensions/workflow-register/src/core/contractV2/compilerSchemaRoles.ts",
+      "task": 2,
+      "sourceItemIds": [
+        "source-bd280a6ac95d7ff0d082b949"
+      ],
+      "families": [
+        "input-default-manual-artifact-schema-role-contracts"
+      ],
+      "symbols": [
+        "validateCompilerSchemaRoles"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "2595a875c0c9bc18202555330f554d68835c3451",
+      "targetBlob": "2595a875c0c9bc18202555330f554d68835c3451",
+      "targetFileSha256": "d4362df583ffaa0ca9129063f40ae2ba2718198daa722816537bc14a0c17fba9",
+      "disposition": "reconstructed"
+    },
+    {
+      "path": "extensions/workflow-register/src/core/contractV2/compilerWorkflow.ts",
+      "task": 2,
+      "sourceItemIds": [
+        "source-73fac3b407195c97a05d729c",
+        "source-cdf137d4537fd538dbf91ffe"
+      ],
+      "families": [
+        "predicate-record-placement-and-phase-lowering",
+        "compiled-workflow-step-and-transition-lowering"
+      ],
+      "symbols": [
+        "compileWorkflowPredicates",
+        "CompiledWorkflowExecution",
+        "compileWorkflowExecution"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "4a37bbbcb826781a846e97d5683d8df48bf47b56",
+      "targetBlob": "abe76b5640900258d16be81a382dcea4888cc787",
+      "targetFileSha256": "a84b7745567d5ae3760f9f283e5af665d718b32493fb261499b749bc2ca8f60a",
+      "disposition": "adapted"
+    },
+    {
+      "path": "extensions/workflow-register/src/core/contractV2/index.ts",
+      "task": 2,
+      "sourceItemIds": [
+        "source-edd501db0565ffbac6ca0b45"
+      ],
+      "families": [
+        "compiler-public-barrel"
+      ],
+      "symbols": [
+        "CompileWorkflowPackageInput",
+        "CompiledWorkflowPlan",
+        "CompiledWorkflowPlanHandle",
+        "CompiledWorkflowPlanPredicateRecord",
+        "CreateAuditedWorkflowCompilerEnvironmentInput",
+        "WorkflowCompilerEnvironment",
+        "WorkflowCompilerPurpose",
+        "WorkflowPackageCompileResult",
+        "compileWorkflowPackage",
+        "createAuditedWorkflowCompilerEnvironment"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "0a22547322abec4fa334ce52cee0cec7389241d5",
+      "targetBlob": "0a22547322abec4fa334ce52cee0cec7389241d5",
+      "targetFileSha256": "80b4d2ba2ec2f8340dcd64ab388c7aac63651c8fc03ee8f03dd7254105983d56",
+      "disposition": "reconstructed"
+    },
+    {
+      "path": "extensions/workflow-register/src/core/contractV2/jsonSchemaCatalog.ts",
+      "task": 1,
+      "sourceItemIds": [
+        "source-bebb5727accfba3061935b0b"
+      ],
+      "families": [
+        "detached-multi-root-schema-catalog-and-validator-handles"
+      ],
+      "symbols": [
+        "CompileLocalJsonSchemaCatalogInput",
+        "CompileLocalJsonSchemaCatalogResult",
+        "CompiledLocalJsonSchemaView",
+        "CompiledLocalJsonSchemaViewRoot",
+        "LocalJsonSchemaPredicateBinding",
+        "bindLocalJsonSchemaViewForPredicate",
+        "compileLocalJsonSchemaCatalog",
+        "inspectLocalJsonSchemaViewDocumentDependencies",
+        "inspectLocalJsonSchemaViewInstancePointer",
+        "isCompiledLocalJsonSchemaView",
+        "validateLocalJsonSchemaViewValue"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "d1f78bfcdcc3c7977fce25936aaa4af27fa2c95b",
+      "targetBlob": "d1f78bfcdcc3c7977fce25936aaa4af27fa2c95b",
+      "targetFileSha256": "d1fc9ec2cb303cd774c4536f7543614b8dd6d40a88cd135980b3938413607d5a",
+      "disposition": "reconstructed"
+    },
+    {
+      "path": "extensions/workflow-register/src/core/contractV2/jsonSchemaRole.ts",
+      "task": 1,
+      "sourceItemIds": [
+        "source-6cfca7a5d4d2ee4214050c87"
+      ],
+      "families": [
+        "opaque-manual-schema-role-reasoning"
+      ],
+      "symbols": [
+        "LocalJsonSchemaManualFieldContract",
+        "LocalJsonSchemaRoleHandle",
+        "ValidateLocalJsonSchemaManualContractResult",
+        "createLocalJsonSchemaRoleHandle",
+        "validateLocalJsonSchemaManualContract"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "7ba808dcdee1a9307b4210b6dbee94e3a073ddba",
+      "targetBlob": "7ba808dcdee1a9307b4210b6dbee94e3a073ddba",
+      "targetFileSha256": "7e4b1de0f300c5d27bd9b85bc72c6596aa335029179c81ad3d88dde8bcf32e9d",
+      "disposition": "reconstructed"
+    },
+    {
+      "path": "extensions/workflow-register/test/fixtures/workflow-contract-v2/compiler/valid-source/files.json",
+      "task": 2,
+      "sourceItemIds": [
+        "source-ace33ba08090fa6e5b2f7d26"
+      ],
+      "families": [
+        "fixture-files-json"
+      ],
+      "symbols": [
+        "test/fixtures/workflow-contract-v2/compiler/valid-source/files.json"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "648c0fc661c59c45d4177861d39777be3acf830e",
+      "targetBlob": "648c0fc661c59c45d4177861d39777be3acf830e",
+      "targetFileSha256": "298e7eee157c41e507dde409c1fe6d94e455737de9ee194bcb5fba97bce58e37",
+      "disposition": "reconstructed"
+    },
+    {
+      "path": "extensions/workflow-register/test/workflowContractV2Compiler.test.js",
+      "task": 2,
+      "sourceItemIds": [
+        "source-e8b58057c4615ef67af1bf85"
+      ],
+      "families": [
+        "sole-compiler-suite-registration"
+      ],
+      "symbols": [
+        "require(compiler environment/core/plan/pipeline/semantic/provider/predicate/reference/staging case families)"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "47287ca1fc357e9a4281de848e5bb7d3a56c7a5c",
+      "targetBlob": "47287ca1fc357e9a4281de848e5bb7d3a56c7a5c",
+      "targetFileSha256": "d309f4d7255a3e81422848c7f02c95a345575e88749db7b657d83e50b656d53d",
+      "disposition": "reconstructed"
+    },
+    {
+      "path": "extensions/workflow-register/test/workflowContractV2CompilerCoreCases.js",
+      "task": 2,
+      "sourceItemIds": [
+        "source-169a3c501c107418bfb84330"
+      ],
+      "families": [
+        "deterministic-deeply-frozen-plan-and-environment-identity"
+      ],
+      "symbols": [
+        "compiler rejects hostile outer input without invoking proxy behavior",
+        "compiler uses captured collection and string intrinsics after module load",
+        "equal public evidence across distinct environments never reuses private handle identity",
+        "minimal package compiles to one deterministic deeply frozen public plan",
+        "non-runtime compiler environments produce non-leasable handles without changing public evidence"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "73a2fb699d1d9a8f40b738a1d7fb1b0433c19471",
+      "targetBlob": "73a2fb699d1d9a8f40b738a1d7fb1b0433c19471",
+      "targetFileSha256": "a57c6b6ba8d2f73b12b9253e86da999d60cbb8d97290d26bcecac110032c3db4",
+      "disposition": "reconstructed"
+    },
+    {
+      "path": "extensions/workflow-register/test/workflowContractV2CompilerEnvironmentCases.js",
+      "task": 2,
+      "sourceItemIds": [
+        "source-2049d531d13f77f1a6241507"
+      ],
+      "families": [
+        "opaque-environment-purpose-and-authentic-evidence"
+      ],
+      "symbols": [
+        "audited compiler environments are opaque frozen and distinct per constructor call",
+        "compiler environment rejects forged catalogs and profile drift without invoking accessors",
+        "compiler environment rejects unknown purposes and hostile outer inputs",
+        "non-runtime environments replace executable provider snapshots with compile-only catalogs"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "e8cb9b9c976f517b0bbbfe1063870b2f23d1a1e2",
+      "targetBlob": "70c6ba43abd8d9a4905e1a6c4c54c0866cebd82f",
+      "targetFileSha256": "c853240c18ad7d02fbcb0dddd202042a44382d69724ccbe7b79310df9e972f8d",
+      "disposition": "adapted"
+    },
+    {
+      "path": "extensions/workflow-register/test/workflowContractV2CompilerEnvironmentHardeningCases.js",
+      "task": 2,
+      "sourceItemIds": [
+        "source-7efd822b4a76ff101a014c32"
+      ],
+      "families": [
+        "hostile-environment-wrapper-and-intrinsic-hardening"
+      ],
+      "symbols": [
+        "compiler environment input accessors are rejected without invocation",
+        "compiler environments accept exact immutable Bob evidence wrappers but reject hostile tuple values"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "4552328da7aae2d7dd5cda600a34f88b39b6caf0",
+      "targetBlob": "4552328da7aae2d7dd5cda600a34f88b39b6caf0",
+      "targetFileSha256": "03a2a06ab8dd77562c22bc6ee9e67925ec139482e3b54ff444b9e95d71f6a7ec",
+      "disposition": "reconstructed"
+    },
+    {
+      "path": "extensions/workflow-register/test/workflowContractV2CompilerPipelineCases.js",
+      "task": 2,
+      "sourceItemIds": [
+        "source-211bd833b0682ef0fa642984"
+      ],
+      "families": [
+        "ordered-compiler-validation-failure-precedence"
+      ],
+      "symbols": [
+        "closed package-shape failure wins before lock verification",
+        "loader raw evidence cannot be used without the audited compiler environment",
+        "lock verification consumes the exact first compiler raw snapshot rather than the caller object again",
+        "predicate compilation wins before provider and Bob binding",
+        "strict YAML failure wins before package-shape and lock verification",
+        "valid semantics with drifted canonical lock reaches lock verification"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "c28cf39759c6ed12bc6ec2b43d12427e049d76ee",
+      "targetBlob": "3eec7de8d6e6fc1b09769733f0def9357f61262b",
+      "targetFileSha256": "416c23b415647df3838e4bfd76e716e714ce10edd9454ca67a4d8ac6aca220e9",
+      "disposition": "adapted"
+    },
+    {
+      "path": "extensions/workflow-register/test/workflowContractV2CompilerPlanCases.js",
+      "task": 2,
+      "sourceItemIds": [
+        "source-21e1028b3969abfb77ed2b2c"
+      ],
+      "families": [
+        "canonical-public-plan-and-detached-private-handle"
+      ],
+      "symbols": [
+        "single compiler returns a canonical frozen plan and a separate digest",
+        "the same environment and package still produce detached immutable handles"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "2c1f30272f57238aec6ab096d404a9846de42692",
+      "targetBlob": "2c1f30272f57238aec6ab096d404a9846de42692",
+      "targetFileSha256": "cc764e8ae4af44cd5b0ccf9d2ee3f64398835263c247bf886ebf83f2a04723b0",
+      "disposition": "reconstructed"
+    },
+    {
+      "path": "extensions/workflow-register/test/workflowContractV2CompilerPredicateCases.js",
+      "task": 2,
+      "sourceItemIds": [
+        "source-d611ffe8c5f4eea7886a38c5"
+      ],
+      "families": [
+        "compiled-predicate-phase-and-placement"
+      ],
+      "symbols": [
+        "current-step outputs are forbidden at entry and input predicates cannot read outputs",
+        "predicate placements compile into explicit entry and post-commit plan records"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "2f7e9ef1a235ba14aa8dd959936c2f3a5e6ad21a",
+      "targetBlob": "cc5a9f76910e86441be86c6b82711d3b5d4decf4",
+      "targetFileSha256": "e224e585b615b5357fecbc9b876bc3d6379bec6ca1cd4f2d35202bb56896b4d4",
+      "disposition": "adapted"
+    },
+    {
+      "path": "extensions/workflow-register/test/workflowContractV2CompilerProviderCases.js",
+      "task": 2,
+      "sourceItemIds": [
+        "source-9cd501a3a6adc9ecd19702a7"
+      ],
+      "families": [
+        "exact-provider-binding-and-private-dispatch-ownership"
+      ],
+      "symbols": [
+        "command output kind or full schema identity mismatch fails before lock verification",
+        "compiled handles retain their bound provider generation after registry disposal and re-registration",
+        "compiler binds exact provider evidence and retains only the opaque dispatch handle privately",
+        "highest matching provider contract mismatch fails without lower-version fallback",
+        "unselected provider catalog entries and dispatch identities do not affect public plan evidence"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "417bde9c65833644d56734794ddb80d15545b15e",
+      "targetBlob": "03c5dd17e6e3045877fd70524d5542af101f0e48",
+      "targetFileSha256": "d9504286ccdf0c87691564f1b0b747e345743b9abd855973ead65c1986a469ff",
+      "disposition": "adapted"
+    },
+    {
+      "path": "extensions/workflow-register/test/workflowContractV2CompilerReferenceRoleCases.js",
+      "task": 2,
+      "sourceItemIds": [
+        "source-ce917f59c8241b117731f93e"
+      ],
+      "families": [
+        "lexical-reference-and-schema-pointer-roles"
+      ],
+      "symbols": [
+        "manual output schemas must exactly match form, approval, required, and option contracts",
+        "result and context references must resolve against a lexically visible schema pointer",
+        "text and binary artifact schemas are string-valued while JSON artifacts retain JSON kinds"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "739c1c311c4d61724048ea03f50705519db20142",
+      "targetBlob": "f157c3cd187bce7cc67e54be95210dc34b663222",
+      "targetFileSha256": "467c9bcf2ec5ca6ddf2006f2c21624a469a541fca788e4ccf70b8a065eda92a4",
+      "disposition": "adapted"
+    },
+    {
+      "path": "extensions/workflow-register/test/workflowContractV2CompilerSchemaCatalogCases.js",
+      "task": 1,
+      "sourceItemIds": [
+        "source-9ec26de51d53744e7456932b"
+      ],
+      "families": [
+        "one-ajv-multi-root-catalog-canonical-evidence"
+      ],
+      "symbols": [
+        "F3 catalog root IDs are dense canonical sorted and duplicate-free",
+        "F3 compiles all requested roots from one AJV catalog construction"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "34625bcea7d2161e6014b1dafd3bb26597d2c381",
+      "targetBlob": "db5a597c30eff25b594dffb3f566ff9c664b7fa5",
+      "targetFileSha256": "2323d9e892b69e3d45085d65c769d2d1c6ff1a3d1c69fdc9d0e074e7d1a45596",
+      "disposition": "adapted"
+    },
+    {
+      "path": "extensions/workflow-register/test/workflowContractV2CompilerSchemaRoleOwnershipCases.js",
+      "task": 1,
+      "sourceItemIds": [
+        "source-1cfe3b722312aa3ebb399cca"
+      ],
+      "families": [
+        "opaque-manual-schema-role-ownership"
+      ],
+      "symbols": [
+        "manual schema role reasoning is owned by an opaque detached F3 handle",
+        "manual schema role rejects proxy and accessor collections without invoking behavior",
+        "manual schema role returns closed reasons and rejects mismatched source evidence"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "796fc3ddab268b53c035c3d860284ff13c009c7e",
+      "targetBlob": "2a69596a86dca7abeb8ee5535322fa6b5b5618f9",
+      "targetFileSha256": "57ac6dbdbb7e3fb2c297e6dfc74c5d2963249888c964d7967daff36bed5e226e",
+      "disposition": "adapted"
+    },
+    {
+      "path": "extensions/workflow-register/test/workflowContractV2CompilerSemanticCases.js",
+      "task": 2,
+      "sourceItemIds": [
+        "source-767f35e7bd80060d344901b0"
+      ],
+      "families": [
+        "prompt-utf8-lf-and-exact-semantic-file-sets"
+      ],
+      "symbols": [
+        "missing and unreferenced prompt or schema files fail before lock verification",
+        "pipeline reports YAML, package-shape, schema, then lock failures in that order",
+        "prompt BOM and invalid UTF-8 are rejected without exposing content",
+        "prompt text is strict UTF-8, normalized to LF, and kept as JSON text in the public plan"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "fafe061040f86a5ebba99bb6d0e4cbd2d7805ff4",
+      "targetBlob": "9b9bae38089c31e3ad7b4ec56a50357d3090330c",
+      "targetFileSha256": "5581bf30be072648c12a659462500296ff4d06ff260bd32ff5d7b836fd581ee8",
+      "disposition": "adapted"
+    },
+    {
+      "path": "extensions/workflow-register/test/workflowContractV2CompilerSnapshotCases.js",
+      "task": 2,
+      "sourceItemIds": [
+        "source-79e4eb6fc7765cd1fd77e404"
+      ],
+      "families": [
+        "detached-raw-publication-and-prompt-byte-snapshots"
+      ],
+      "symbols": [
+        "compiled prompt bytes are available only through fresh detached reads",
+        "compiler publication and generation come from the same detached top-level raw-package snapshot"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "212824a9d916bc6b8e2fb453538203e8ac214fa7",
+      "targetBlob": "91de4a154861a70c38dd6569448f09ce4120f24c",
+      "targetFileSha256": "567ff27c6f6848abc54c72f1acd80edfe9f6081cbcd092e79da3b3cbf006fc33",
+      "disposition": "adapted"
+    },
+    {
+      "path": "extensions/workflow-register/test/workflowContractV2CompilerStagingCases.js",
+      "task": 2,
+      "sourceItemIds": [
+        "source-1ed1c6c31fee5eb4edf09757"
+      ],
+      "families": [
+        "staging-versus-published-plan-leaseability"
+      ],
+      "symbols": [
+        "staging and published forms of identical bytes share public plan evidence but not leaseability"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "ed670342728f8571e1f817b1e579c6d5b0967394",
+      "targetBlob": "ed670342728f8571e1f817b1e579c6d5b0967394",
+      "targetFileSha256": "ef0aba782b49bef23d5a5f4cc2f1a4a3bcbe651cbfc3002078a7ea69351412f1",
+      "disposition": "reconstructed"
+    },
+    {
+      "path": "extensions/workflow-register/test/workflowContractV2CompilerTestSupport.js",
+      "task": 2,
+      "sourceItemIds": [
+        "source-8824803e8ace4a3ff84a12cd"
+      ],
+      "families": [
+        "compiler-canonical-fixture-and-immutability-support"
+      ],
+      "symbols": [
+        "assertDeepFrozen",
+        "assertNoNodeValues",
+        "canonicalDigest",
+        "compilerSubject",
+        "createBobProfile",
+        "createEmptyProviderCatalog",
+        "createLockedRawPackage",
+        "emptyBobBinding",
+        "sourceFiles"
+      ],
+      "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+      "sourceBlob": "00604038e0d7b97f4ab82f66146387b19b8260ed",
+      "targetBlob": "1f73737c0ff012f50e30815435058bfb51baa177",
+      "targetFileSha256": "0a71a2bff7dd9a9c23ddab103a7df13f1ee3ae870f7ba2a71ef4136604dd1b9b",
+      "disposition": "adapted"
+    }
+  ],
+  "omissions": [
+    {
+      "sourceItemId": "source-03f3e91bd544a8c107546b31",
+      "path": "extensions/workflow-register/src/workflowContractV2View.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-051d3492ded4b0938c1e22d4",
+      "path": "extensions/workflow-register/test/workflowContractV2ManifestPortability.test.js",
+      "owner": "WF2-P7-MANIFEST",
+      "reason": "P7 manifest is a later slice"
+    },
+    {
+      "sourceItemId": "source-05e57d74177fec8af5afb411",
+      "path": "extensions/workflow-register/src/core/contractV2/compiledPlanManifest.ts",
+      "owner": "WF2-P7-MANIFEST",
+      "reason": "P7 manifest is a later slice"
+    },
+    {
+      "sourceItemId": "source-10f2c447d85b8fdeb5f33051",
+      "path": "extensions/workflow-register/test/workflowContractV2LockSnapshotCases.js",
+      "owner": "WF2-B-BASELINE-LOCK-SYNC-REMAINDER",
+      "reason": "Outside P4 owned-source selection; existing foundation/collateral retained"
+    },
+    {
+      "sourceItemId": "source-1921ef22a041d98667b357ee",
+      "path": "extensions/workflow-register/src/core/contractV2/planLease.ts",
+      "owner": "WF2-P5-PLANSTORE",
+      "reason": "P5 is a later slice"
+    },
+    {
+      "sourceItemId": "source-1b77ef339188f46fda20ed3f",
+      "path": "extensions/workflow-register/src/workflowContractV2ExecutionGuard.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-200e5bffee5f7adee7265389",
+      "path": "extensions/workflow-register/test/workflowContractV2ExecutionGuard.test.js",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-211ce0e127827b329bdc59e8",
+      "path": "extensions/workflow-register/src/workflowDiscovery.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-28fc352703ea6a0d36ba82da",
+      "path": "extensions/workflow-register/src/workflowRuntimeFactory.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-2bb96ca222954ef7996b2e41",
+      "path": "extensions/workflow-register/src/core/contractV2/planStore.ts",
+      "owner": "WF2-P5-PLANSTORE",
+      "reason": "P5 is a later slice"
+    },
+    {
+      "sourceItemId": "source-2cd4b3ecdb06af789434147d",
+      "path": "extensions/workflow-register/scripts/compile-workflow-contract-v2-packages.js",
+      "owner": "WF2-P7-MANIFEST",
+      "reason": "P7 manifest is a later slice"
+    },
+    {
+      "sourceItemId": "source-2d5f40ef64b61e97372163c3",
+      "path": "extensions/workflow-register/test/workflowCatalogReloadCoordinator.test.js",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-40c04e26c61ecac1cbf375c6",
+      "path": "extensions/workflow-register/src/extension.ts",
+      "owner": "WF2-B-HISTORICAL-DOC-REMAINDER",
+      "reason": "Outside P4 owned-source selection; existing foundation/collateral retained"
+    },
+    {
+      "sourceItemId": "source-418c99dff76ec8aa8c971638",
+      "path": "extensions/workflow-register/src/core/contractV2/planStoreInput.ts",
+      "owner": "WF2-P5-PLANSTORE",
+      "reason": "P5 is a later slice"
+    },
+    {
+      "sourceItemId": "source-487818564a725885879bc58d",
+      "path": "extensions/workflow-register/src/workflowDefinitionLoader.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-4aab19c95cc99ebe98ac9077",
+      "path": "extensions/workflow-register/test/workflowContractV2Manifest.test.js",
+      "owner": "WF2-P7-MANIFEST",
+      "reason": "P7 manifest is a later slice"
+    },
+    {
+      "sourceItemId": "source-4b22735ad64dae69650013dd",
+      "path": "extensions/workflow-register/src/core/contractV2/index.ts",
+      "owner": "WF2-P7-MANIFEST",
+      "reason": "P7 manifest is a later slice"
+    },
+    {
+      "sourceItemId": "source-4ea2851958ad8182f8e6febb",
+      "path": "extensions/workflow-register/test/workflowContractV2Entrypoints.test.js",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-4f000b9390bc293973eefa7d",
+      "path": "extensions/workflow-register/test/workflowContractV2PlanStore.test.js",
+      "owner": "WF2-P5-PLANSTORE",
+      "reason": "P5 is a later slice"
+    },
+    {
+      "sourceItemId": "source-501ab87205e94c950750ca70",
+      "path": "extensions/workflow-register/src/core/contractV2/index.ts",
+      "owner": "WF2-P5-PLANSTORE",
+      "reason": "P5 is a later slice"
+    },
+    {
+      "sourceItemId": "source-555bdba0baee1b9d0dc5b853",
+      "path": "extensions/workflow-register/src/workflowRegisterService.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-564c1fd49aa7987997867165",
+      "path": "extensions/workflow-register/scripts/compile-workflow-contract-v2-packages.js",
+      "owner": "WF2-P7-MANIFEST",
+      "reason": "P7 manifest is a later slice"
+    },
+    {
+      "sourceItemId": "source-56e4fc48d577920a309094ac",
+      "path": "extensions/workflow-register/test/fixtures/workflow-contract-v2/manifest-collection/minimal/current.json",
+      "owner": "WF2-P7-MANIFEST",
+      "reason": "P7 manifest is a later slice"
+    },
+    {
+      "sourceItemId": "source-57a458266388471a1b32856d",
+      "path": "extensions/workflow-register/src/workflowRegistrationService.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-5b811c80c7655c7faaf05600",
+      "path": "extensions/workflow-register/test/fixtures/workflow-contract-v2/manifest-collection/minimal/versions/sha256-f63effff0027607a3f0443e787c3055bf60394f5eb2a2fd256581db90d6528cc/workflow.lock.json",
+      "owner": "WF2-P7-MANIFEST",
+      "reason": "P7 manifest is a later slice"
+    },
+    {
+      "sourceItemId": "source-60e6fab77af45f9c2bde1ecc",
+      "path": "extensions/workflow-register/src/workflowRegisterService.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-627a08e2dd90d652ebf61457",
+      "path": "extensions/workflow-register/scripts/lib/workflow-contract-v2-environment.js",
+      "owner": "WF2-P7-MANIFEST",
+      "reason": "P7 manifest is a later slice"
+    },
+    {
+      "sourceItemId": "source-66c039c026623426f8667cf2",
+      "path": "extensions/workflow-register/scripts/lib/workflow-contract-v2-environment.js",
+      "owner": "WF2-P7-MANIFEST",
+      "reason": "P7 manifest is a later slice"
+    },
+    {
+      "sourceItemId": "source-7021229a1b36012137ed7676",
+      "path": "extensions/workflow-register/src/workflowContractV2Product.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-7116e7cb3ced13ad31835489",
+      "path": "extensions/workflow-register/src/core/contractV2/workflowLockSnapshot.ts",
+      "owner": "WF2-B-BASELINE-LOCK-SYNC-REMAINDER",
+      "reason": "Outside P4 owned-source selection; existing foundation/collateral retained"
+    },
+    {
+      "sourceItemId": "source-7eeec6df64115cc1b866f89f",
+      "path": "extensions/workflow-register/test/fixtures/workflow-contract-v2/manifest-collection/minimal/versions/sha256-f63effff0027607a3f0443e787c3055bf60394f5eb2a2fd256581db90d6528cc/workflow.yaml",
+      "owner": "WF2-P7-MANIFEST",
+      "reason": "P7 manifest is a later slice"
+    },
+    {
+      "sourceItemId": "source-861855ac2fa66f2a6f18da8b",
+      "path": "extensions/workflow-register/src/core/actionRegistry.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-92520c1f32f5bb800763bb5b",
+      "path": "extensions/workflow-register/test/fixtures/workflow-contract-v2/transitional-legacy-import-allowlist.json",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-9c85d790c8430b35032bb0b3",
+      "path": "extensions/workflow-register/src/workflowBobTaskBinding.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-9d3b8054b264f92bd285309d",
+      "path": "extensions/workflow-register/src/workflowRuntimeFactory.ts",
+      "owner": "WF2-P5-PLANSTORE",
+      "reason": "P5 is a later slice"
+    },
+    {
+      "sourceItemId": "source-a19cf56f8839f61bbf85c8a4",
+      "path": "extensions/workflow-register/src/workflowContractV2Entrypoint.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-a4145c194cf2045b2a8dee14",
+      "path": "extensions/workflow-register/test/workflowContractV2ManifestFixture.test.js",
+      "owner": "WF2-P7-MANIFEST",
+      "reason": "P7 manifest is a later slice"
+    },
+    {
+      "sourceItemId": "source-b69378eb229cf54aef34ce86",
+      "path": "extensions/workflow-register/test/workflowContractV2ExecutionBoundary.test.js",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-bcc284e4d66c136f1264b98b",
+      "path": "extensions/workflow-register/src/extension.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-beda9c4e8baebbfbfc49b093",
+      "path": "extensions/workflow-register/test/workflowContractV2PlanStoreRuntimeWiring.test.js",
+      "owner": "WF2-P5-PLANSTORE",
+      "reason": "P5 is a later slice"
+    },
+    {
+      "sourceItemId": "source-c17b90eda53c1c3096c12b4a",
+      "path": "extensions/workflow-register/src/workflowContractV2RunStateStore.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-c2ea231c964bc6a6742637c4",
+      "path": "extensions/workflow-register/test/fixtures/workflow-contract-v2/manifest-provider-catalog.json",
+      "owner": "WF2-P7-MANIFEST",
+      "reason": "P7 manifest is a later slice"
+    },
+    {
+      "sourceItemId": "source-c89e42bd9d47e129405c0284",
+      "path": "extensions/workflow-register/src/workflowContractV2ExecutionGuard.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-ccdeaf8900368dfaf0e5f97f",
+      "path": "extensions/workflow-register/test/workflowContractV2ProviderLifecycle.test.js",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-dc3d38365c4b273e9ed23a20",
+      "path": "extensions/workflow-register/test/workflowContractV2Lock.test.js",
+      "owner": "WF2-B-BASELINE-LOCK-SYNC-REMAINDER",
+      "reason": "Outside P4 owned-source selection; existing foundation/collateral retained"
+    },
+    {
+      "sourceItemId": "source-ddbcf5073d1165cea16c732a",
+      "path": "extensions/workflow-register/src/extensionWithAuthoring.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-e5383e8d285f9ae1a990d45f",
+      "path": "extensions/workflow-register/src/bobWorkflowFactory.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-e960b66c70c58f030bd5c259",
+      "path": "extensions/workflow-register/src/workflowCatalogReloadCoordinator.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-efeea41da424681431167d02",
+      "path": "extensions/workflow-register/src/commands/validateWorkflow.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    },
+    {
+      "sourceItemId": "source-f7af99547f1c8bfbb41c9f16",
+      "path": "extensions/workflow-register/test/workflowContractV2PlanStoreIdentity.test.js",
+      "owner": "WF2-P5-PLANSTORE",
+      "reason": "P5 is a later slice"
+    },
+    {
+      "sourceItemId": "source-fdd3944951a97ce7698e0492",
+      "path": "extensions/workflow-register/src/workflowContractV2ProviderLifecycle.ts",
+      "owner": "WF2-P6-ENTRYPOINT",
+      "reason": "P6 product routing is a later slice"
+    }
+  ],
+  "explicitOmissions": [
+    "alternate_compiler",
+    "P5-P7",
+    "R2 invocation bridge",
+    "conditional R3-R5",
+    "old R6 recovery",
+    "product activation",
+    "provider dispatch",
+    "general run creation",
+    "artifact staging",
+    "legacy authority captures",
+    "old bootstrap"
+  ],
+  "foundationModified": false,
+  "activation": "none",
+  "publication": "local-only"
+}
