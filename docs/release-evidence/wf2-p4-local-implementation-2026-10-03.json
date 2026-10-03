@@ -4,9 +4,9 @@
   "sliceId": "WF2-P4-COMPILER",
   "programOrdinal": 2,
   "executionBase": "88c5f2ee7489f45182e74df778896daf66101ffd",
-  "implementationHead": "ebd902b2f8045835a698477ae10ee1864f77dc0f",
+  "implementationHead": "aa1f8ec2f5b2769659bc0c8caecfc774e3032365",
   "branch": "codex/v2-p4-compiler",
-  "status": "local-implementation-review-fixes-verified",
+  "status": "local-ci-regression-repair-verified-candidate-update-pending",
   "predecessor": {
     "sliceId": "WAVE-0B-SELECTION-LEDGER",
     "acceptedMain": "88c5f2ee7489f45182e74df778896daf66101ffd"
@@ -19,12 +19,12 @@
   "historicalTopLevelCases": 41,
   "checks": [
     {
-      "file": "task2-green.log",
+      "file": "publication/intrinsics-compiler-full.log",
       "tests": 72,
       "passed": 72,
       "failed": 0,
       "skipped": 0,
-      "sha256": "ab0154d4266b291de3696e3d6c843ac62c2c6b9c3e15b48ed1527d7d61ec9803"
+      "sha256": "b1ee7f88f44167551f8cbd7c6685992e26a8a3b918273c394f7b507daa399393"
     },
     {
       "file": "foundation-full.log",
@@ -35,12 +35,12 @@
       "sha256": "3bee7f587626f12e4ee42af4707f948b95d8bf009d68282fe140e0e33dc112cc"
     },
     {
-      "file": "workflow-full.log",
+      "file": "publication/intrinsics-workflow-full.log",
       "tests": 1958,
       "passed": 1957,
       "failed": 0,
       "skipped": 1,
-      "sha256": "6d46a751b00ad38b433c2ab87c816ec30f561257ddadcec75961a3d22937c498"
+      "sha256": "b9bd395d064475811dbcaa87c900113a5ff45d7dbac844d5665eecd02804c9a4"
     },
     {
       "file": "baseline-bob-bazaar-review.log",
@@ -134,12 +134,13 @@
     "Final: Ruling: Remote publication/main acceptance, hosted Ubuntu/Windows CI, and real-machine UAT remain separate future gates — local results prove local compiler behavior only; programVerified stays false and no product entrypoint/UI/manifest changed — cost if wrong: cross-platform or real-host problems escape local tests; candidate/main CI and final three-extension UAT must still gate acceptance.",
     "Final: Ruling: Workspace archival and ref cleanup remain deferred — the authorized continuous local workspace retains source, ignored logs, and packages for publication/review follow-up — cost if wrong: local storage persists and later cleanup must preserve needed ignored evidence before native archival and guarded ref removal.",
     "Ruling: Adapt only the Bazaar policy's VSIX input path to the approved fixture output — its CLI otherwise expects the VSIX beside package-lock and installed production dependencies; execute unchanged policy source against original dependency roots and redirect only exact VSIX exists/stat/read — cost if wrong: packaging validation could inspect different bytes; require three input redirections and bind policy source, adapter, and actual VSIX hashes. No product policy modification.",
-    "Ruling: Present one concrete candidate publication proposal instead of the generic finishing-branch menu — repository risk-tier design section 4-C requires canonical targets and separate execution-time confirmation for remote/main/cleanup effects; the approved local proposal excludes those effects — cost if wrong: an additional integration choice is needed; retain the local branch and perform no unconfirmed remote or main action."
+    "Ruling: Present one concrete candidate publication proposal instead of the generic finishing-branch menu — repository risk-tier design section 4-C requires canonical targets and separate execution-time confirmation for remote/main/cleanup effects; the approved local proposal excludes those effects — cost if wrong: an additional integration choice is needed; retain the local branch and perform no unconfirmed remote or main action.",
+    "Ruling: Scope the captured-intrinsic guard to direct calls from the 11 P4-owned modules, with Windows/POSIX path calibration and a nonempty schema/prompt fixture — the inherited whole-stack guard wrongly rejects unchanged foundation calls on Ubuntu and silently misses Windows separators; P4 preserves foundation and does not promise whole-dependency prototype hardening — cost if wrong: foundation/AJV global prototype tampering remains outside this guarantee; prove all five live-call controls fail for both path styles and require unchanged compiled plan/digest under the actual guard. Hosted validation of the repaired revision is still pending."
   ],
   "activation": "none",
   "maxPlannedActivation": "shadow",
   "programVerified": false,
-  "publication": "not-performed",
+  "publication": "candidate-published-ci-failed; local-test-repair-unpublished",
   "mainIntegration": "not-performed",
   "workspaceDisposition": "continuous-slice-retained",
   "compilerOnlyUatAssessment": {
@@ -184,5 +185,178 @@
       "policy": "passed",
       "policySourceSha256": "7cea3673c952f9bc0b8171c58d5ca2422de4a45c41d8f3906dd62f8efeee06e0"
     }
-  ]
+  ],
+  "candidatePublication": {
+    "repository": "katamor1/bob_builtin_analyze",
+    "pr": 178,
+    "url": "https://github.com/katamor1/bob_builtin_analyze/pull/178",
+    "head": "9325e2c22043a359eb6c8c5571c1b95432e78cbe",
+    "allRunsCompleted": true,
+    "ciAccepted": false,
+    "totals": {
+      "runs": 6,
+      "success": 18,
+      "failed": 2,
+      "skipped": 1,
+      "pending": 0
+    },
+    "runs": [
+      {
+        "id": 37135682983,
+        "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37135682983",
+        "path": ".github/workflows/extensions-quality.yml",
+        "event": "workflow_dispatch",
+        "headSha": "9325e2c22043a359eb6c8c5571c1b95432e78cbe",
+        "conclusion": "failure",
+        "attempt": 1,
+        "dispatchNonce": "832db66123e31e848883fb31c18daad1"
+      },
+      {
+        "id": 37135685449,
+        "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37135685449",
+        "path": ".github/workflows/workflow-contracts.yml",
+        "event": "workflow_dispatch",
+        "headSha": "9325e2c22043a359eb6c8c5571c1b95432e78cbe",
+        "conclusion": "success",
+        "attempt": 1,
+        "dispatchNonce": "7356df3b976483345d4526573fe2e8ce"
+      },
+      {
+        "id": 37135687929,
+        "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37135687929",
+        "path": ".github/workflows/code-consistency-review-scaffold.yml",
+        "event": "workflow_dispatch",
+        "headSha": "9325e2c22043a359eb6c8c5571c1b95432e78cbe",
+        "conclusion": "success",
+        "attempt": 1,
+        "dispatchNonce": "0c78cd91488c3365ae7077824e59282c"
+      },
+      {
+        "id": 37135690406,
+        "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37135690406",
+        "path": ".github/workflows/three-extension-ui-contracts.yml",
+        "event": "workflow_dispatch",
+        "headSha": "9325e2c22043a359eb6c8c5571c1b95432e78cbe",
+        "conclusion": "success",
+        "attempt": 1,
+        "dispatchNonce": "c73cd0d95ff29243edc17748c40edb35"
+      },
+      {
+        "id": 37135498469,
+        "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37135498469",
+        "path": ".github/workflows/extensions-quality.yml",
+        "event": "pull_request",
+        "headSha": "9325e2c22043a359eb6c8c5571c1b95432e78cbe",
+        "conclusion": "failure",
+        "attempt": 1,
+        "dispatchNonce": null
+      },
+      {
+        "id": 37135498485,
+        "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37135498485",
+        "path": ".github/workflows/three-extension-ui-contracts.yml",
+        "event": "pull_request",
+        "headSha": "9325e2c22043a359eb6c8c5571c1b95432e78cbe",
+        "conclusion": "success",
+        "attempt": 1,
+        "dispatchNonce": null
+      }
+    ],
+    "failedLogs": [
+      {
+        "runId": 37135682983,
+        "jobId": 111239630417,
+        "name": "workflow-register",
+        "expected": "success",
+        "actual": "failure",
+        "path": ".superpowers/sdd/2026-10-03-wf2-p4-compiler/fixtures/publication/failure-job-111239630417.log",
+        "sha256": "3bea4ebd84100f4b6b84c52e6755830d69371f8b45504d12d3bcc57aebd5e409",
+        "checkout": {
+          "event": "workflow_dispatch",
+          "expectedHeadSha": "9325e2c22043a359eb6c8c5571c1b95432e78cbe",
+          "actualHeadSha": "9325e2c22043a359eb6c8c5571c1b95432e78cbe",
+          "dispatchNonce": "832db66123e31e848883fb31c18daad1"
+        }
+      },
+      {
+        "runId": 37135498469,
+        "jobId": 111239085537,
+        "name": "workflow-register",
+        "expected": "success",
+        "actual": "failure",
+        "path": ".superpowers/sdd/2026-10-03-wf2-p4-compiler/fixtures/publication/failure-job-111239085537.log",
+        "sha256": "4cae273a1c75d491239f1ef52b39ba661cd362f36ddae31382ac1021d05688b9",
+        "checkout": {
+          "event": "pull_request",
+          "expectedHeadSha": "9325e2c22043a359eb6c8c5571c1b95432e78cbe",
+          "actualHeadSha": "9325e2c22043a359eb6c8c5571c1b95432e78cbe"
+        }
+      }
+    ],
+    "successfulCheckoutProofCount": 18
+  },
+  "ciRegressionRepair": {
+    "date": "2026-10-04",
+    "fixHead": "aa1f8ec2f5b2769659bc0c8caecfc774e3032365",
+    "path": "extensions/workflow-register/test/workflowContractV2CompilerCoreCases.js",
+    "productionChanges": 0,
+    "inheritedFrom": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
+    "failure": "Whole-stack POSIX guard blocks foundation workflowLockBob live filter; original Windows path never matches",
+    "scope": "Direct calls from exact 11 P4-owned module basenames; both separators",
+    "controls": {
+      "liveIntrinsics": 5,
+      "pathStyles": 2,
+      "expectedDenied": 10,
+      "actualCompileDenied": 0,
+      "nonemptySchema": true,
+      "crlfAndCrPrompt": true,
+      "equalBaselinePlanAndDigest": true
+    },
+    "red": {
+      "file": "publication/intrinsics-platform-red.log",
+      "tests": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "sha256": "da885a3ada8bc41e7b303d40eaee9fd7c6d204765f0fcca6bef3da113e368c66"
+    },
+    "green": {
+      "file": "publication/intrinsics-platform-green.log",
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "sha256": "a3514cb8bdee2ee78ee677292668623c2c990ad94ea65341c4a20dace8b7722a"
+    },
+    "checks": [
+      {
+        "file": "publication/intrinsics-compiler-full.log",
+        "tests": 72,
+        "passed": 72,
+        "failed": 0,
+        "skipped": 0,
+        "sha256": "b1ee7f88f44167551f8cbd7c6685992e26a8a3b918273c394f7b507daa399393"
+      },
+      {
+        "file": "publication/intrinsics-workflow-full.log",
+        "tests": 1958,
+        "passed": 1957,
+        "failed": 0,
+        "skipped": 1,
+        "sha256": "b9bd395d064475811dbcaa87c900113a5ff45d7dbac844d5665eecd02804c9a4"
+      }
+    ],
+    "reusedCheckFiles": [
+      "foundation-full.log",
+      "baseline-bob-bazaar-review.log",
+      "baseline-bob-code-consistency-review.log"
+    ],
+    "independentAssessment": {
+      "agent": "p4_ci_intrinsics_assessment",
+      "scope": "read-only guarantee/failure assessment; no whole-branch re-review",
+      "conclusion": "Test-only scope repair is sound; foundation hardening is not a P4 requirement",
+      "memoryOnlyMutant": "Captured sort replaced by live values.sort was rejected by guard and made compilation fail"
+    },
+    "limits": "Repair executed on Windows host only; both separator controls passed. Hosted Linux/Windows repair validation pending. Foundation/dependency global intrinsic tampering is not guaranteed."
+  }
 }

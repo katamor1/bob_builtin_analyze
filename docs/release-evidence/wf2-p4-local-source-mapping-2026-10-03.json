@@ -334,9 +334,9 @@
       ],
       "sourceCommit": "e0766f9448033688964fabbcfa6ae73b3d849ed0",
       "sourceBlob": "73a2fb699d1d9a8f40b738a1d7fb1b0433c19471",
-      "targetBlob": "73a2fb699d1d9a8f40b738a1d7fb1b0433c19471",
-      "targetFileSha256": "a57c6b6ba8d2f73b12b9253e86da999d60cbb8d97290d26bcecac110032c3db4",
-      "disposition": "reconstructed"
+      "targetBlob": "5be2199754b483e63f100bc9b0b0e99a60065f12",
+      "targetFileSha256": "52c5960968a5019e8ead9a490206232c5d931c2ce654afe1bb9f150d7e8468dc",
+      "disposition": "adapted"
     },
     {
       "path": "extensions/workflow-register/test/workflowContractV2CompilerEnvironmentCases.js",
@@ -928,5 +928,6 @@
   ],
   "foundationModified": false,
   "activation": "none",
-  "publication": "local-only"
+  "publication": "candidate-published-at-9325e2c2; local-test-repair-unpublished",
+  "candidatePublishedHead": "9325e2c22043a359eb6c8c5571c1b95432e78cbe"
 }

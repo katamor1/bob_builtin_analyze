@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-23-feature-selection-and-sequential-main-integration-design.md` §7.1・§8–12（technical-only）、`docs/superpowers/specs/2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md`、`docs/superpowers/specs/2026-07-17-workflow-contract-v2-design.md` §15–16、`docs/superpowers/specs/2026-07-24-workflow-contract-v2-generation-directory-amendment.md`。詳細入力は既存 `2026-07-17-workflow-contract-v2-package-compiler.md` のP4 sectionのみ。
 
-**Status:** main `88c5f2ee7489f45182e74df778896daf66101ffd` をexecution baseとしてP4 local実装・検証を完了。独立whole-branch reviewのImportant 2件を回帰テストで修正し、local全体検証を完了。公開・main統合・activationは未実施。
+**Status:** main `88c5f2ee7489f45182e74df778896daf66101ffd` をexecution baseとしてP4 local実装・検証を完了。独立whole-branch reviewのImportant 2件を回帰テストで修正し、local全体検証を完了。候補をPR #178（head 9325e2c22043a359eb6c8c5571c1b95432e78cbe）へ公開。exact-head CIのUbuntu 2 jobsが同一test defectで失敗し、owned Core testだけを修正、compiler 72/72・workflow full 1957 pass / 1 skipでlocal検証済み。修正候補の公開とhosted再検証は別C提案へ。main統合・activationは未実施。
 
 ## Global Constraints
 
