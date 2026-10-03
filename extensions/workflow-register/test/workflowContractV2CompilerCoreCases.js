@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict")
 const { test } = require("node:test")
+const { runInThisContext } = require("node:vm")
 const {
   assertDeepFrozen,
   assertNoNodeValues,
@@ -7,7 +8,9 @@ const {
   compilerSubject,
   createBobProfile,
   createEmptyProviderCatalog,
-  createLockedRawPackage
+  createLockedRawPackage,
+  sourceFiles,
+  workflowYamlText
 } = require("./workflowContractV2CompilerTestSupport")
 
 function environment(purpose = "runtime") {
@@ -106,10 +109,37 @@ test("compiler rejects hostile outer input without invoking proxy behavior", () 
   assert.equal(traps, 0)
 })
 
-test("compiler uses captured collection and string intrinsics after module load", () => {
+test("P4-owned compiler modules use captured collection and string intrinsics after module load", () => {
   const compiler = compilerSubject()
-  const fixture = createLockedRawPackage()
+  const workflow = require("js-yaml").load(sourceFiles()["workflow.yaml"].toString("utf8"))
+  workflow.steps = [{
+    id: "review",
+    title: "Review",
+    type: "manual",
+    required: true,
+    prompt: "prompts/review.md",
+    approval: {
+      message: "Approve the result?",
+      approveLabel: "Approve",
+      rejectLabel: "Reject"
+    },
+    output: { kind: "value", id: "reviewResult", schema: "schemas/review.json", maxBytes: 4096 }
+  }]
+  const fixture = createLockedRawPackage({
+    "workflow.yaml": workflowYamlText(workflow),
+    "prompts/review.md": "Line one\r\nLine two\rLine three\n",
+    "schemas/review.json": JSON.stringify({
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      $id: "schemas/review.json",
+      type: "object",
+      properties: { decision: { type: "string", enum: ["approved", "rejected"] } },
+      required: ["decision"],
+      additionalProperties: false
+    })
+  })
   const audited = environment()
+  const baseline = compiler.compileWorkflowPackage({ rawPackage: fixture.rawPackage, environment: audited })
+  assert.equal(baseline.ok, true)
   const originals = {
     map: Array.prototype.map,
     filter: Array.prototype.filter,
@@ -117,10 +147,30 @@ test("compiler uses captured collection and string intrinsics after module load"
     find: Array.prototype.find,
     replace: String.prototype.replace
   }
+  const ownedModules = [
+    "jsonSchemaCatalog", "jsonSchemaRole", "compilerFiles", "compilerReferences",
+    "compilerSchemaRoles", "compilerEnvironment", "compilerBindings", "compiledPlan",
+    "compilerWorkflow", "compiler", "index"
+  ]
+  const ownedCaller = new RegExp(
+    "[\\\\/]out[\\\\/]core[\\\\/]contractV2[\\\\/](?:" + ownedModules.join("|") + ")\\.js:\\d+:\\d+\\)?$"
+  )
+  // Check the intrinsic's direct caller. Foundation and AJV can run beneath a P4 ancestor.
+  const isOwnedCall = (stack) => ownedCaller.test(stack.split("\n")[2] ?? "")
+  for (const separator of ["/", "\\"]) {
+    const directory = ["fixture", "out", "core", "contractV2"].join(separator) + separator
+    for (const module of ownedModules) {
+      assert.equal(isOwnedCall("Error\n    at guarded (test.js:1:1)\n    at owned (" + directory + module + ".js:1:1)"), true)
+    }
+    for (const caller of [directory + "workflowLockBob.js", "node_modules" + separator + "ajv" + separator + "index.js"]) {
+      assert.equal(isOwnedCall("Error\n    at guarded (test.js:1:1)\n    at dependency (" + caller + ":1:1)\n    at ancestor (" + directory + "compiler.js:1:1)"), false)
+    }
+  }
+  let denied = 0
   const guarded = (original, name) => function (...args) {
-    const stack = new Error().stack ?? ""
-    if (stack.includes("/out/core/contractV2/")) {
-      throw new Error(`compiler used live ${name}`)
+    if (isOwnedCall(new Error().stack ?? "")) {
+      denied += 1
+      throw new Error("compiler used live " + name)
     }
     return Reflect.apply(original, this, args)
   }
@@ -130,11 +180,29 @@ test("compiler uses captured collection and string intrinsics after module load"
   Array.prototype.find = guarded(originals.find, "Array.prototype.find")
   String.prototype.replace = guarded(originals.replace, "String.prototype.replace")
   try {
-    const result = compiler.compileWorkflowPackage({
-      rawPackage: fixture.rawPackage,
-      environment: audited
-    })
+    // Synthetic source locations calibrate the real guard in this realm for both path styles.
+    // A separate VM realm would have unpatched prototypes and would not test this guard.
+    const controls = [
+      ["Array.prototype.map", "[1].map(value => value)"],
+      ["Array.prototype.filter", "[1].filter(value => value)"],
+      ["Array.prototype.sort", "[2, 1].sort()"],
+      ["Array.prototype.find", "[1].find(value => value)"],
+      ["String.prototype.replace", "'a'.replace('a', 'b')"]
+    ]
+    for (const separator of ["/", "\\"]) {
+      const filename = ["fixture", "out", "core", "contractV2", "compilerFiles.js"].join(separator)
+      for (const [name, expression] of controls) {
+        assert.throws(() => runInThisContext(expression, { filename }), (error) => error.message === "compiler used live " + name)
+      }
+    }
+    assert.equal(denied, 10)
+    const result = compiler.compileWorkflowPackage({ rawPackage: fixture.rawPackage, environment: audited })
     assert.equal(result.ok, true)
+    assert.equal(denied, 10)
+    assert.equal(result.handle.plan.prompts[0].text, "Line one\nLine two\nLine three\n")
+    assert.equal(result.handle.plan.schemas.length, 1)
+    assert.deepEqual(result.handle.plan, baseline.handle.plan)
+    assert.equal(result.handle.planDigest, baseline.handle.planDigest)
   } finally {
     Array.prototype.map = originals.map
     Array.prototype.filter = originals.filter
