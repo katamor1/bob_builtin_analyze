@@ -183,3 +183,27 @@ test('rejects_p4_evidence_tamper_and_future_completion_authority',()=>{
   const p=projectIntegrationStatus(c);mutate(p);assert.throws(()=>deriveNextSlice({programIndex:c.programIndex,statusProjection:p}))
  }
 })
+
+test('keeps_p4_canonical_bytes_after_autocrlf_checkout',async t=>{
+ const {mkdtempSync,rmSync}=await import('node:fs')
+ const {tmpdir}=await import('node:os')
+ const {join,resolve,sep,basename}=await import('node:path')
+ const {execFileSync}=await import('node:child_process')
+ const {runGenerator}=await import('../create-feature-integration-status.mjs')
+ const root=fileURLToPath(new URL('../../../',import.meta.url))
+ const temp=mkdtempSync(join(tmpdir(),'p4-canonical-checkout-'))
+ t.after(()=>{
+  assert.equal(resolve(temp).startsWith(resolve(tmpdir())+sep),true)
+  assert.equal(basename(temp).startsWith('p4-canonical-checkout-'),true)
+  rmSync(temp,{recursive:true,force:true})
+ })
+ const relative='docs/release-evidence/wf2-p4-completion-2026-10-04.json'
+ execFileSync('git',['-c','core.autocrlf=true','checkout-index','--prefix='+temp.replaceAll('\\','/')+'/', '--',relative],{cwd:root,windowsHide:true})
+ const checkedOut=readFileSync(join(temp,relative))
+ const committed=execFileSync('git',['show','HEAD:'+relative],{cwd:root,windowsHide:true})
+ assert.equal(checkedOut.equals(committed),true,'fresh core.autocrlf=true checkout must retain exact canonical P4 bytes')
+ await runGenerator(['--check'],{
+  readFile:async path=>path.endsWith('wf2-p4-completion-2026-10-04.json')?checkedOut:readFileSync(path),
+  writeStdout:()=>assert.fail('check mode must not write output')
+ })
+})
