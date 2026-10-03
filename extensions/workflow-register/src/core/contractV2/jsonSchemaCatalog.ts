@@ -51,6 +51,8 @@ interface ViewState {
   readonly key: string
   readonly prefix: string
   readonly dependencies: readonly string[]
+  readonly sources: readonly LocalJsonSchemaSource[]
+  readonly rootId: string
 }
 
 export interface LocalJsonSchemaPredicateBinding {
@@ -99,6 +101,11 @@ const ARRAY_SCHEMA_KEYWORDS = objectFreeze(["prefixItems", "allOf", "anyOf", "on
 const ONE_SCHEMA_KEYWORDS = objectFreeze([
   "items", "contains", "additionalProperties", "propertyNames", "if", "then", "else", "not",
   "unevaluatedItems", "unevaluatedProperties"
+] as const)
+// Match F3's sole-reference normalization; validation siblings are not flattened.
+const REFERENCE_NON_VALIDATION_KEYWORDS = objectFreeze([
+  "$ref", "$schema", "$id", "$defs", "$comment", "title", "description", "default",
+  "deprecated", "readOnly", "writeOnly", "examples"
 ] as const)
 const SYNTHETIC_ID = "__workflow-contract-v2-internal__/catalog"
 const SOURCE_FIELDS = objectFreeze(["id", "schema", "location"] as const)
@@ -166,7 +173,9 @@ export function compileLocalJsonSchemaCatalog(
       base: baseResult.compiled,
       key: keys[index],
       prefix: `/${keys[index]}`,
-      dependencies: collectDependencies(rootId, schemas)
+      dependencies: collectDependencies(rootId, schemas),
+      sources: schemas,
+      rootId
     }))
     push(roots, objectFreeze({ id: rootId, compiled }))
   }
@@ -243,6 +252,69 @@ export function bindLocalJsonSchemaViewForPredicate(
 ): LocalJsonSchemaPredicateBinding {
   const state = requireViewState(compiled)
   return objectFreeze({ compiled: state.base, pointerPrefix: state.prefix })
+}
+
+// Internal role adapter: only detached catalog-owned JSON is returned, never a validator.
+export function resolveLocalJsonSchemaViewManualRole(compiled: CompiledLocalJsonSchemaView): {
+  readonly root: JsonValue | undefined
+  readonly properties: Readonly<Record<string, JsonValue | undefined>>
+} {
+  const state = requireViewState(compiled)
+  const source = findSource(state.sources, state.rootId)
+  const resolved = source === undefined ? undefined : normalizeRoleReference(state.sources, state.rootId, source.schema as JsonValue)
+  const properties = objectCreate(null) as Record<string, JsonValue | undefined>
+  const root = resolved?.value
+  if (resolved !== undefined && isJsonObject(root) && isJsonObject(root.properties)) {
+    const keys = objectKeys(root.properties)
+    for (let index = 0; index < keys.length; index += 1) {
+      const key = keys[index]
+      const property = normalizeRoleReference(state.sources, resolved.documentId, root.properties[key])
+      properties[key] = property?.value
+    }
+  }
+  return objectFreeze({ root, properties: objectFreeze(properties) })
+}
+
+function normalizeRoleReference(
+  sources: readonly LocalJsonSchemaSource[], documentId: string, value: JsonValue
+): { readonly documentId: string; readonly value: JsonValue } | undefined {
+  const visited: JsonValue[] = []
+  while (isJsonObject(value) && typeof value.$ref === "string") {
+    for (let index = 0; index < visited.length; index += 1) if (visited[index] === value) return undefined
+    push(visited, value)
+    const keys = objectKeys(value)
+    for (let index = 0; index < keys.length; index += 1) {
+      if (!contains(REFERENCE_NON_VALIDATION_KEYWORDS, keys[index])) return undefined
+    }
+    // F3 already validated local document IDs, canonical pointer escapes, targets, and cycles.
+    const hash = reflectApply(stringIndexOf, value.$ref, ["#"]) as number
+    if (hash !== 0) documentId = hash < 0 ? value.$ref : slice(value.$ref, 0, hash)
+    const source = findSource(sources, documentId)
+    if (source === undefined) return undefined
+    let target = source.schema as JsonValue | undefined
+    const pointer = hash < 0 ? "" : slice(value.$ref, hash + 1, value.$ref.length)
+    let start = 1
+    for (let end = 1; end <= pointer.length; end += 1) {
+      if (end !== pointer.length && charCodeAt(pointer, end) !== 0x2f) continue
+      let token = ""
+      for (let index = start; index < end; index += 1) {
+        if (charCodeAt(pointer, index) === 0x7e) {
+          index += 1
+          token += charCodeAt(pointer, index) === 0x30 ? "~" : "/"
+        } else token += slice(pointer, index, index + 1)
+      }
+      if (target === null || typeof target !== "object" || !objectHasOwn(target, token)) return undefined
+      target = objectGetOwnPropertyDescriptors(target)[token]?.value as JsonValue | undefined
+      start = end + 1
+    }
+    if (target === undefined) return undefined
+    value = target
+  }
+  return objectFreeze({ documentId, value })
+}
+
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+  return value !== undefined && value !== null && typeof value === "object" && !arrayIsArray(value)
 }
 
 export function isCompiledLocalJsonSchemaView(value: unknown): value is CompiledLocalJsonSchemaView {

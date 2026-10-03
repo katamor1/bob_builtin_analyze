@@ -3,6 +3,7 @@ import { types as utilTypes } from "node:util"
 import { canonicalJsonDigest } from "./canonicalJson"
 import {
   inspectLocalJsonSchemaViewInstancePointer,
+  resolveLocalJsonSchemaViewManualRole,
   type CompiledLocalJsonSchemaView
 } from "./jsonSchemaCatalog"
 import { cloneAndFreezeJsonValue, type JsonValue } from "./jsonValue"
@@ -27,7 +28,7 @@ export interface LocalJsonSchemaRoleHandle {
 
 interface LocalJsonSchemaRoleState {
   readonly compiled: CompiledLocalJsonSchemaView
-  readonly root: Readonly<Record<string, JsonValue>>
+  readonly resolved: ReturnType<typeof resolveLocalJsonSchemaViewManualRole>
 }
 
 const isProxy = utilTypes.isProxy
@@ -60,6 +61,8 @@ const weakMapSet = Function.prototype.call.bind(WeakMap.prototype.set) as (
 ) => WeakMap<object, LocalJsonSchemaRoleState>
 const CREATE_FIELDS = objectFreeze(["compiled", "schema"] as const)
 const VALIDATE_FIELDS = objectFreeze(["role", "fields"] as const)
+// F4 permits 128 form fields and one additional approval decision.
+const MAX_MANUAL_FIELDS = 129
 const FIELD_BASE_FIELDS = objectFreeze(["id", "required", "kind"] as const)
 const FIELD_SELECT_FIELDS = objectFreeze(["id", "required", "kind", "options"] as const)
 const states = new WeakMap<object, LocalJsonSchemaRoleState>()
@@ -83,7 +86,7 @@ export function createLocalJsonSchemaRoleHandle(input: {
   ) throw new TypeError("Local JSON Schema role evidence does not match the compiled root.")
 
   const handle = objectFreeze({}) as LocalJsonSchemaRoleHandle
-  weakMapSet(states, handle, objectFreeze({ compiled, root: schema }))
+  weakMapSet(states, handle, objectFreeze({ compiled, resolved: resolveLocalJsonSchemaViewManualRole(compiled) }))
   return handle
 }
 
@@ -99,7 +102,8 @@ export function validateLocalJsonSchemaManualContract(input: {
   const state = weakMapGet(states, role)
   if (state === undefined) throw new TypeError("Local JSON Schema role state is unavailable.")
   const fields = snapshotFields(snapshot.fields)
-  const root = state.root
+  const root = state.resolved.root
+  if (!isJsonObject(root)) return failure("closed-object")
   if (root.type !== "object" || root.additionalProperties !== false) return failure("closed-object")
   if (!isJsonObject(root.properties)) return failure("properties")
 
@@ -121,7 +125,7 @@ export function validateLocalJsonSchemaManualContract(input: {
 
   for (let index = 0; index < fields.length; index += 1) {
     const field = fields[index]
-    const property = root.properties[field.id]
+    const property = state.resolved.properties[field.id]
     if (!isJsonObject(property)) return failure("field-type", index)
     if (field.kind === "approval") {
       if (property.type !== "string" || !sameStrings(readStringArray(property.enum), ["approved", "rejected"])) {
@@ -146,13 +150,14 @@ function snapshotFields(value: unknown): readonly LocalJsonSchemaManualFieldCont
   }
   const descriptors = objectGetOwnPropertyDescriptors(value) as unknown as PropertyDescriptorMap
   const length = descriptors.length?.value
-  if (typeof length !== "number" || !numberIsSafeInteger(length) || length < 0 || length > 128) {
+  if (typeof length !== "number" || !numberIsSafeInteger(length) || length < 0 || length > MAX_MANUAL_FIELDS) {
     throw new TypeError("Local JSON Schema manual fields have an invalid length.")
   }
   if (reflectOwnKeys(descriptors).length !== length + 1) {
     throw new TypeError("Local JSON Schema manual fields must be dense and contain no extra properties.")
   }
   const result: LocalJsonSchemaManualFieldContract[] = []
+  let approvalCount = 0
   for (let index = 0; index < length; index += 1) {
     const descriptor = descriptors[numberAsString(index)]
     if (
@@ -178,6 +183,7 @@ function snapshotFields(value: unknown): readonly LocalJsonSchemaManualFieldCont
     if (baseSnapshot.kind === "approval" && (baseSnapshot.id !== "decision" || baseSnapshot.required !== true)) {
       throw new TypeError("Local JSON Schema approval field is invalid.")
     }
+    if (baseSnapshot.kind === "approval") approvalCount += 1
     if (baseSnapshot.kind === "select") {
       const options = readRequiredStringArray(baseSnapshot.options)
       push(result, objectFreeze({
@@ -193,6 +199,9 @@ function snapshotFields(value: unknown): readonly LocalJsonSchemaManualFieldCont
         kind: baseSnapshot.kind
       }) as LocalJsonSchemaManualFieldContract)
     }
+  }
+  if (approvalCount > 1 || length - approvalCount > 128) {
+    throw new TypeError("Local JSON Schema manual fields exceed the form or approval limit.")
   }
   return objectFreeze(result)
 }
@@ -284,8 +293,8 @@ function snapshotStringArray(value: unknown): string[] | undefined {
   return result
 }
 
-function isJsonObject(value: JsonValue): value is Readonly<Record<string, JsonValue>> {
-  return value !== null && typeof value === "object" && !arrayIsArray(value)
+function isJsonObject(value: JsonValue | undefined): value is Readonly<Record<string, JsonValue>> {
+  return value !== undefined && value !== null && typeof value === "object" && !arrayIsArray(value)
 }
 
 function findEvidence(

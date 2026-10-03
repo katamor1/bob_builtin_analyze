@@ -190,6 +190,73 @@ test("result and context references must resolve against a lexically visible sch
 
 test("manual output schemas must exactly match form, approval, required, and option contracts", async (t) => {
   const workflow = base([approvalStep()])
+  await t.test("128 form fields plus approval compile, while 129 form fields remain invalid", () => {
+    for (const count of [127, 128, 129]) {
+      const step = approvalStep()
+      step.form.fields = Array.from({ length: count }, (_, index) => ({
+        id: "field" + index, title: "Field " + index, type: "string", required: true, multiline: false
+      }))
+      const properties = Object.fromEntries(step.form.fields.map(field => [field.id, { type: "string" }]))
+      properties.decision = { type: "string", enum: ["approved", "rejected"] }
+      const result = compile({
+        "workflow.yaml": workflowYamlText(base([step])),
+        "prompts/review.md": "Review.\n",
+        "schemas/review.json": JSON.stringify(approvalSchema({ properties, required: Object.keys(properties) })) + "\n"
+      })
+      if (count <= 128) assert.equal(result.ok, true, "form fields: " + count)
+      else expectFailure(result, "/steps/0/form/fields")
+    }
+  })
+
+  const referenced = (mode, invalid = false) => {
+    const step = approvalStep()
+    step.form.fields.unshift({ id: "comment", title: "Comment", type: "string", required: true, multiline: false })
+    const body = {
+      type: "object", additionalProperties: false,
+      required: ["comment", "category", "decision"],
+      properties: {
+        comment: { type: "string" },
+        category: { type: "string", enum: invalid ? ["alpha", "gamma"] : ["alpha", "beta"] },
+        decision: { type: "string", enum: ["approved", "rejected"] }
+      }
+    }
+    const definitions = { "string/field~": body.properties.comment, category: body.properties.category, decision: body.properties.decision }
+    if (mode !== "inline") {
+      body.properties = {
+        comment: { $ref: "#/$defs/string~1field~0", description: "Comment", default: "" },
+        category: { $ref: "#/$defs/category" },
+        decision: { $ref: "#/$defs/decision" }
+      }
+    }
+    let output = schema("schemas/review.json", { ...body, $defs: definitions })
+    const extraFiles = {}
+    if (mode === "root chain") output = schema("schemas/review.json", {
+      $ref: "#/$defs/rootAlias", title: "Review", $defs: { ...definitions, rootAlias: { $ref: "#/$defs/body" }, body }
+    })
+    if (mode === "cross document") {
+      output = schema("schemas/review.json", { $ref: "schemas/shared.json#/$defs/body" })
+      extraFiles["schemas/shared.json"] = JSON.stringify(schema("schemas/shared.json", { $defs: { ...definitions, body } })) + "\n"
+    }
+    if (mode === "validation sibling") output = schema("schemas/review.json", {
+      $ref: "#/$defs/body", type: "object", $defs: { ...definitions, body }
+    })
+    return compile({
+      "workflow.yaml": workflowYamlText(base([step])),
+      "prompts/review.md": "Review.\n",
+      "schemas/review.json": JSON.stringify(output) + "\n",
+      ...extraFiles
+    })
+  }
+  for (const mode of ["inline", "field", "root chain", "cross document"]) {
+    await t.test("manual schemas resolve " + mode + " references", () => {
+      assert.equal(referenced(mode).ok, true)
+      expectFailure(referenced(mode, true), "/steps/0/form/fields/1/options")
+    })
+  }
+  await t.test("manual roles fail closed on references with validation siblings", () => {
+    expectFailure(referenced("validation sibling"), "/steps/0/output/schema")
+  })
+
   const cases = [
     ["required", approvalSchema({ required: ["decision"] }), "/steps/0/output/schema"],
     ["additional properties", approvalSchema({ additionalProperties: true }), "/steps/0/output/schema"],

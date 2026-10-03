@@ -50,6 +50,21 @@ test("manual schema role reasoning is owned by an opaque detached F3 handle", ()
   assert.throws(() => subject.validateLocalJsonSchemaManualContract({ role: { ...role }, fields: fields() }), TypeError)
   assert.deepEqual(subject.validateLocalJsonSchemaManualContract({ role, fields: fields() }), { ok: true })
 
+  const referenced = {
+    $schema: DIALECT, $id: "schemas/review.json", $ref: "#/$defs/body",
+    $defs: { body: source(), category: { type: "string", enum: ["alpha", "beta"] } }
+  }
+  delete referenced.$defs.body.$id
+  delete referenced.$defs.body.$schema
+  referenced.$defs.body.properties.category = { $ref: "#/$defs/category" }
+  const referenceView = compiled(referenced)
+  const referenceRole = subject.createLocalJsonSchemaRoleHandle({ compiled: referenceView, schema: referenced })
+  assert.deepEqual(Object.keys(referenceRole), [])
+  assert.deepEqual(subject.validateLocalJsonSchemaManualContract({ role: referenceRole, fields: fields() }), { ok: true })
+  referenced.$defs.category.enum[0] = "changed-after-catalog-snapshot"
+  assert.deepEqual(subject.validateLocalJsonSchemaManualContract({ role: referenceRole, fields: fields() }), { ok: true })
+  assert.throws(() => subject.createLocalJsonSchemaRoleHandle({ compiled: referenceView, schema: referenced }), /evidence|digest|match/i)
+
   schema.properties.category.enum[0] = "changed-after-snapshot"
   assert.deepEqual(subject.validateLocalJsonSchemaManualContract({ role, fields: fields() }), { ok: true })
 })
@@ -91,6 +106,12 @@ test("manual schema role rejects proxy and accessor collections without invoking
     TypeError
   )
   assert.equal(optionTraps, 0)
+
+  const tooManyForms = Array.from({ length: 129 }, (_, index) => ({ id: "field" + index, required: true, kind: "string" }))
+  assert.throws(() => subject.validateLocalJsonSchemaManualContract({ role, fields: tooManyForms }), /form|limit/i)
+  assert.throws(() => subject.validateLocalJsonSchemaManualContract({
+    role, fields: [{ id: "decision", required: true, kind: "approval" }, { id: "decision", required: true, kind: "approval" }]
+  }), /approval|limit/i)
 
   let getterCalls = 0
   const field = { id: "category", required: true, kind: "select" }
