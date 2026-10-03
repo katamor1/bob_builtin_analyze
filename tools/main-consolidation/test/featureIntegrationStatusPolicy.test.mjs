@@ -8,6 +8,7 @@ import {digest} from '../featureSelectionSourcePolicy.mjs'
 const json=path=>JSON.parse(readFileSync(new URL(path,import.meta.url)))
 const completion=()=>json('../../../docs/release-evidence/wave0a-completion-2026-10-01.json')
 const wave0bCompletion=()=>json('../../../docs/release-evidence/wave0b-completion-2026-10-03.json')
+const p4Completion=()=>json('../../../docs/release-evidence/wf2-p4-completion-2026-10-04.json')
 const context=()=>({programIndex:buildProgramIndex(),ledger:json('../../../docs/release-evidence/feature-selection-ledger-2026-08-23.json'),completionObservations:[completion()]})
 const digests=record=>Object.fromEntries(record.externalEvidence.map(row=>[row.id,{bytes:row.bytes,sha256:row.sha256}]))
 test('replays_verified_wave0a_and_planned_slices',()=>{
@@ -99,7 +100,8 @@ test('read_only_generators_reject_input_byte_drift_and_arbitrary_output_flags',a
   ['../create-feature-selection-source-universe.mjs','../feature-selection-semantic-inventory.json'],
   ['../create-feature-selection-ledger.mjs','../../../docs/release-evidence/feature-selection-ledger-2026-08-23.json'],
   ['../create-feature-integration-status.mjs','../../../docs/release-evidence/wave0a-completion-2026-10-01.json'],
-  ['../create-feature-integration-status.mjs','../../../docs/release-evidence/wave0b-completion-2026-10-03.json']
+  ['../create-feature-integration-status.mjs','../../../docs/release-evidence/wave0b-completion-2026-10-03.json'],
+  ['../create-feature-integration-status.mjs','../../../docs/release-evidence/wf2-p4-completion-2026-10-04.json']
  ]
  for(const [modulePath,inputPath] of cases) {
   const {runGenerator}=await import(modulePath);const driftPath=fileURLToPath(new URL(inputPath,import.meta.url))
@@ -138,5 +140,46 @@ test('requires_complete_workspace_disposition',()=>{
  }
  for(const mutation of [p=>p.operations.splice(1,1),p=>p.operations.reverse(),p=>p.localRefDeleted.expectedHeadSha='e'.repeat(40),p=>p.preservation.verifiedManifestSha256='f'.repeat(64),p=>p.mainOnlyTopology.worktreeCount=2,p=>p.preservation.externalRoot='C:/test-owned/worktree/inside']) {
   const changed=structuredClone(disposed);mutation(changed.preservationObservation);assert.throws(()=>validateWorkspaceDisposition(changed))
+ }
+})
+
+
+test('replays_verified_p4_and_admits_p5_without_completing_gate_p',()=>{
+ const c=context();c.completionObservations.push(wave0bCompletion(),p4Completion())
+ const p=projectIntegrationStatus(c)
+ assert.equal(p.acceptedMainSha,'925c50f10e114ac5613135dab7b7439ab3dba0de')
+ assert.deepEqual(p.slices.filter(x=>x.state==='VERIFIED').map(x=>x.sliceId),['WAVE-0B-SELECTION-LEDGER','WF2-P4-COMPILER'])
+ assert.equal(p.capabilities.find(x=>x.id==='WF2-P4-COMPILER').executionState,'VERIFIED')
+ assert.equal(p.boundaries.find(x=>x.id==='WORKFLOW-B-GATE-P').state,'planned')
+ assert.equal(p.slices.filter(x=>x.state==='planned').length,18)
+ assert.ok(p.slices.every(x=>x.observedActivationStatus==='inactive'))
+ assert.ok(p.capabilities.filter(x=>x.id!=='WAVE-0B-SELECTION-LEDGER'&&x.id!=='WF2-P4-COMPILER').every(x=>x.executionState!=='VERIFIED'&&x.observedActivationStatus==='inactive'))
+ assert.deepEqual(p.activeSliceIds,[]);assert.equal(p.mutationAuthority,false);assert.equal(p.automaticCleanup,false)
+ assert.equal(p.nextSliceId,'WF2-P5-PLANSTORE')
+ const next=deriveNextSlice({programIndex:c.programIndex,statusProjection:p})
+ assert.deepEqual(next,c.programIndex.programAtomicSlices[2])
+ next.sliceId='caller-mutation'
+ p.completionReferences[2].acceptedMainSha='a'.repeat(40)
+ assert.throws(()=>deriveNextSlice({programIndex:c.programIndex,statusProjection:p}))
+ assert.equal(deriveNextSlice({programIndex:c.programIndex,statusProjection:projectIntegrationStatus(c)}).sliceId,'WF2-P5-PLANSTORE')
+})
+
+test('rejects_p4_nonprefix_duplicate_and_sparse_completions',()=>{
+ const missingA=Array(3);missingA[1]=wave0bCompletion();missingA[2]=p4Completion()
+ const missingB=Array(3);missingB[0]=completion();missingB[2]=p4Completion()
+ const missingP4=Array(3);missingP4[0]=completion();missingP4[1]=wave0bCompletion()
+ for(const records of [[p4Completion()],[completion(),p4Completion()],[wave0bCompletion(),p4Completion()],[completion(),p4Completion(),wave0bCompletion()],[completion(),wave0bCompletion(),p4Completion(),p4Completion()],[completion(),wave0bCompletion(),wave0bCompletion()],missingA,missingB,missingP4]) {
+  assert.throws(()=>projectIntegrationStatus({...context(),completionObservations:records}))
+ }
+})
+
+test('rejects_p4_evidence_tamper_and_future_completion_authority',()=>{
+ const mutations=[r=>r.acceptedMainSha='a'.repeat(40),r=>r.sourceHeadSha='b'.repeat(40),r=>r.repositoryEvidence[0].commitSha='a'.repeat(40),r=>r.repositoryEvidence[1].blobOid='b'.repeat(40),r=>r.acceptedTreeSha='c'.repeat(40),r=>r.ci[0].workflows[0].jobs[0].checkout.actualHeadSha='d'.repeat(40),r=>r.ci[1].workflows[0].jobs[0].checkout.dispatchNonce='e'.repeat(32),r=>r.externalEvidence[0].sha256='0'.repeat(64),r=>r.preservation.allTargetHashesVerified=false,r=>r.localOperations.nativeRecoverySha='f'.repeat(40),r=>r.topology.worktreeCount=2,r=>r.boundaryId='WORKFLOW-B-GATE-P',r=>r.sliceId='WF2-P5-PLANSTORE',r=>r.productRuntimeActivation='active',...['requestHash','approvalRecord','providerTranscript','claim','futureRecoveryHead'].map(key=>r=>r[key]='forged')]
+ for(const mutate of mutations){const record=p4Completion();mutate(record);assert.throws(()=>validateCompletionObservation(record,{programIndex:buildProgramIndex(),evidenceDigests:digests(record)}))}
+ const record=p4Completion(),evidenceDigests=digests(record);evidenceDigests[record.externalEvidence[0].id].bytes++
+ assert.throws(()=>validateCompletionObservation(record,{programIndex:buildProgramIndex(),evidenceDigests}))
+ const c=context();c.completionObservations.push(wave0bCompletion(),p4Completion())
+ for(const mutate of [p=>p.slices[2].state='VERIFIED',p=>p.boundaries.find(x=>x.id==='WORKFLOW-B-GATE-P').state='VERIFIED',p=>p.completionReferences[2].boundaryId='WF2-P5-PLANSTORE',p=>p.capabilities.find(x=>x.id==='WF2-P4-COMPILER').observedActivationStatus='active']) {
+  const p=projectIntegrationStatus(c);mutate(p);assert.throws(()=>deriveNextSlice({programIndex:c.programIndex,statusProjection:p}))
  }
 })
