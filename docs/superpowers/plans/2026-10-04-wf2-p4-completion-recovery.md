@@ -56,4 +56,6 @@ Taskは一つ。record/evidence digest → registry pin → canonical projection
 
 ## Local Verification — 2026-10-04
 
-P4 recordは82 external bindingsを保持し、351-file snapshot全件、39 raw checkout proofs、candidate/main 12 actual CI runs、native recovery/ref deletionをread-only照合した。focused status suiteはRED 11 pass / 3 failからGREEN 14/14。関連七policy suitesは682/682、skip/failure 0。四generatorの `--check` と `git diff --check` が成功。製品runtime/static Program/ledger/source universe差分0。完了登録のpublic/main反映、P5 authoring、現在workspaceのcleanupは未実施。独立branch reviewはlocal候補固定後に実施し、その結果をowned ledgerへ記録する。
+P4 recordは80 external bindingsと2 immutable Git blob bindingsを保持し、351-file snapshot全件、39 raw checkout proofs、candidate/main 12 actual CI runs、native recovery/ref deletionをread-only照合した。focused status suiteはRED 11 pass / 3 failからGREEN 14/14。関連七policy suitesは682/682、skip/failure 0。四generatorの `--check` と `git diff --check` が成功。製品runtime/static Program/ledger/source universe差分0。完了登録のpublic/main反映、P5 authoring、現在workspaceのcleanupは未実施。独立branch reviewはlocal候補固定後に実施し、その結果をowned ledgerへ記録する。
+
+source mappingとhistorical local implementationの二入力は、今回のworktree pathではなくaccepted main925のimmutable Git blob identity（path/OID/bytes/SHA256）へ結合した。Windows checkoutのCRLF差だけを確認し、Git blobの正確なbytesをpinした。今回workspaceの将来archive後も同じ入力を解決できる。

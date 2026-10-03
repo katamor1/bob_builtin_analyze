@@ -9,7 +9,7 @@ const COMPLETION_REFERENCE = Object.freeze({boundaryId:'WAVE-0A-CONTROL-PLANE',s
 const COMPLETION_REGISTRY = Object.freeze([
   Object.freeze({sha256:COMPLETION_SHA256,evidenceSha256:EVIDENCE_REGISTRY_SHA256,reference:COMPLETION_REFERENCE}),
   Object.freeze({sha256:'df2f2dbfeef64c65fafcf9834998c914949b5c19ba539dccd8dfcd8dac9a91ae',evidenceSha256:'54e570330a0a679c1a11f6216747ff235cf6d282989efd561952657819c06f85',reference:Object.freeze({boundaryId:'WAVE-0B-SELECTION-LEDGER',sha256:'df2f2dbfeef64c65fafcf9834998c914949b5c19ba539dccd8dfcd8dac9a91ae',state:'VERIFIED',acceptedMainSha:'b8876b2714d74bd8bbe686b66d17f2f76467f041'})}),
-  Object.freeze({sha256:'4f8918d53d3d98c207d3f63e531d5812e89c4f2c5a1ea21cae23148c6c727b03',evidenceSha256:'b8296cd07bd1c4693d103001aacf16c41cd420bb97ff800a39f8568c707c8fe5',reference:Object.freeze({boundaryId:'WF2-P4-COMPILER',sha256:'4f8918d53d3d98c207d3f63e531d5812e89c4f2c5a1ea21cae23148c6c727b03',state:'VERIFIED',acceptedMainSha:'925c50f10e114ac5613135dab7b7439ab3dba0de'})})
+  Object.freeze({sha256:'16c1144e7b27cf0edc91fe63f202fa9cb2cce40eafbd1ce9e07af6664fd81081',evidenceSha256:'9db66c92345c5807667256ce223f2697559ebbcbcf956cb8669c19acffb75da6',reference:Object.freeze({boundaryId:'WF2-P4-COMPILER',sha256:'16c1144e7b27cf0edc91fe63f202fa9cb2cce40eafbd1ce9e07af6664fd81081',state:'VERIFIED',acceptedMainSha:'925c50f10e114ac5613135dab7b7439ab3dba0de'})})
 ])
 const hashes = record => Object.fromEntries(record.externalEvidence.map(row=>[row.id,{bytes:row.bytes,sha256:row.sha256}]))
 const gitSha = value => {if(typeof value!=='string'||!/^[a-f0-9]{40}$/.test(value))throw new TypeError('invalid Git identity')}
