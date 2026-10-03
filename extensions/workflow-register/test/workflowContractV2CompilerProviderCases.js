@@ -266,4 +266,3 @@ test("compiled handles retain their bound provider generation after registry dis
   assert.equal(replacement.handle.planDigest, original.handle.planDigest)
   assert.equal(fixture.dispatchCalls(), 0)
 })
-
