@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-07-17-workflow-contract-v2-design.md` §16–17、`2026-07-24-workflow-contract-v2-generation-directory-amendment.md`、`2026-08-23-feature-selection-and-sequential-main-integration-design.md` §7.1・§10.2・§11–12、`2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md`。詳細は `docs/superpowers/plans/2026-07-17-workflow-contract-v2-package-compiler.md` P5と `2026-09-28-v2-migration-remaining-work.md` M2。既存承認済みV2設計の実装計画であり、設計変更はない。
 
-**Status:** local実装と検証完了、独立whole-branch review待ち。P5 focused 55/55、workflow-register全体1992件（1991 pass/1 skip/0 fail、test concurrency=2）、Bazaar 754件（753 pass/1 skip）、Code Consistency 328/328、三extension policy/package成功。実main/baseはSource and Admission Bindingのcaf37d28のまま。P5は未公開・未統合・未activation。Native方式で継続する。
+**Status:** local実装・検証・独立whole-branch review完了（Critical/Important/Minor 0、新規P5 suites 34/34を独立実行）。三extension全体3074件（3072 pass/2 skip/0 fail）、P5関連focused 55/55、root UI/documentation/CI contracts 68/68、policy/package成功。Workflow全体はtest concurrency=2で成功し、先行unbounded実行の既存timeoutとisolated 27/27成功を保全。実main/baseはSource and Admission Bindingのcaf37d28のまま。P5はLOCAL、未公開・未統合・未activation。candidate/actual-main exact-head CIと後続最終UATはpending。
 
 ## Global Constraints
 
@@ -154,7 +154,7 @@ WorkflowRuntimeFactory.invalidateWorkflowPlanSlot(collectionId: string, workflow
 - [x] **Step 3: Implement delegation/public barrel.** module-level `const processWorkflowPlanStore = new WorkflowPlanStore()` とprivate instance referenceを追加して三操作をそのままdelegate。workspace/constructor単位でstoreをnewせずpublic store getterは作らない。barrelへ三runtime exportsと `AcquireWorkflowPlanInput` / `GetOrCompileWorkflowPlanInput` / `WorkflowPlanLease` type exportsだけ追加。V1 method bodiesとconsumer呼出し箇所は変更しない。
 - [x] **Step 4: Run focused GREEN.** compile→三P5 suites＋`test/runtimeWiring.test.js`＋`test/workflowAutomaticPauseRuntimeWiring.test.js` がfailure 0。P1 package schema、P2 loader、P3 lock、P4 compilerのfocused groupsを再実行し回帰なしを確認。
 - [x] **Step 5: Run full/policy/package gates.** 下記local commandsを順に実行しfailure 0、三VSIXのhash/bytes/policyを保存。actual test countsを記録し、P6/P7未存在をPASS扱いしない。Gate P全体はP7までpending。
-- [ ] **Step 6: Commit and independent review.** 三Task 2 filesを明示stage、`git diff --cached --check`、`feat(workflow): delegate plan store through runtime factory`。最後のexact local head/treeに独立whole-branch reviewを実施しCritical/Important 0。同B scopeの修正はlocal commitして必要な検証とreviewを更新。八target surfaces、P4契約維持、zero activation、package上限、source omission/adoptionをreview recordへ結合。
+- [x] **Step 6: Commit and independent review.** 三Task 2 filesを明示stage、`git diff --cached --check`、`feat(workflow): delegate plan store through runtime factory`。最後のexact local head/treeに独立whole-branch reviewを実施しCritical/Important 0。同B scopeの修正はlocal commitして必要な検証とreviewを更新。八target surfaces、P4契約維持、zero activation、package上限、source omission/adoptionをreview recordへ結合。
 
 ## Local Verification Commands
 
@@ -188,3 +188,7 @@ P5がVERIFIEDになるまでP6を開始しない。lease永続化、pointer watc
 ## Plan Self-Review — 2026-10-04
 
 八source items/target surfacesをTask 1五files＋Task 2三filesに一意分割し、source blobとbundle head bindingsを照合。§17のenvironment partition/coalescing/all-purpose get/nonruntime拒否/global epoch/live lease保持/failure retry/pinned reload/idempotent releaseをTask 1へ、sole runtime ownerをTask 2へ対応させた。historical十五behavior familiesとidentity/wiring familyを維持し、Review Focus五条件には追加assertionsを置いた。wiringは実装regexからbehavioral delegationへ改善する。Task 1は未作成barrel/factory APIに依存せずdirect module testsで完結。計画時の四generator checkは成功、product実装テストは未実施。
+
+## Local Execution Result — 2026-10-04
+
+Task 1 commitは21ff9ce46aac5aa407ea7f3f0f07d727a337e336、Task 2 product commitは196650b12f0d580b2ebda274de5b1d8269ce75f9。独立reviewはbase caf37d28からTask 2 head/treeに結合し、八selected source itemsの採用とzero product call sitesを確認。最終plan tracking差分はdocs-onlyとして八product/test blobs不変を照合してfinal candidateへ結合する。technical-only evidenceは本計画専用 .superpowers/sdd/2026-10-04-wf2-p5-planstore/ に保全しmutationAuthority:false。三VSIXはworkflow-register 1,197,265 bytes、Bazaar 3,767,456 bytes、Code Consistency 3,721,538 bytesで全て上限内。hash/source bindingと先行失敗・再検証・判断は専用technical recordsへ保存済み。実機UATの非該当はAPI-only P5 localだけであり、final program UATを免除しない。
