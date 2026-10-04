@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-07-17-workflow-contract-v2-design.md` §16–17、`2026-07-24-workflow-contract-v2-generation-directory-amendment.md`、`2026-08-23-feature-selection-and-sequential-main-integration-design.md` §6.3・§7.1・§11、`2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md`。詳細は `docs/superpowers/plans/2026-07-17-workflow-contract-v2-package-compiler.md` P6と `2026-09-28-v2-migration-remaining-work.md` M2。
 
-**Status:** local implementation in progress in the approved isolated worktree. Tasks 1–5 complete; Task 6 verification complete and local evidence/candidate proposal being finalized. Approved packaging amendment adds package.json, scripts/recompress-vsix.js and test/vsixCompression.test.js; no new dependencies or cap changes.
+**Status:** local execution complete in the approved isolated worktree. Tasks 1–6 complete. State remains LOCAL; candidate publication requires its own C authorization. Approved packaging amendment adds package.json, scripts/recompress-vsix.js and test/vsixCompression.test.js; no new dependencies or cap changes.
 
 ## Global Constraints
 
@@ -196,7 +196,7 @@ node --test scripts/three-extension-command-surface.test.js scripts/three-extens
 - [x] Step 4: VSIX3件をtechnical packagesへcopy/hashし、Workflow上限1,200,000 bytesを含め全package policyを照合。超過を上限変更やruntime files除外で隠さない。同じ所有範囲の簡素化で解消しない場合はpublicationを止め、具体的な追加変更案を提示する。
 - [x] Step 5: actual whole-branch diffをfresh-context reviewerへ一度渡す。Critical/ImportantはRED→fix→GREEN＋関連full suiteの一回の修正pass。Minorはdeferredとして台帳へ記録。headが変われば旧review/CIを使わない。
 - [x] Step 6: local観測のjson/mdと本計画を更新してcommit。stateはLOCAL。同hash VSIXで変更surfaceのproduct UATは必要なC範囲を提示し、未実施をpendingに保つ。
-- [ ] Step 7: candidate publication案をcanonical repository/branch/base/head/tree/変更件数/容量/rollbackとともに準備する。push/PR/4workflow dispatch、exact merge/4main CI、外部保全/lease deletion/native archiveは各別C確認後だけ。P6がVERIFIEDになるまでP7を開始しない。
+- [x] Step 7: candidate publication案をcanonical repository/branch/base/head/tree/変更件数/容量/rollbackとともに準備する。push/PR/4workflow dispatch、exact merge/4main CI、外部保全/lease deletion/native archiveは各別C確認後だけ。P6がVERIFIEDになるまでP7を開始しない。
 
 ## Self-Review and Handoff
 
@@ -221,3 +221,5 @@ Child test processes use a task-marked .superpowers/t6 temporary root inside thi
 The one fresh-context review at 6b6efe31 found four Important issues. The one TDD fix pass at f8ff1ccf closes file-exclusion/wrong-type/incomplete-slot reservation, malformed-slot isolation, partial V1 registration retry, and persisted-run mutation/recovery before engine entry. workflowRunCommands.ts is added to the guard scope; internal workflowById plumbing retains the fixed shadow decision and does not expose an activation switch. Structural sourceLayoutPolicy.test.js and the existing guarded-store constructor test are maintained. One exact /.t/ ignore rule supports an exclusively marked short Windows TMP. All previous technical roots and failed attempts remain retained.
 
 Workflow full result: 2034 pass / 1 skip / 0 fail. Final Workflow VSIX: 1,197,704 bytes / 897 entries, unchanged 1,200,000-byte cap. Three VSIX artifacts have independent decoder CRC/length/content hash manifests. Program full attempt03: 854 pass / 0 fail. Local-only completion evidence records all required gates, failed attempts, source/package/log hashes and the single review fix pass. Hosted CI, installed UAT, merge, preservation/cleanup and P6 VERIFIED remain pending.
+
+Final disposition: keep codex/v2-p6-entrypoint and its managed worktree. The exact candidate proposal is generated after the final documentation commit, including SHA/tree, 48 changed files, three VSIX identities, four dispatch nonces and rollback scope. It grants no mutation authority.
