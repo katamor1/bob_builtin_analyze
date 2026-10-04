@@ -207,3 +207,47 @@ test('keeps_p4_canonical_bytes_after_autocrlf_checkout',async t=>{
   writeStdout:()=>assert.fail('check mode must not write output')
  })
 })
+
+const p5Completion=()=>json('../../../docs/release-evidence/wf2-p5-completion-2026-10-05.json')
+test('accepts_verified_p5_completion_and_admits_only_p6',()=>{
+ const c=context();c.completionObservations.push(wave0bCompletion(),p4Completion(),p5Completion())
+ const p=projectIntegrationStatus(c)
+ assert.equal(p.acceptedMainSha,'90c678d3d33ae61a5523f2d9cf8057538028dd4b')
+ assert.equal(deriveNextSlice({programIndex:c.programIndex,statusProjection:p}).sliceId,'WF2-P6-ENTRYPOINT')
+ assert.equal(p.slices.find(x=>x.sliceId==='WF2-P5-PLANSTORE').state,'VERIFIED')
+ for(const id of ['WF2-P6-ENTRYPOINT','WF2-P7-MANIFEST'])assert.equal(p.slices.find(x=>x.sliceId===id).state,'planned')
+ assert.equal(p.boundaries.find(x=>x.id==='WORKFLOW-B-GATE-P').state,'planned')
+ assert.ok(p.capabilities.every(x=>x.observedActivationStatus==='inactive'))
+})
+test('rejects_p5_record_evidence_tamper_and_future_p6_promotion',()=>{
+ for(const mutate of [r=>r.acceptedMainSha='a'.repeat(40),r=>r.externalEvidence[0].bytes++,r=>r.ci.requiredMainWorkflows[0].jobs[0].checkoutProof.actualHeadSha='b'.repeat(40),r=>r.localOperations.remoteDeleteVerified=false,r=>r.mutationAuthority=true,r=>r.productRuntimeActivation='active']){
+ const r=p5Completion();mutate(r);assert.throws(()=>validateCompletionObservation(r,{programIndex:buildProgramIndex(),evidenceDigests:digests(r)}))
+ }
+ const r=p5Completion(),e=digests(r);e[r.externalEvidence[0].id].bytes++;assert.throws(()=>validateCompletionObservation(r,{programIndex:buildProgramIndex(),evidenceDigests:e}))
+ const c=context();c.completionObservations.push(wave0bCompletion(),p4Completion(),r)
+ const p=projectIntegrationStatus(c);p.slices.find(x=>x.sliceId==='WF2-P6-ENTRYPOINT').state='VERIFIED'
+ assert.throws(()=>deriveNextSlice({programIndex:c.programIndex,statusProjection:p}))
+})
+test('keeps_p5_canonical_bytes_after_autocrlf_checkout',async t=>{
+ const {mkdtempSync,rmSync}=await import('node:fs')
+ const {tmpdir}=await import('node:os')
+ const {join,resolve,sep,basename}=await import('node:path')
+ const {execFileSync}=await import('node:child_process')
+ const {runGenerator}=await import('../create-feature-integration-status.mjs')
+ const root=fileURLToPath(new URL('../../../',import.meta.url))
+ const temp=mkdtempSync(join(tmpdir(),'p5-canonical-checkout-'))
+ t.after(()=>{
+  assert.equal(resolve(temp).startsWith(resolve(tmpdir())+sep),true)
+  assert.equal(basename(temp).startsWith('p5-canonical-checkout-'),true)
+  rmSync(temp,{recursive:true,force:true})
+ })
+ const relative='docs/release-evidence/wf2-p5-completion-2026-10-05.json'
+ execFileSync('git',['-c','core.autocrlf=true','checkout-index','--prefix='+temp.replaceAll('\\','/')+'/', '--',relative],{cwd:root,windowsHide:true})
+ const checkedOut=readFileSync(join(temp,relative))
+ const committed=execFileSync('git',['show',':'+relative],{cwd:root,windowsHide:true})
+ assert.equal(checkedOut.equals(committed),true,'fresh core.autocrlf=true checkout must retain exact canonical P5 bytes')
+ await runGenerator(['--check'],{
+  readFile:async path=>path.endsWith('wf2-p5-completion-2026-10-05.json')?checkedOut:readFileSync(path),
+  writeStdout:()=>assert.fail('check mode must not write output')
+ })
+})
