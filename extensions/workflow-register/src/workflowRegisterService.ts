@@ -7,7 +7,7 @@ import {
 import { StepRuntime, type StepCompletionExpectation } from "./bobStepRuntime"
 import type { BobSourceLike } from "./bobApi"
 import { createDefaultActionRegistry } from "./core/actionRegistry"
-import type { ActionProvider, ActionProviderRegistration } from "./core/actionRegistry"
+import type { ActionProvider, ActionProviderRegistration, WorkflowProviderRegistration, WorkflowProviderRegistrationInput } from "./core/actionRegistry"
 import { ActionProviderRegistrationStore } from "./core/actionProviderRegistrationStore"
 import type { AgentProvider, CoreWorkflowDefinition } from "./core/model"
 import type { ResultSinkRegistry } from "./core/resultSinkRegistry"
@@ -23,6 +23,9 @@ import {
   registerWorkflows as registerWorkflowDefinitions,
   type RegistrationResult
 } from "./workflowRegistrationService"
+import { createWorkflowContractV2ProductEntrypoint } from "./workflowContractV2Product"
+import { WorkflowContractV2ProviderLifecycle } from "./workflowContractV2ProviderLifecycle"
+import { WorkflowCatalogReloadCoordinator } from "./workflowCatalogReloadCoordinator"
 import { WorkflowRuntimeFactory } from "./workflowRuntimeFactory"
 import { collectBobWorkflowInputs } from "./workflowInputPrompt"
 import { WorkflowRunCommandService } from "./workflowRunCommands"
@@ -51,6 +54,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
   private readonly actionProviderRegistrations = new ActionProviderRegistrationStore()
   private readonly manualStepPanel: ManualStepPanelController
   private readonly runtimeFactory: WorkflowRuntimeFactory
+  private readonly contractV2Providers: WorkflowContractV2ProviderLifecycle
+  private readonly catalogReloads = new WorkflowCatalogReloadCoordinator()
   private readonly runCommands: WorkflowRunCommandService
   private agentProvider?: AgentProvider
   private registeredSource?: BobSourceLike
@@ -84,6 +89,18 @@ export class WorkflowRegisterService implements vscode.Disposable {
       inputsProvider: (workflow, provided) => collectBobWorkflowInputs(workflow, provided),
       onManualStepHeld: (input) => this.manualStepPanel.show(input)
     })
+    this.contractV2Providers = new WorkflowContractV2ProviderLifecycle({
+      actionRegistry: this.actionRegistry,
+      createEntrypoint: () => createWorkflowContractV2ProductEntrypoint({
+        actionRegistry: this.actionRegistry,
+        planStore: {
+          getOrCompile: (input) => this.runtimeFactory.getOrCompileWorkflowPlan(input),
+          acquire: (input) => this.runtimeFactory.acquireWorkflowPlan(input),
+          invalidate: (collectionId, workflowId) => this.runtimeFactory.invalidateWorkflowPlanSlot(collectionId, workflowId)
+        }
+      }),
+      onChanged: () => { void this.reload({ showReport: false }).catch(console.warn) }
+    })
     this.runCommands = new WorkflowRunCommandService({
       coreWorkflows: this.coreWorkflows,
       runtimeFactory: this.runtimeFactory,
@@ -102,6 +119,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.catalogReloads.dispose()
+    this.contractV2Providers.dispose()
     this.watcher.dispose()
     this.manualStepPanel.dispose()
     this.bobWorkflowGates.dispose()
@@ -167,6 +186,10 @@ export class WorkflowRegisterService implements vscode.Disposable {
 
   registerActionProvider(provider: ActionProvider): ActionProviderRegistration {
     return this.actionProviderRegistrations.track(this.actionRegistry.register(provider))
+  }
+
+  registerWorkflowProviderContract(input: WorkflowProviderRegistrationInput): WorkflowProviderRegistration {
+    return this.contractV2Providers.register(input)
   }
 
   registerAgentProvider(provider: AgentProvider): void {
@@ -245,7 +268,11 @@ export class WorkflowRegisterService implements vscode.Disposable {
     return markerRoots.length > 0 ? markerRoots : fallbackWorkspaceRootCandidates(folders)
   }
 
-  async reload(options: { showReport: boolean }): Promise<void> {
+  reload(options: { showReport: boolean }): Promise<void> {
+    return this.catalogReloads.run(() => this.reloadCatalog(options))
+  }
+
+  private async reloadCatalog(options: { showReport: boolean }): Promise<void> {
     const trustError = await requireTrustedWorkspace("ワークフロー登録を再読み込み", { showWarning: options.showReport })
     if (trustError) {
       this.lastResult = { summary: "ワークスペースが信頼されていません。", lines: [`- 失敗: ${trustError}`] }

@@ -10,6 +10,7 @@ import {
 } from "./contractV2/providerRegistry"
 
 export type { ActionProvider, ActionProviderRegistration } from "./actionTypes"
+export type { WorkflowProviderRegistration, WorkflowProviderRegistrationInput } from "./contractV2/providerRegistry"
 
 interface RegisteredActionProvider {
   provider: ActionProvider
