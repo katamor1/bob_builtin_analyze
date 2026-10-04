@@ -34,4 +34,3 @@ export class WorkflowCatalogReloadCoordinator {
     this.disposed = true
   }
 }
-
