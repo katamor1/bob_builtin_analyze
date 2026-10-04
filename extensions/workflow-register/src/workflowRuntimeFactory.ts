@@ -14,6 +14,13 @@ import type {
 import type { ActionRegistry } from "./core/actionRegistry"
 import { normalizeAutomaticPauseSettings } from "./core/automaticPauseSettings"
 import { createCommandAgentProvider } from "./core/agentProvider"
+import {
+  WorkflowPlanStore,
+  type AcquireWorkflowPlanInput,
+  type CompiledWorkflowPlanHandle,
+  type GetOrCompileWorkflowPlanInput,
+  type WorkflowPlanLease
+} from "./core/contractV2"
 import { WorkflowEngine } from "./core/engine"
 import type { ManualCompletionInput, ManualCompletionResult, WorkflowEngineOptions } from "./core/engine"
 import type { AgentProvider } from "./core/model"
@@ -43,8 +50,24 @@ export interface WorkflowRuntimeFactoryOptions {
   onManualStepHeld?: (input: { workflow: import("./core/model").CoreWorkflowDefinition; run: import("./core/model").WorkflowRunState; step: import("./core/model").EngineStep; active: ActiveStep }) => Promise<void> | void
 }
 
+const processWorkflowPlanStore = new WorkflowPlanStore()
+
 export class WorkflowRuntimeFactory {
+  private readonly workflowPlanStore = processWorkflowPlanStore
+
   constructor(private readonly options: WorkflowRuntimeFactoryOptions) {}
+
+  getOrCompileWorkflowPlan(input: GetOrCompileWorkflowPlanInput): Promise<CompiledWorkflowPlanHandle> {
+    return this.workflowPlanStore.getOrCompile(input)
+  }
+
+  acquireWorkflowPlan(input: AcquireWorkflowPlanInput): Promise<WorkflowPlanLease> {
+    return this.workflowPlanStore.acquire(input)
+  }
+
+  invalidateWorkflowPlanSlot(collectionId: string, workflowId: string): void {
+    this.workflowPlanStore.invalidateSlot(collectionId, workflowId)
+  }
 
   createEngine(workspaceRoot: string, agentProvider?: AgentProvider): WorkflowEngine {
     const snapshotStore = this.createTaskSnapshotStore(workspaceRoot)

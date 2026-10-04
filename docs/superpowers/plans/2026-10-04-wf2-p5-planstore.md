@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-07-17-workflow-contract-v2-design.md` §16–17、`2026-07-24-workflow-contract-v2-generation-directory-amendment.md`、`2026-08-23-feature-selection-and-sequential-main-integration-design.md` §7.1・§10.2・§11–12、`2026-08-31-wave0a-risk-tiered-approval-and-evidence-design.md`。詳細は `docs/superpowers/plans/2026-07-17-workflow-contract-v2-package-compiler.md` P5と `2026-09-28-v2-migration-remaining-work.md` M2。既存承認済みV2設計の実装計画であり、設計変更はない。
 
-**Status:** local implementation中。Task 1のstore/leaseはfocused 31/31、全体1989件（1988 pass/1 skip/0 fail）、policy/package成功。Task 2は未実装。P4実main/baseは上記bindingのまま、P5は未公開・未統合・未activation。Native方式で継続する。
+**Status:** local実装と検証完了、独立whole-branch review待ち。P5 focused 55/55、workflow-register全体1992件（1991 pass/1 skip/0 fail、test concurrency=2）、Bazaar 754件（753 pass/1 skip）、Code Consistency 328/328、三extension policy/package成功。実main/baseはSource and Admission Bindingのcaf37d28のまま。P5は未公開・未統合・未activation。Native方式で継続する。
 
 ## Global Constraints
 
@@ -35,7 +35,7 @@
 
 ## Source and Admission Binding
 
-planning/execution baseは上記の実main。2026-10-04のread-only照合でremote headsはそのmain一件、open PR=0、primary tracked cleanを確認。primaryの三つの既存untracked pathsには触れない。
+planning/execution baseは実main caf37d28195898a0893dce7f1d565666c48c12ba、tree 63d4964ea0174ac580c1b6f2b4c3ea7cbfed3151。2026-10-04のread-only照合でremote headsはそのmain一件、open PR=0、primary tracked cleanを確認。primaryの三つの既存untracked pathsには触れない。
 
 historical sourceは旧PR #154 owner-stage `e0766f9448033688964fabbcfa6ae73b3d849ed0` → `45260e0b5a96e50bf01b820b71103b33f2067d8c`。正本は `docs/release-evidence/feature-selection-ledger-2026-08-23.json` と `tools/main-consolidation/feature-selection-source-universe.json` のP5八items。tranche `workflow-b` 全体はP4–P7を含むので採用範囲にしない。historical filesを現行P4の改善済み契約へ合わせて再構成する。
 
@@ -149,11 +149,11 @@ WorkflowRuntimeFactory.acquireWorkflowPlan(input: AcquireWorkflowPlanInput): Pro
 WorkflowRuntimeFactory.invalidateWorkflowPlanSlot(collectionId: string, workflowId: string): void
 ```
 
-- [ ] **Step 1: Write failing behavioral wiring tests.** `workflow runtime factory owns one process-wide plan store and exposes only delegated operations` は既存AutomaticPauseRuntimeWiringのvscode stub/Module._load restoration方式を利用。factory moduleだけの `./core/contractV2` importにfake storeを注入し、二factoryから三操作を呼ぶ。`assert.equal(constructedStores.length,1)`、各callの同一receiver、正確なinput identity/collectionId/workflowId、sentinel handle/leaseを変更せず返すことをassert。constructorと既存V1 engine作成だけではstore operation call数0。source textのregex一致をsingleton証明にしない。`public plan store facade does not expose private factories or state` はruntime barrel exportsが既存二facade＋store/二errorだけで、private lease factory/slot snapshot/state/accessorを公開しないことをassert。
-- [ ] **Step 2: Run RED.** `npm run compile` → `node --test test/workflowContractV2PlanStoreRuntimeWiring.test.js`。Task 1はGREENのまま、新factory methods/barrel不在の新failureを保存。
-- [ ] **Step 3: Implement delegation/public barrel.** module-level `const processWorkflowPlanStore = new WorkflowPlanStore()` とprivate instance referenceを追加して三操作をそのままdelegate。workspace/constructor単位でstoreをnewせずpublic store getterは作らない。barrelへ三runtime exportsと `AcquireWorkflowPlanInput` / `GetOrCompileWorkflowPlanInput` / `WorkflowPlanLease` type exportsだけ追加。V1 method bodiesとconsumer呼出し箇所は変更しない。
-- [ ] **Step 4: Run focused GREEN.** compile→三P5 suites＋`test/runtimeWiring.test.js`＋`test/workflowAutomaticPauseRuntimeWiring.test.js` がfailure 0。P1 package schema、P2 loader、P3 lock、P4 compilerのfocused groupsを再実行し回帰なしを確認。
-- [ ] **Step 5: Run full/policy/package gates.** 下記local commandsを順に実行しfailure 0、三VSIXのhash/bytes/policyを保存。actual test countsを記録し、P6/P7未存在をPASS扱いしない。Gate P全体はP7までpending。
+- [x] **Step 1: Write failing behavioral wiring tests.** `workflow runtime factory owns one process-wide plan store and exposes only delegated operations` は既存AutomaticPauseRuntimeWiringのvscode stub/Module._load restoration方式を利用。factory moduleだけの `./core/contractV2` importにfake storeを注入し、二factoryから三操作を呼ぶ。`assert.equal(constructedStores.length,1)`、各callの同一receiver、正確なinput identity/collectionId/workflowId、sentinel handle/leaseを変更せず返すことをassert。constructorと既存V1 engine作成だけではstore operation call数0。source textのregex一致をsingleton証明にしない。`public plan store facade does not expose private factories or state` はruntime barrel exportsが既存二facade＋store/二errorだけで、private lease factory/slot snapshot/state/accessorを公開しないことをassert。
+- [x] **Step 2: Run RED.** `npm run compile` → `node --test test/workflowContractV2PlanStoreRuntimeWiring.test.js`。Task 1はGREENのまま、新factory methods/barrel不在の新failureを保存。
+- [x] **Step 3: Implement delegation/public barrel.** module-level `const processWorkflowPlanStore = new WorkflowPlanStore()` とprivate instance referenceを追加して三操作をそのままdelegate。workspace/constructor単位でstoreをnewせずpublic store getterは作らない。barrelへ三runtime exportsと `AcquireWorkflowPlanInput` / `GetOrCompileWorkflowPlanInput` / `WorkflowPlanLease` type exportsだけ追加。V1 method bodiesとconsumer呼出し箇所は変更しない。
+- [x] **Step 4: Run focused GREEN.** compile→三P5 suites＋`test/runtimeWiring.test.js`＋`test/workflowAutomaticPauseRuntimeWiring.test.js` がfailure 0。P1 package schema、P2 loader、P3 lock、P4 compilerのfocused groupsを再実行し回帰なしを確認。
+- [x] **Step 5: Run full/policy/package gates.** 下記local commandsを順に実行しfailure 0、三VSIXのhash/bytes/policyを保存。actual test countsを記録し、P6/P7未存在をPASS扱いしない。Gate P全体はP7までpending。
 - [ ] **Step 6: Commit and independent review.** 三Task 2 filesを明示stage、`git diff --cached --check`、`feat(workflow): delegate plan store through runtime factory`。最後のexact local head/treeに独立whole-branch reviewを実施しCritical/Important 0。同B scopeの修正はlocal commitして必要な検証とreviewを更新。八target surfaces、P4契約維持、zero activation、package上限、source omission/adoptionをreview recordへ結合。
 
 ## Local Verification Commands
