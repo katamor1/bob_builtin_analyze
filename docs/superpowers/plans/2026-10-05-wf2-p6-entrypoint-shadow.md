@@ -223,3 +223,9 @@ The one fresh-context review at 6b6efe31 found four Important issues. The one TD
 Workflow full result: 2034 pass / 1 skip / 0 fail. Final Workflow VSIX: 1,197,704 bytes / 897 entries, unchanged 1,200,000-byte cap. Three VSIX artifacts have independent decoder CRC/length/content hash manifests. Program full attempt03: 854 pass / 0 fail. Local-only completion evidence records all required gates, failed attempts, source/package/log hashes and the single review fix pass. Hosted CI, installed UAT, merge, preservation/cleanup and P6 VERIFIED remain pending.
 
 Final disposition: keep codex/v2-p6-entrypoint and its managed worktree. The exact candidate proposal is generated after the final documentation commit, including SHA/tree, 48 changed files, three VSIX identities, four dispatch nonces and rollback scope. It grants no mutation authority.
+
+## Candidate publication and CI whitespace correction
+
+Approved publication created Draft PR #182 at 86ff3f2bd8e8dd5600042bc9545a33604f53310c and dispatched four recorded manual workflows. All 11 required jobs succeeded; the metrics job was skipped as required. Raw job logs bind the exact head and nonces. Automatic PR quality/contracts passed, while PR UI whitespace validation found one new trailing blank line in workflowCatalogReloadCoordinator.ts.
+
+The local formatting correction at d4fe8544d89b172464270b0371ee8b2334dbce30 removes one LF. Compile and the two coordinator tests pass; all 558 emitted files remain byte-identical. LOCAL source/evidence bindings are refreshed without rewriting historical full-suite/review heads. No additional behavior change, new full-suite execution or second review is claimed. An amendment for a normal branch update of the existing Draft PR and four fresh exact-head workflows is prepared separately; it grants no mutation authority. Merge, same-hash UAT, external preservation/cleanup, P6 VERIFIED and P7 remain pending.

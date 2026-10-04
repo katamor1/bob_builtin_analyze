@@ -3,17 +3,17 @@
   "repository": "katamor1/bob_builtin_analyze",
   "sliceId": "WF2-P6-ENTRYPOINT",
   "state": "LOCAL",
-  "observedAt": "2026-10-04T21:08:53.222Z",
+  "observedAt": "2026-10-04T21:51:57.814Z",
   "mutationAuthority": false,
   "activation": "shadow",
   "base": "90c678d3d33ae61a5523f2d9cf8057538028dd4b",
-  "implementationHead": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
-  "implementationTree": "b29daa768cceae147a82f6eb922911e534335e0c",
+  "implementationHead": "d4fe8544d89b172464270b0371ee8b2334dbce30",
+  "implementationTree": "0e6ea3c5732cfd60cb03f5eb657a6cfb2f4d8e47",
   "sourceReconciliation": {
     "schemaVersion": 1,
     "sliceId": "WF2-P6-ENTRYPOINT",
     "base": "90c678d3d33ae61a5523f2d9cf8057538028dd4b",
-    "implementationHead": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+    "implementationHead": "d4fe8544d89b172464270b0371ee8b2334dbce30",
     "sourceItemCount": 26,
     "targetSurfaceCount": 24,
     "rows": [
@@ -342,7 +342,7 @@
           "WorkflowCatalogReloadCoordinator"
         ],
         "sourceBlob": "36b604671f5c05dbb96229e4f3f4e629a806e467",
-        "currentSha256": "a7a8a1acd8393b2585e889e34489aa17a4ca9e13e7b8e0450dc4b7f85821ec05",
+        "currentSha256": "82c8a53d3a1da9c8a97e5146c668d21b6f551455ac1ed7fe7b8fdb21e70da7a2",
         "mode": "reconstructed",
         "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
       },
@@ -918,6 +918,70 @@
       "logSha256": "83ae34f0093560fc7f431123bb720794f531093a05fa23e7570da220c33e6edb"
     },
     {
+      "label": "task6-final-local-check-02",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        ".superpowers/sdd/2026-10-05-wf2-p6-entrypoint/verify-final-local.cjs"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 2224,
+      "observedAt": "2026-10-04T21:13:14.652Z",
+      "log": "logs/task6-final-local-check-02.log",
+      "headAtStart": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "treeAtStart": "abdebe8fc0db3780e42999fd64678ab08dbfc7ca",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 256,
+      "logSha256": "4c2604a7af66dc551842dc78864d87b917cef203809a1c704b52067766fec0d2"
+    },
+    {
+      "label": "task6-final-local-check",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        ".superpowers/sdd/2026-10-05-wf2-p6-entrypoint/verify-final-local.cjs"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 2325,
+      "observedAt": "2026-10-04T21:10:43.259Z",
+      "log": "logs/task6-final-local-check.log",
+      "headAtStart": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+      "treeAtStart": "b29daa768cceae147a82f6eb922911e534335e0c",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 256,
+      "logSha256": "4c2604a7af66dc551842dc78864d87b917cef203809a1c704b52067766fec0d2"
+    },
+    {
+      "label": "task6-final-status-check",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        "tools/main-consolidation/create-feature-integration-status.mjs",
+        "--check"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 635,
+      "observedAt": "2026-10-04T21:13:15.474Z",
+      "log": "logs/task6-final-status-check.log",
+      "headAtStart": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "treeAtStart": "abdebe8fc0db3780e42999fd64678ab08dbfc7ca",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
       "label": "task6-package-independent-read-02",
       "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
       "command": "node",
@@ -1102,6 +1166,109 @@
       },
       "logBytes": 330,
       "logSha256": "8f2c9314b2ca44c634222009c9cbda08781aa611d25d392693d92f5485e45ca6"
+    },
+    {
+      "label": "task6-publication-whitespace-compile",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "compile"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 7046,
+      "observedAt": "2026-10-04T21:50:01.450Z",
+      "log": "logs/task6-publication-whitespace-compile.log",
+      "headAtStart": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "treeAtStart": "abdebe8fc0db3780e42999fd64678ab08dbfc7ca",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 48,
+      "logSha256": "d2878af553c5d9e037818a539ed880b6a68b6ee0d930965505e64c0c8e211bae"
+    },
+    {
+      "label": "task6-publication-whitespace-focused",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "node",
+      "args": [
+        "--test",
+        "test/workflowCatalogReloadCoordinator.test.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 377,
+      "observedAt": "2026-10-04T21:50:02.824Z",
+      "log": "logs/task6-publication-whitespace-focused.log",
+      "headAtStart": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "treeAtStart": "abdebe8fc0db3780e42999fd64678ab08dbfc7ca",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 588,
+      "logSha256": "323c9157ff1a9d44947f25e4a2bc8cbe9a69183fdfa5c255cc960dba93473cbe"
+    },
+    {
+      "label": "task6-publication-whitespace-green",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "git",
+      "args": [
+        "diff",
+        "--check",
+        "90c678d3d33ae61a5523f2d9cf8057538028dd4b",
+        "--",
+        ".",
+        ":(exclude)docs/release-evidence/workflow-contract-v2-foundation-doc-sync.patch"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 298,
+      "observedAt": "2026-10-04T21:49:54.245Z",
+      "log": "logs/task6-publication-whitespace-green.log",
+      "headAtStart": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "treeAtStart": "abdebe8fc0db3780e42999fd64678ab08dbfc7ca",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 161,
+      "logSha256": "6c57466eead11bf3fd51ab4a53c9f47e4dfd5f8390b2cb509fcdb43e94466f50"
+    },
+    {
+      "label": "task6-publication-whitespace-red",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "git",
+      "args": [
+        "diff",
+        "--check",
+        "90c678d3d33ae61a5523f2d9cf8057538028dd4b...HEAD",
+        "--",
+        ".",
+        ":(exclude)docs/release-evidence/workflow-contract-v2-foundation-doc-sync.patch"
+      ],
+      "exitCode": 2,
+      "signal": null,
+      "durationMs": 280,
+      "observedAt": "2026-10-04T21:47:01.452Z",
+      "log": "logs/task6-publication-whitespace-red.log",
+      "headAtStart": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "treeAtStart": "abdebe8fc0db3780e42999fd64678ab08dbfc7ca",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 96,
+      "logSha256": "599d6582e23cffb513419bb85e8055f234f7a7324fe891946f30fecfee8bba81"
     },
     {
       "label": "task6-review-boundary-red",
@@ -1896,6 +2063,65 @@
       },
       "logBytes": 25802,
       "logSha256": "354ba57062c77204d29cad6181a5c3c796f6acd3046a275aa6a820cdf36b7bc1"
+    },
+    {
+      "label": "task6-write-local-evidence",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        ".superpowers/sdd/2026-10-05-wf2-p6-entrypoint/write-local-evidence.cjs"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 843,
+      "observedAt": "2026-10-04T21:08:53.374Z",
+      "log": "logs/task6-write-local-evidence.log",
+      "headAtStart": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+      "treeAtStart": "b29daa768cceae147a82f6eb922911e534335e0c",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 389,
+      "logSha256": "a22fbe753bc0207a9d9137e7d6bc312cdb5d0cd4e1847434b0ab365412621bf0"
+    },
+    {
+      "label": "task6-publication-ui-green",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        "--test",
+        "scripts/three-extension-command-surface.test.js",
+        "scripts/three-extension-documentation-contract.test.js",
+        "scripts/bazaar-review-documentation-parity.test.js",
+        "scripts/code-consistency-documentation-parity.test.js",
+        "scripts/workflow-register-documentation-parity.test.js",
+        "scripts/extension-host-smoke-contract.test.js",
+        "scripts/three-extension-ui-contract-workflow.test.js",
+        "scripts/ci-baseline-summary.test.js",
+        "scripts/verify-ci-head.test.js",
+        "scripts/exact-head-ci-contract.test.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 2242,
+      "observedAt": "2026-10-04T21:52:44.286Z",
+      "log": "logs/task6-publication-ui-green.log",
+      "headAtStart": "d4fe8544d89b172464270b0371ee8b2334dbce30",
+      "treeAtStart": "0e6ea3c5732cfd60cb03f5eb657a6cfb2f4d8e47",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 68,
+        "pass": 68,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 15553,
+      "logSha256": "22c6c34fcb617484f3c778d3f217b153fd4965944932b88ba3af6fc7453cfdcb"
     }
   ],
   "packages": [
@@ -2086,7 +2312,8 @@
     "Final: Ruling: Hosted CI and installed VS Code/Bob UAT remain pending — local tests/source review cannot establish installed product outcomes — cost if wrong: platform integration issues remain undiscovered before those separate gates.",
     "Final: Ruling: Final evidence/publication/merge/preservation/cleanup are completion gates after the reviewed implementation — the reviewer assessed the immutable code head, not future external operations — cost if wrong: final evidence consistency requires executor checks and separately authorized exact-head hosted acceptance.",
     "Task 6: Ruling: Shorten child TMP further to task-marked .bob/t6 inside the same worktree — three nested program cases use longer staging labels whose bundle paths still exceed 260 characters at .superpowers/t6 (calculated 264); the new longest path is 257 — cost if wrong: one additional ignored task-only temporary root to preserve and clean separately. Prior TMP and all failure logs are retained.",
-    "Task 6: Ruling: Use exclusive task-marked .t and add one exact /.t/ ignore rule — the final marker case label is longer than the prior probe; worst paths are 258/259 bytes for 5/6-digit PIDs here, while .bob/t6 still gives 263/264 — cost if wrong: one additional .gitignore rule and retained temporary root; no product or archive-tool changes. Prior roots and attempts remain intact."
+    "Task 6: Ruling: Use exclusive task-marked .t and add one exact /.t/ ignore rule — the final marker case label is longer than the prior probe; worst paths are 258/259 bytes for 5/6-digit PIDs here, while .bob/t6 still gives 263/264 — cost if wrong: one additional .gitignore rule and retained temporary root; no product or archive-tool changes. Prior roots and attempts remain intact.",
+    "- Ruling: PR CIの末尾空行1 byteを同じ所有範囲で修正し、558 compiled outputsのbyte一致、compile・関連2 tests・base-to-candidate whitespace gateで検証する。先行full suites/review/hosted CIのheadは書き換えず保持し、新candidateの4 hosted gatesは別C再公開後に再実行する。Cost: LOCAL evidence/source bindingを再観測し、new exact-head CIの所要時間を負担する。"
   ],
   "gatesRequired": [
     "task6-workflow-full-03",
@@ -2114,7 +2341,11 @@
     "task6-bob-code-consistency-review-package",
     "task6-bob-code-consistency-review-package-policy",
     "task6-bob-bazaar-review-artifact-policy",
-    "task6-bob-bazaar-review-unused-policy"
+    "task6-bob-bazaar-review-unused-policy",
+    "task6-publication-whitespace-green",
+    "task6-publication-whitespace-compile",
+    "task6-publication-whitespace-focused",
+    "task6-publication-ui-green"
   ],
   "logReplacementNote": "First successful Workflow policy logs were replaced by the same-label rerun before append-only label guarding; initial failed full suites and all subsequent attempts are retained.",
   "productEffects": {
@@ -2128,12 +2359,113 @@
     "artifactStaging": false
   },
   "pending": [
-    "candidate push and PR",
-    "four exact-head hosted workflows",
+    "normal update of existing Draft PR #182 branch to corrected exact candidate, with separate C confirmation",
+    "four new exact-head manual hosted workflows and automatic PR checks for corrected candidate",
     "separate exact merge authorization and four main workflows",
     "same-hash product UAT and VSIX installation authorization",
     "external preservation and separately authorized cleanup/native archive",
     "P6 VERIFIED completion observation",
     "P7 and later migration slices"
-  ]
+  ],
+  "priorLocalObservation": {
+    "head": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+    "implementationHead": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+    "implementationTree": "b29daa768cceae147a82f6eb922911e534335e0c",
+    "gitBlobOid": "802b8d290a2f2271ee0637e4a4b98ff0704eb596",
+    "sha256": "fe95b5c7488d9679ef9fa33b42e0dab692d2871e79b800ac8f132fd43464ffbe"
+  },
+  "postPublicationCorrection": {
+    "schemaVersion": "bob-builtin-analyze/ci-whitespace-correction/v1",
+    "previousCandidate": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+    "previousTree": "abdebe8fc0db3780e42999fd64678ab08dbfc7ca",
+    "path": "extensions/workflow-register/src/workflowCatalogReloadCoordinator.ts",
+    "oldBytes": 1313,
+    "oldSha256": "a7a8a1acd8393b2585e889e34489aa17a4ca9e13e7b8e0450dc4b7f85821ec05",
+    "newBytes": 1312,
+    "newSha256": "82c8a53d3a1da9c8a97e5146c668d21b6f551455ac1ed7fe7b8fdb21e70da7a2",
+    "bytesRemoved": 1,
+    "removedHex": "0a",
+    "failure": {
+      "runId": 37237008346,
+      "jobId": 111538050847,
+      "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37237008346",
+      "step": "Verify changed-file whitespace",
+      "message": "new blank line at EOF"
+    },
+    "activation": "shadow",
+    "mutationAuthority": false,
+    "remoteRepublishPending": true,
+    "compiledOutputs": {
+      "files": 558,
+      "allBytesUnchanged": true,
+      "beforeManifest": "compiler-output-before-whitespace.json",
+      "manifestSha256": "f0b71746841d285cd8d8cf862bc7922aff059a637fe792df50888896c68598af"
+    },
+    "observedAt": "2026-10-04T21:50:02.283Z",
+    "correctionHead": "d4fe8544d89b172464270b0371ee8b2334dbce30",
+    "correctionTree": "0e6ea3c5732cfd60cb03f5eb657a6cfb2f4d8e47",
+    "localValidation": [
+      "task6-publication-whitespace-green",
+      "task6-publication-whitespace-compile",
+      "task6-publication-whitespace-focused",
+      "task6-publication-ui-green"
+    ],
+    "fullSuiteAndReviewApplicability": "Original full suites and one review/fix pass remain bound to their recorded prior source bytes and heads. This subsequent CI formatting correction removes one trailing LF only; all 558 compiler outputs remain byte-identical. No new full-suite execution, second whole-branch review or hosted acceptance of the corrected head is claimed.",
+    "currentExactHeadHostedCiPending": true,
+    "previousManualCi": {
+      "head": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "result": "success",
+      "requiredJobs": 11,
+      "successfulRequiredJobs": 11,
+      "expectedSkippedJobs": [
+        "Extension source metrics"
+      ],
+      "observation": ".superpowers/sdd/2026-10-05-wf2-p6-entrypoint/publication/candidate-publication-observation-20261004214844636-11cb5b.json",
+      "sha256": "1adfcf678b5b9d1c682ec272f4876c294ff28fd6f74cca9dbd3c77754fcfdc5c",
+      "runs": [
+        {
+          "file": "extensions-quality.yml",
+          "id": 37237026261,
+          "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37237026261",
+          "dispatchNonce": "4fcb93f73fd14f45206ad62cea3768a0"
+        },
+        {
+          "file": "workflow-contracts.yml",
+          "id": 37237029914,
+          "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37237029914",
+          "dispatchNonce": "1bb9d184ab5227faf21c17f2611ef372"
+        },
+        {
+          "file": "code-consistency-review-scaffold.yml",
+          "id": 37237033408,
+          "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37237033408",
+          "dispatchNonce": "f9c29cdd16bc066f76c8845216f27db4"
+        },
+        {
+          "file": "three-extension-ui-contracts.yml",
+          "id": 37237036953,
+          "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37237036953",
+          "dispatchNonce": "7fc080a0f23505d8d15ca1b27b96b534"
+        }
+      ]
+    },
+    "previousAutomaticCi": {
+      "head": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "quality": {
+        "id": 37237008243,
+        "conclusion": "success"
+      },
+      "contracts": {
+        "id": 37237008298,
+        "conclusion": "success"
+      },
+      "ui": {
+        "id": 37237008346,
+        "conclusion": "failure",
+        "step": "Verify changed-file whitespace"
+      }
+    },
+    "reviewCount": 1,
+    "additionalCiFormattingCorrection": true
+  }
 }

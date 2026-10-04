@@ -3,8 +3,8 @@
 State: LOCAL. Maximum activation: shadow. Hosted CI, merge, product UAT and preservation/cleanup remain pending.
 
 Base: 90c678d3d33ae61a5523f2d9cf8057538028dd4b
-Implementation head: f8ff1ccf42ce05505e1844107397ab181b01bb58
-Implementation tree: b29daa768cceae147a82f6eb922911e534335e0c
+Implementation head: d4fe8544d89b172464270b0371ee8b2334dbce30
+Implementation tree: 0e6ea3c5732cfd60cb03f5eb657a6cfb2f4d8e47
 
 26 selected source items are reconciled to 24 surfaces. P2 package loading, the P4 compiler and the process-wide P5 store provide a shared private handle. V2 current slots reserve their legacy slot even on failure. Read-only views are authenticated privately. Product execution is denied before inputs, leasing, Bob tasks and durable operations. V1 behavior is retained.
 
@@ -26,8 +26,8 @@ Review: reviewed-with-one-verified-fix-pass.
 
 ## Pending
 
-- candidate push and PR
-- four exact-head hosted workflows
+- normal update of existing Draft PR #182 branch to corrected exact candidate, with separate C confirmation
+- four new exact-head manual hosted workflows and automatic PR checks for corrected candidate
 - separate exact merge authorization and four main workflows
 - same-hash product UAT and VSIX installation authorization
 - external preservation and separately authorized cleanup/native archive
@@ -50,3 +50,12 @@ Review: reviewed-with-one-verified-fix-pass.
 - Final: Ruling: Final evidence/publication/merge/preservation/cleanup are completion gates after the reviewed implementation — the reviewer assessed the immutable code head, not future external operations — cost if wrong: final evidence consistency requires executor checks and separately authorized exact-head hosted acceptance.
 - Task 6: Ruling: Shorten child TMP further to task-marked .bob/t6 inside the same worktree — three nested program cases use longer staging labels whose bundle paths still exceed 260 characters at .superpowers/t6 (calculated 264); the new longest path is 257 — cost if wrong: one additional ignored task-only temporary root to preserve and clean separately. Prior TMP and all failure logs are retained.
 - Task 6: Ruling: Use exclusive task-marked .t and add one exact /.t/ ignore rule — the final marker case label is longer than the prior probe; worst paths are 258/259 bytes for 5/6-digit PIDs here, while .bob/t6 still gives 263/264 — cost if wrong: one additional .gitignore rule and retained temporary root; no product or archive-tool changes. Prior roots and attempts remain intact.
+- - Ruling: PR CIの末尾空行1 byteを同じ所有範囲で修正し、558 compiled outputsのbyte一致、compile・関連2 tests・base-to-candidate whitespace gateで検証する。先行full suites/review/hosted CIのheadは書き換えず保持し、新candidateの4 hosted gatesは別C再公開後に再実行する。Cost: LOCAL evidence/source bindingを再観測し、new exact-head CIの所要時間を負担する。
+
+## Published-candidate CI correction
+
+Draft PR #182 remains at 86ff3f2bd8e8dd5600042bc9545a33604f53310c. Four manual workflows succeeded (11 required jobs and one expected metrics skip), with raw job logs and exact-head/nonce proofs retained. Automatic PR quality and workflow-contract checks succeeded; automatic UI CI failed only on a new blank line at EOF in workflowCatalogReloadCoordinator.ts.
+
+The local correction at d4fe8544d89b172464270b0371ee8b2334dbce30 removes one trailing LF. The compile gate and two FIFO/disposal tests pass; all 558 compiler output files are byte-identical to the preceding build. The current source mapping is refreshed. Original full-suite/review records keep their original heads and bytes; they are not presented as a new full-suite execution or a second review. Four hosted workflows and automatic PR whitespace validation for the corrected candidate remain pending separate publication confirmation. State remains LOCAL / shadow, P6/P7 planned.
+
+The corrected source/documentation candidate also passes the current UI/documentation gate: 68 tests / 68 pass / 0 fail.
