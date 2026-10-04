@@ -141,7 +141,10 @@ function workflowDocumentFilePath(uri: vscode.Uri): string {
 }
 
 async function compileCurrent(options: ValidateWorkflowCommandOptions, input: CompileCurrentWorkflowContractV2Input): Promise<WorkflowContractV2CompileResult> {
-  if (options.compileCurrentWorkflowPackage) return options.compileCurrentWorkflowPackage(input)
+  let message = "Contract v2 gateway is unavailable."
+  try {
+    if (options.compileCurrentWorkflowPackage) return await options.compileCurrentWorkflowPackage(input)
+  } catch { message = "Contract v2 slot could not be validated." }
   return { ok: false, diagnostics: [{ code: "WF2_PACKAGE_LAYOUT_INVALID", severity: "error",
-    message: "Contract v2 gateway is unavailable.", location: { path: "workflow.yaml", pointer: "" }, relatedLocations: [] }] }
+    message, location: { path: input.slot.workflowId + "/current.json", pointer: "" }, relatedLocations: [] }] }
 }

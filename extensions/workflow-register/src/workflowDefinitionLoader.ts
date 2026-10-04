@@ -33,10 +33,14 @@ export async function loadWorkspaceWorkflows(
   const v2Slots = new Set(discovered.packages.map((candidate) => slotKey(candidate)))
   if (contractV2 !== undefined) {
     for (const candidate of discovered.packages) {
-      const result = await loadWorkflowPackage(contractV2, candidate)
-      diagnostics.push(...result.diagnostics)
-      if (result.workflow) workflows.push(result.workflow)
-      if (result.coreWorkflow) coreWorkflows.push(result.coreWorkflow)
+      try {
+        const result = await loadWorkflowPackage(contractV2, candidate)
+        diagnostics.push(...result.diagnostics)
+        if (result.workflow) workflows.push(result.workflow)
+        if (result.coreWorkflow) coreWorkflows.push(result.coreWorkflow)
+      } catch {
+        diagnostics.push("- error: [WF2_PACKAGE_LAYOUT_INVALID] " + candidate.relativePath + ": Contract v2 slot could not be validated.")
+      }
     }
   }
 

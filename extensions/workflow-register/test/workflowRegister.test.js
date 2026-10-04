@@ -105,7 +105,7 @@ test("package contributes standalone workflow launcher commands without a hard B
   assert.match(source, /approveBranchCheckpoint: \(runId\) => service\.approveBranchCheckpoint\(runId\)/)
   assert.match(source, /abortBranchCheckpoint: \(runId\) => service\.abortBranchCheckpoint\(runId\)/)
   assert.match(source, /inspectBranching: \(runId\) => service\.inspectBranching\(runId\)/)
-  assert.match(source, /new ContractV2GuardedRunStateStore\(\{ workspaceRoot, engineVersion: this\.options\.engineVersion, beforeCreateRun: this\.options\.beforeCreateRun \}\)/)
+  assert.match(source, /new ContractV2GuardedRunStateStore\(\{ workspaceRoot, engineVersion: this\.options\.engineVersion, beforeCreateRun: this\.options\.beforeCreateRun, workflowById: this\.options\.workflowById \}\)/)
 })
 
 test("authoring wrapper delegates accept-and-run-next to the core next-step command without duplicate registration", () => {

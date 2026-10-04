@@ -133,7 +133,7 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
     result: { summary: `Registered ${registeredCount} workflow(s); ${registeredIds.size} workflow(s) are registered in this session.`, lines },
     coreWorkflows,
     registeredSource: auditedSource,
-    legacyFingerprint,
+    legacyFingerprint: registeredCount === executable.length ? legacyFingerprint : undefined,
     registeredIds,
     sourceChanged: true,
     idsChanged: true

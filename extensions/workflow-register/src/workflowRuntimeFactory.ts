@@ -49,6 +49,7 @@ export interface WorkflowRuntimeFactoryOptions {
   agentProvider: () => AgentProvider | undefined
   inputsProvider: (workflow: WorkflowDefinition, provided: Record<string, unknown>) => ReturnType<BobWorkflowRunnerInputCollector>
   gateRegistry: BobWorkflowGateRegistry
+  workflowById?: (id: string) => CoreWorkflowDefinition | undefined
   contractV2BeforeRun?: (workflow: CoreWorkflowDefinition) => Promise<void> | void
   beforeCreateRun?: (workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>) => Promise<void> | void
   onManualStepHeld?: (input: { workflow: import("./core/model").CoreWorkflowDefinition; run: import("./core/model").WorkflowRunState; step: import("./core/model").EngineStep; active: ActiveStep }) => Promise<void> | void
@@ -120,7 +121,7 @@ export class WorkflowRuntimeFactory {
   }
 
   createRunStore(workspaceRoot: string): RunStateStore {
-    return new ContractV2GuardedRunStateStore({ workspaceRoot, engineVersion: this.options.engineVersion, beforeCreateRun: this.options.beforeCreateRun })
+    return new ContractV2GuardedRunStateStore({ workspaceRoot, engineVersion: this.options.engineVersion, beforeCreateRun: this.options.beforeCreateRun, workflowById: this.options.workflowById })
   }
 
   createRunControlStore(workspaceRoot: string): RunControlStore {

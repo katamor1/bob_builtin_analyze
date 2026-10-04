@@ -95,6 +95,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
       gateRegistry: this.bobWorkflowGates,
       agentProvider: () => this.agentProvider,
       inputsProvider: (workflow, provided) => collectBobWorkflowInputs(workflow, provided),
+      workflowById: (id) => this.coreWorkflows.get(id),
       contractV2BeforeRun: (workflow) => this.assertContractV2RunCreationReady(workflow),
       onManualStepHeld: (input) => this.manualStepPanel.show(input)
     })

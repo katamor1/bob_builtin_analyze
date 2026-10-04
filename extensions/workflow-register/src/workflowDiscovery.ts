@@ -1,3 +1,4 @@
+import * as fs from "fs/promises"
 import * as path from "path"
 import { createHash } from "crypto"
 import * as vscode from "vscode"
@@ -44,9 +45,9 @@ export async function discoverWorkspaceWorkflowFiles(): Promise<WorkflowDiscover
         new vscode.RelativePattern(root.root, ".bob/workflows/*/WORKFLOW.md")
       ),
       vscode.workspace.findFiles(
-        new vscode.RelativePattern(root.root, ".bob/workflows/*/current.json")
+        new vscode.RelativePattern(root.root, ".bob/workflows/*/current.json"), null
       ),
-      vscode.workspace.findFiles(new vscode.RelativePattern(root.root, ".bob/workflows/*/versions/*/workflow.yaml"))
+      vscode.workspace.findFiles(new vscode.RelativePattern(root.root, ".bob/workflows/*/versions/*/workflow.yaml"), null)
     ])
     diagnostics.push(
       `- workspace: ${root.workspaceFolderName}; workflowRoot=${root.root}; marker=${root.marker}; depth=${root.depth}; workflow files: ${files.length}`
@@ -67,6 +68,28 @@ export async function discoverWorkspaceWorkflowFiles(): Promise<WorkflowDiscover
       if (!/^\.bob\/workflows\/[^/]+\/versions\/[^/]+\/workflow\.yaml$/.test(relativePathFromRoot(root.root, file.fsPath))) continue
       const slotRoot = path.dirname(path.dirname(path.dirname(file.fsPath)))
       if (!pointers.has(slotRoot)) pointers.set(slotRoot, vscode.Uri.file(path.join(slotRoot, "current.json")))
+    }
+    // Structural ownership survives file exclusions and incomplete or wrong-type entries.
+    const collection = path.join(root.root, ".bob/workflows")
+    try {
+      for (const entry of await fs.readdir(collection, { withFileTypes: true })) {
+        if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
+        const slotRoot = path.join(collection, entry.name)
+        let reserved = false
+        try {
+          const names = await fs.readdir(slotRoot)
+          reserved = names.includes("current.json") || names.includes("versions")
+        } catch {
+          reserved = true
+          diagnostics.push("- WF2_PACKAGE_LAYOUT_INVALID: unreadable workflow slot: " + entry.name)
+        }
+        if (reserved) pointers.set(slotRoot, vscode.Uri.file(path.join(slotRoot, "current.json")))
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        files.length = 0
+        diagnostics.push("- WF2_PACKAGE_LAYOUT_INVALID: workflow collection ownership is unreadable.")
+      }
     }
     for (const currentPointer of pointers.values()) {
       const slotRoot = path.dirname(currentPointer.fsPath)

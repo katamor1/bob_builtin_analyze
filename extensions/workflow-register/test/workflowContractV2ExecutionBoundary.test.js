@@ -35,3 +35,57 @@ test('V1 direct creation still writes a normal run through the guarded store',as
 test('cancelled mixed workflow selection never delegates run, step or artifact commands',async t=>{
  const {coreWorkflow}=await setup(t),effects=counters(),vscode=runtime(effects);let picks=0;vscode.window.showQuickPick=async()=>{picks++;return undefined;};const {WorkflowRegisterService}=requireWithVscode('../out/workflowRegisterService.js',vscode);const service=new WorkflowRegisterService('test');t.after(()=>service.dispose());service.coreWorkflows.set(coreWorkflow.id,coreWorkflow);service.coreWorkflows.set('legacy',{id:'legacy',label:'Legacy',name:'Legacy'});for(const name of ['runWorkflow','runWorkflowStep','startFromStepWithArtifacts'])service.runCommands[name]=async()=>{effects.commands++;};for(const invoke of [()=>service.runWorkflow(),()=>service.runWorkflowStep(),()=>service.startFromStepWithArtifacts()])assert.match(await invoke(),/選択されていません/);assert.equal(picks,3);assert.equal(effects.commands,0);
 });
+
+
+test('direct persisted-run commands reject V2 before coordination, saves, gates and engine creation', async t => {
+  const { root, coreWorkflow, f } = await setup(t)
+  const effects = { save: 0, engine: 0, gate: 0, coordinate: 0, panel: 0 }
+  const vscode = runtime(counters())
+  const { WorkflowRunCommandService } = requireWithVscode('../out/workflowRunCommands.js', vscode)
+  let run = { runId: 'stored', workflowId: coreWorkflow.id, status: 'completed', inputs: {}, state: {}, steps: [], updatedAt: '2026-10-05' }
+  const store = { loadRun: async () => structuredClone(run), listRuns: async () => [structuredClone(run)], saveRun: async () => { effects.save++ } }
+  const commands = new WorkflowRunCommandService({ coreWorkflows: new Map([[coreWorkflow.id, coreWorkflow]]),
+    runtimeFactory: { createRunStore: () => store, createEngine: () => { effects.engine++; throw Error('engine touched') } },
+    ensureWorkflowsLoaded: async () => {}, workflowRootCandidates: async () => [{ root }], activeSteps: () => [],
+    showManualStepPanel: async () => { effects.panel++ },
+    gateRegistry: { pendingForRun: () => { effects.gate++; return { status: 'paused', ownerStepId: 'one' } },
+      acceptPending: () => { effects.gate++ }, abortPending: () => { effects.gate++ } },
+    coordinateGateDecision: async (_root, _id, _kind, operation) => { effects.coordinate++; return operation() } })
+  for (const status of ['completed', 'paused', 'held', 'checkpoint']) {
+    run = { ...run, status, steps: [{ id: 'one', status: 'completed' }] }
+    const routes = [() => commands.runNextStep('stored'), () => commands.resumeRun('stored'),
+      () => commands.retryCurrentStep('stored'), () => commands.approveBranchCheckpoint('stored'),
+      () => commands.abortBranchCheckpoint('stored'), () => commands.recoverDetachedHeldRun('stored'),
+      () => commands.runNextStepOnce(root, 'stored'), () => commands.resumeOrRetryRunOnce('resume', root, 'stored'),
+      () => commands.resumeOrRetryRunOnce('retry', root, 'stored')]
+    for (const invoke of routes) {
+      await assert.rejects(invoke(), error => error.name === 'WorkflowContractV2BoundaryError')
+      assert.deepEqual(effects, { save: 0, engine: 0, gate: 0, coordinate: 0, panel: 0 }, status)
+      assert.equal(f.counters.acquire, 0)
+    }
+  }
+})
+
+test('guarded persisted-run loading denies V2 before journal recovery and direct save', async t => {
+  const { root, coreWorkflow } = await setup(t)
+  const { FileRunStateStore } = require('../out/core/runStateStore')
+  const { ContractV2GuardedRunStateStore } = require('../out/workflowContractV2RunStateStore')
+  const { compileWorkflowDocument } = require('../out/core/workflowCompiler')
+  const legacy = compileWorkflowDocument({ sourceId: 'test', filePath: '.bob/workflows/legacy/WORKFLOW.md',
+    text: ['---', 'name: legacy', 'description: Legacy compatibility.', '---', 'Prompt.'].join(String.fromCharCode(10)) }).workflow
+  const original = new FileRunStateStore({ workspaceRoot: root })
+  const run = await original.createRun(legacy, {})
+  await original.saveRun(run)
+  run.workflowId = coreWorkflow.id
+  run.workflowFile = '.bob/workflows/minimal/current.json'
+  const interrupted = new FileRunStateStore({ workspaceRoot: root, durabilityFault: stage => { if (stage === 'afterJournal') throw Error('interrupt') } })
+  await assert.rejects(interrupted.saveRun(run), /interrupt/)
+  const dir = path.join(root, '.bob/workflows/runs', run.runId)
+  const before = fs.readdirSync(dir).sort().map(file => [file, fs.readFileSync(path.join(dir, file)).toString('hex')])
+  for (const workflowById of [undefined, id => id === coreWorkflow.id ? coreWorkflow : undefined]) {
+    const guarded = new ContractV2GuardedRunStateStore({ workspaceRoot: root, workflowById })
+    await assert.rejects(guarded.loadRun(run.runId), error => error.name === 'WorkflowContractV2BoundaryError')
+    await assert.rejects(guarded.saveRun(run), error => error.name === 'WorkflowContractV2BoundaryError')
+    assert.deepEqual(fs.readdirSync(dir).sort().map(file => [file, fs.readFileSync(path.join(dir, file)).toString('hex')]), before)
+  }
+})

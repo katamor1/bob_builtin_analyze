@@ -176,7 +176,7 @@ const frozenLegacyImports = [
  ['src/commands/validateWorkflow.ts','../core/workflowCompiler','legacy-v1-editor-validation'],
  ['src/bobWorkflowFactory.ts','./core/contractV2/bobProfile','audited-F7-task-probe']
 ].map(([path,importName,reason]) => ({path,import:importName,reason}))
-const consumerPaths = ['workflowContractV2Entrypoint','workflowContractV2Product','workflowContractV2ProviderLifecycle','workflowContractV2View','workflowContractV2ExecutionGuard','workflowContractV2RunStateStore','workflowDefinitionLoader','workflowRegistrationService','workflowRegisterService','workflowRuntimeFactory','bobWorkflowFactory','workflowBobTaskBinding','extension','extensionWithAuthoring','commands/validateWorkflow','gui/operationHubProvider','gui/operationHubModel'].map(p=>'src/'+p+'.ts')
+const consumerPaths = ['workflowContractV2Entrypoint','workflowContractV2Product','workflowContractV2ProviderLifecycle','workflowContractV2View','workflowContractV2ExecutionGuard','workflowContractV2RunStateStore','workflowDefinitionLoader','workflowRegistrationService','workflowRegisterService','workflowRuntimeFactory','workflowRunCommands','workflowDiscovery','bobWorkflowFactory','workflowBobTaskBinding','extension','extensionWithAuthoring','commands/validateWorkflow','gui/operationHubProvider','gui/operationHubModel'].map(p=>'src/'+p+'.ts')
 const privateImports = /(?:^|\/)(?:workflowCompiler|parser|predicateCompiler|providerRegistry|bobProfile|packageLoader|packageFileSystemNode|packageRoot|yaml|ajv)$/
 
 test('V2 consumer architecture freezes legacy exceptions and rejects private compilation paths',()=>{
