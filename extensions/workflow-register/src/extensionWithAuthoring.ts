@@ -95,11 +95,11 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     diagnostics,
     vscode.commands.registerCommand(
       "workflowRegister.validateCurrentWorkflow",
-      () => validateCurrentWorkflow({ sourceId: sourceId(), showMarkdownReport, diagnostics })
+      () => validateCurrentWorkflow({ sourceId: sourceId(), showMarkdownReport, diagnostics, compileCurrentWorkflowPackage: api.compileCurrentWorkflowPackage })
     ),
     vscode.commands.registerCommand(
       "workflowRegister.validateWorkspaceWorkflows",
-      () => validateWorkspaceWorkflows({ sourceId: sourceId(), showMarkdownReport, diagnostics })
+      () => validateWorkspaceWorkflows({ sourceId: sourceId(), showMarkdownReport, diagnostics, compileCurrentWorkflowPackage: api.compileCurrentWorkflowPackage })
     ),
     vscode.commands.registerCommand(
       "workflowRegister.createWorkflowFromTemplate",

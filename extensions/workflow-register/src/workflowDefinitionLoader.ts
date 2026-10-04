@@ -1,13 +1,6 @@
 import * as vscode from "vscode"
-import type {
-  BobWorkflowTaskBinding,
-  LoadResult,
-  WorkflowDefinition
-} from "./bobWorkflowTypes"
-import {
-  BOB_2_0_1_PROFILE_DIGEST,
-  BOB_REQUIRED_TASK_CAPABILITIES
-} from "./core/contractV2/bobProfile"
+import type { LoadResult, WorkflowDefinition } from "./bobWorkflowTypes"
+import type { WorkflowContractV2Diagnostic } from "./core/contractV2/diagnostics"
 import type { CoreWorkflowDefinition } from "./core/model"
 import {
   compileWorkflowDocument,
@@ -17,34 +10,89 @@ import {
   adaptCoreWorkflowForBob,
   qualifyDuplicateWorkflowIds
 } from "./workflowAdapter"
+import { LEGACY_BOB_TASK_BINDING } from "./workflowBobTaskBinding"
+import type { WorkflowContractV2Entrypoint } from "./workflowContractV2Entrypoint"
+import { adaptCompiledWorkflowForProduct, freezeWorkflowContractV2View } from "./workflowContractV2View"
 import {
   discoverWorkspaceWorkflowFiles,
-  type WorkflowFileCandidate
+  type WorkflowFileCandidate,
+  type WorkflowPackageSlotCandidate
 } from "./workflowDiscovery"
 import { validateAndDescribeWorkflow } from "./workflowDiagnostics"
 
-// This loader is the legacy v1 document path. Contract v2 P4/R5 supplies its
-// plan-specific binding directly to adaptCoreWorkflowForBob; this path must not
-// pretend that compileWorkflowDocument produced v2 lock evidence.
-const LEGACY_BOB_TASK_BINDING: BobWorkflowTaskBinding = Object.freeze({
-  profileDigest: BOB_2_0_1_PROFILE_DIGEST,
-  taskCapabilities: BOB_REQUIRED_TASK_CAPABILITIES
-})
-
-export async function loadWorkspaceWorkflows(sourceId: string): Promise<LoadResult> {
+export async function loadWorkspaceWorkflows(
+  sourceId: string,
+  contractV2?: WorkflowContractV2Entrypoint
+): Promise<LoadResult & { contractV2SlotCount: number }> {
   const diagnostics: string[] = []
   const workflows: WorkflowDefinition[] = []
   const coreWorkflows: CoreWorkflowDefinition[] = []
   const discovered = await discoverWorkspaceWorkflowFiles()
   diagnostics.push(...discovered.diagnostics)
+
+  const v2Slots = new Set(discovered.packages.map((candidate) => slotKey(candidate)))
+  if (contractV2 !== undefined) {
+    for (const candidate of discovered.packages) {
+      const result = await loadWorkflowPackage(contractV2, candidate)
+      diagnostics.push(...result.diagnostics)
+      if (result.workflow) workflows.push(result.workflow)
+      if (result.coreWorkflow) coreWorkflows.push(result.coreWorkflow)
+    }
+  }
+
+  if (contractV2 === undefined && discovered.packages.length) diagnostics.push("- WF2_PACKAGE_LAYOUT_INVALID: Contract v2 gateway is unavailable.")
+
   for (const candidate of discovered.files) {
+    if (v2Slots.has(slotKey(candidate))) {
+      diagnostics.push(`- skipped legacy WORKFLOW.md because Contract v2 current.json owns slot: ${candidate.relativePath}`)
+      continue
+    }
     const result = await loadWorkflowFile(sourceId, candidate)
     diagnostics.push(...result.diagnostics)
     if (result.workflow) workflows.push(result.workflow)
     if (result.coreWorkflow) coreWorkflows.push(result.coreWorkflow)
   }
   qualifyDuplicateWorkflowIds(workflows, coreWorkflows)
-  return { workflows, coreWorkflows, diagnostics }
+  for (const workflow of workflows) freezeWorkflowContractV2View(workflow)
+  return { workflows, coreWorkflows, diagnostics, contractV2SlotCount: discovered.packages.length }
+}
+
+async function loadWorkflowPackage(
+  entrypoint: WorkflowContractV2Entrypoint,
+  candidate: WorkflowPackageSlotCandidate
+): Promise<{
+  workflow?: WorkflowDefinition
+  coreWorkflow?: CoreWorkflowDefinition
+  diagnostics: string[]
+}> {
+  const slot = Object.freeze({
+    collectionId: candidate.collectionId,
+    collectionRoot: candidate.collectionRoot,
+    workflowId: candidate.workflowId
+  })
+  const result = await entrypoint.compileCurrent({
+    slot,
+    consumer: "workspace-registration"
+  })
+  if (!result.ok) {
+    return { diagnostics: formatContractV2Diagnostics(result.diagnostics) }
+  }
+  const adapted = adaptCompiledWorkflowForProduct({
+    handle: result.handle,
+    rawPackage: result.rawPackage,
+    slot,
+    root: candidate.root,
+    currentPointer: candidate.currentPointer
+  })
+  return {
+    workflow: adapted.workflow,
+    coreWorkflow: adapted.coreWorkflow,
+    diagnostics: [
+      `- Contract v2 compiled: ${candidate.relativePath}`,
+      `- planDigest: ${result.handle.planDigest}`,
+      `- packageDigest: ${result.handle.plan.packageDigest}`
+    ]
+  }
 }
 
 async function loadWorkflowFile(
@@ -82,4 +130,17 @@ async function loadWorkflowFile(
   diagnostics.push(...workflowDiagnostics.diagnostics)
   if (!workflowDiagnostics.ok) return { diagnostics }
   return { workflow, coreWorkflow, diagnostics }
+}
+
+function formatContractV2Diagnostics(
+  diagnostics: readonly WorkflowContractV2Diagnostic[]
+): string[] {
+  return diagnostics.map((diagnostic) => {
+    const pointer = diagnostic.location.pointer || ""
+    return `- ${diagnostic.severity}: [${diagnostic.code}] ${diagnostic.location.path}${pointer}: ${diagnostic.message}`
+  })
+}
+
+function slotKey(candidate: WorkflowFileCandidate | WorkflowPackageSlotCandidate): string {
+  return `${candidate.root.root}\u0000${candidate.folderName}`
 }

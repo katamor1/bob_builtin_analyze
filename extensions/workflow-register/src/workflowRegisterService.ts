@@ -1,3 +1,4 @@
+import * as path from "path"
 import * as vscode from "vscode"
 import {
   BobWorkflowGateRegistry,
@@ -23,6 +24,8 @@ import {
   registerWorkflows as registerWorkflowDefinitions,
   type RegistrationResult
 } from "./workflowRegistrationService"
+import type { CompileCurrentWorkflowContractV2Input, CompileWorkflowContractV2GenerationInput, WorkflowContractV2Slot } from "./workflowContractV2Entrypoint"
+import { workflowContractV2CollectionId } from "./workflowDiscovery"
 import { createWorkflowContractV2ProductEntrypoint } from "./workflowContractV2Product"
 import { WorkflowContractV2ProviderLifecycle } from "./workflowContractV2ProviderLifecycle"
 import { WorkflowCatalogReloadCoordinator } from "./workflowCatalogReloadCoordinator"
@@ -42,6 +45,8 @@ export interface StepCompletionOptions extends StepCompletionExpectation {
 export class WorkflowRegisterService implements vscode.Disposable {
   private readonly registeredIds = new Set<string>()
   private readonly watcher = vscode.workspace.createFileSystemWatcher(WORKFLOW_GLOB)
+  private readonly contractV2Watcher = vscode.workspace.createFileSystemWatcher("**/.bob/workflows/*/current.json")
+  private legacyRegistrationFingerprint?: string
   private readonly bobWorkflowGates = new BobWorkflowGateRegistry()
   private readonly reviewAcceptances = new ReviewAcceptanceCoordinator()
   private readonly stepRuntime = new StepRuntime()
@@ -113,6 +118,15 @@ export class WorkflowRegisterService implements vscode.Disposable {
         this.reviewAcceptances.coordinate(workspaceRoot, runId, kind, operation)
       )
     })
+    const pointerChanged = (uri: vscode.Uri) => {
+      const slotRoot = path.dirname(uri.fsPath), collectionRoot = path.dirname(slotRoot)
+      try { this.invalidateWorkflowPackageSlot({ collectionId: workflowContractV2CollectionId(collectionRoot), collectionRoot, workflowId: path.basename(slotRoot) }) }
+      catch (error) { console.warn(error) }
+      void this.reload({ showReport: false }).catch(console.warn)
+    }
+    this.contractV2Watcher.onDidCreate(pointerChanged)
+    this.contractV2Watcher.onDidChange(pointerChanged)
+    this.contractV2Watcher.onDidDelete(pointerChanged)
     this.watcher.onDidCreate(() => this.reload({ showReport: false }))
     this.watcher.onDidChange(() => this.reload({ showReport: false }))
     this.watcher.onDidDelete(() => this.reload({ showReport: false }))
@@ -121,6 +135,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
   dispose(): void {
     this.catalogReloads.dispose()
     this.contractV2Providers.dispose()
+    this.contractV2Watcher.dispose()
     this.watcher.dispose()
     this.manualStepPanel.dispose()
     this.bobWorkflowGates.dispose()
@@ -202,6 +217,22 @@ export class WorkflowRegisterService implements vscode.Disposable {
 
   listCoreWorkflows(): CoreWorkflowDefinition[] {
     return this.runCommands.listCoreWorkflows()
+  }
+
+  compileCurrentWorkflowPackage(input: CompileCurrentWorkflowContractV2Input) {
+    return this.contractV2Providers.current().compileCurrent(input)
+  }
+
+  compileWorkflowPackageGeneration(input: CompileWorkflowContractV2GenerationInput) {
+    return this.contractV2Providers.current().compileGeneration(input)
+  }
+
+  acquireCurrentWorkflowPackage(input: CompileCurrentWorkflowContractV2Input) {
+    return this.contractV2Providers.current().acquireCurrent(input)
+  }
+
+  invalidateWorkflowPackageSlot(slot: WorkflowContractV2Slot): void {
+    this.contractV2Providers.current().invalidateSlot(slot)
   }
 
   async runWorkflow(workflowArg?: WorkflowCommandArg, inputs: Record<string, unknown> = {}): Promise<unknown> {
@@ -287,8 +318,11 @@ export class WorkflowRegisterService implements vscode.Disposable {
   private async registerWorkflows(): Promise<RegistrationResult> {
     const update = await registerWorkflowDefinitions({
       previousSource: this.registeredSource,
+      previousLegacyFingerprint: this.legacyRegistrationFingerprint,
+      contractV2: this.contractV2Providers.current(),
       createRunner: (workflow) => this.runtimeFactory.createBobWorkflowRunner(workflow)
     })
+    this.legacyRegistrationFingerprint = update.legacyFingerprint
     this.coreWorkflows.clear()
     for (const workflow of update.coreWorkflows) this.coreWorkflows.set(workflow.id, workflow)
     if (update.sourceChanged) this.registeredSource = update.registeredSource

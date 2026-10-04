@@ -1,3 +1,5 @@
+import type { CompileCurrentWorkflowContractV2Input, CompileWorkflowContractV2GenerationInput, WorkflowContractV2CompileResult, WorkflowContractV2AcquireResult, WorkflowContractV2Slot } from "./workflowContractV2Entrypoint"
+import type { WorkflowProviderRegistrationInput, WorkflowProviderRegistration } from "./core/actionRegistry"
 import * as vscode from "vscode"
 import type { ActionProvider, ActionProviderRegistration } from "./core/actionRegistry"
 import type { AgentProvider, CoreWorkflowDefinition } from "./core/model"
@@ -14,6 +16,11 @@ import type { ArtifactSourceRunArg, RunCommandArg, WorkflowCommandArg } from "./
  * provider ID、workflow ID、command ID は WORKFLOW.md と companion extension から参照される互換性契約である。
  */
 export interface WorkflowRegisterApi {
+  compileCurrentWorkflowPackage: (input: CompileCurrentWorkflowContractV2Input) => Promise<WorkflowContractV2CompileResult>
+  compileWorkflowPackageGeneration: (input: CompileWorkflowContractV2GenerationInput) => Promise<WorkflowContractV2CompileResult>
+  acquireCurrentWorkflowPackage: (input: CompileCurrentWorkflowContractV2Input) => Promise<WorkflowContractV2AcquireResult>
+  invalidateWorkflowPackageSlot: (slot: WorkflowContractV2Slot) => void
+  registerWorkflowProviderContract: (input: WorkflowProviderRegistrationInput) => WorkflowProviderRegistration
   /**
    * live Bob execution が待機している review gate を承認する。
    *
@@ -139,6 +146,11 @@ export interface WorkflowRegisterApi {
 export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi {
   const service = new WorkflowRegisterService(String(context.extension.packageJSON.version ?? "unknown"))
   const api: WorkflowRegisterApi = {
+    compileCurrentWorkflowPackage: input => service.compileCurrentWorkflowPackage(input),
+    compileWorkflowPackageGeneration: input => service.compileWorkflowPackageGeneration(input),
+    acquireCurrentWorkflowPackage: input => service.acquireCurrentWorkflowPackage(input),
+    invalidateWorkflowPackageSlot: slot => service.invalidateWorkflowPackageSlot(slot),
+    registerWorkflowProviderContract: input => service.registerWorkflowProviderContract(input),
     acceptBobWorkflowGate: (workspaceRoot, runId, stepId) => service.acceptBobWorkflowGate(workspaceRoot, runId, stepId),
     acceptBobWorkflowGateWithMetadata: (workspaceRoot, runId, stepId) => service.acceptBobWorkflowGateWithMetadata(workspaceRoot, runId, stepId),
     coordinateReviewAcceptance: (workspaceRoot, runId, operation) => service.coordinateReviewAcceptance(workspaceRoot, runId, operation),

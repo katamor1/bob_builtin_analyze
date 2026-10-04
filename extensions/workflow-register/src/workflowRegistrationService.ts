@@ -1,7 +1,10 @@
+import { createHash } from "crypto"
 import * as vscode from "vscode"
 import { loadBobApi } from "./bobApi"
 import type { BobSourceLike } from "./bobApi"
-import { BOB_2_0_1_PROFILE_DIGEST, BOB_SUPPORTED_VERSION_RANGE } from "./core/contractV2/bobProfile"
+import { AUDITED_BOB_PROFILE_DIGEST, BOB_SUPPORTED_VERSION_RANGE } from "./workflowBobTaskBinding"
+import type { WorkflowContractV2Entrypoint } from "./workflowContractV2Entrypoint"
+import { workflowContractV2Binding } from "./workflowContractV2View"
 import { createBobWorkflow } from "./bobWorkflowFactory"
 import type { WorkflowDefinition } from "./bobWorkflowTypes"
 import type { CoreWorkflowDefinition } from "./core/model"
@@ -22,10 +25,13 @@ export interface WorkflowRegistrationUpdate {
   registeredSource?: BobSourceLike
   sourceChanged: boolean
   idsChanged: boolean
+  legacyFingerprint?: string
 }
 
 export interface RegisterWorkflowsInput {
   previousSource?: BobSourceLike
+  previousLegacyFingerprint?: string
+  contractV2?: WorkflowContractV2Entrypoint
   createRunner: (workflow: WorkflowDefinition) => Parameters<typeof createBobWorkflow>[1]
 }
 
@@ -34,9 +40,20 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
   const sourceId = config.get<string>("sourceId", "workflow-register")
   const sourceName = config.get<string>("sourceName", "Workflow Register")
   const lines: string[] = []
-  const loaded = await loadWorkspaceWorkflows(sourceId)
+  const loaded = await loadWorkspaceWorkflows(sourceId, input.contractV2)
   lines.push(...loaded.diagnostics)
   const coreWorkflows = loaded.coreWorkflows
+
+  // Bob registration accepts only legacy executable definitions.
+  loaded.workflows = loaded.workflows.filter(workflow => !workflowContractV2Binding(workflow))
+  const executable = loaded.workflows
+  const legacyFingerprint = createHash("sha256").update(JSON.stringify({ sourceId, sourceName,
+    workflows: executable.map(workflow => [workflow.id, workflow.workflowFile, workflow.core.definitionHash]) })).digest("hex")
+  if ((input.previousLegacyFingerprint === legacyFingerprint)
+    || (executable.length === 0 && loaded.contractV2SlotCount > 0 && input.previousLegacyFingerprint === undefined)) {
+    return { result: { summary: "Contract v2は検証のみ・実行不可です。", lines }, coreWorkflows,
+      sourceChanged: false, idsChanged: false, legacyFingerprint }
+  }
 
   if (loaded.workflows.length === 0) {
     await deactivateRegisteredSource(input.previousSource, lines)
@@ -57,7 +74,7 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
   lines.push(`- Bob extension version: ${bob.extensionVersion ?? "unknown"}`)
   lines.push(`- Bob supported versions: ${BOB_SUPPORTED_VERSION_RANGE} (stable releases only)`)
   lines.push(`- Bob activation error: ${bob.activationError}`)
-  lines.push(`- Bob compatibility baseline: bob/2.0.1; ${BOB_2_0_1_PROFILE_DIGEST}`)
+  lines.push(`- Bob compatibility baseline: bob/2.0.1; ${AUDITED_BOB_PROFILE_DIGEST}`)
   const api = bob.api
   if (!api) {
     lines.push("- fail: Compatible IBM Bob 2.x registerSource API is not available.")
@@ -99,7 +116,7 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
 
   let registeredCount = 0
   const registeredIds = new Set<string>()
-  for (const workflow of loaded.workflows) {
+  for (const workflow of executable) {
     const attempt = await runAttempt(
       `source.registerWorkflow(${workflow.id})`,
       () => auditedSource.registerWorkflow(createBobWorkflow(workflow, input.createRunner(workflow)))
@@ -116,6 +133,7 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
     result: { summary: `Registered ${registeredCount} workflow(s); ${registeredIds.size} workflow(s) are registered in this session.`, lines },
     coreWorkflows,
     registeredSource: auditedSource,
+    legacyFingerprint,
     registeredIds,
     sourceChanged: true,
     idsChanged: true
