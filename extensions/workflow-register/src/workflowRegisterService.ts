@@ -1,3 +1,6 @@
+import { assertWorkflowContractV2Shadow, verifyWorkflowContractV2CurrentPlan } from "./workflowContractV2ExecutionGuard"
+import { workflowContractV2CoreBinding } from "./workflowContractV2View"
+import { isOperationHubWorkflowMutationTarget } from "./operationHubMutationTarget"
 import * as path from "path"
 import * as vscode from "vscode"
 import {
@@ -92,6 +95,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
       gateRegistry: this.bobWorkflowGates,
       agentProvider: () => this.agentProvider,
       inputsProvider: (workflow, provided) => collectBobWorkflowInputs(workflow, provided),
+      contractV2BeforeRun: (workflow) => this.assertContractV2RunCreationReady(workflow),
       onManualStepHeld: (input) => this.manualStepPanel.show(input)
     })
     this.contractV2Providers = new WorkflowContractV2ProviderLifecycle({
@@ -236,6 +240,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   async runWorkflow(workflowArg?: WorkflowCommandArg, inputs: Record<string, unknown> = {}): Promise<unknown> {
+    workflowArg = await this.guardWorkflowCommand(workflowArg)
     return this.runCommands.runWorkflow(workflowArg, inputs)
   }
 
@@ -244,6 +249,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
     stepId?: string,
     inputs: Record<string, unknown> = {}
   ): Promise<unknown> {
+    workflowId = await this.guardWorkflowCommand(workflowId) as string | undefined
     return this.runCommands.runWorkflowStep(workflowId, stepId, inputs)
   }
 
@@ -253,6 +259,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
     sourceRunArg?: ArtifactSourceRunArg,
     inputs: Record<string, unknown> = {}
   ): Promise<unknown> {
+    workflowId = await this.guardWorkflowCommand(workflowId) as string | undefined
     return this.runCommands.startFromStepWithArtifacts(workflowId, stepId, sourceRunArg, inputs)
   }
 
@@ -292,6 +299,32 @@ export class WorkflowRegisterService implements vscode.Disposable {
     return this.runCommands.inspectBranching(runId)
   }
 
+  private async assertContractV2RunCreationReady(workflow: CoreWorkflowDefinition): Promise<void> {
+    await verifyWorkflowContractV2CurrentPlan({ workflow, compileCurrent: input => this.compileCurrentWorkflowPackage(input) })
+    assertWorkflowContractV2Shadow(workflow)
+  }
+
+  private async guardWorkflowCommand(arg: WorkflowCommandArg): Promise<WorkflowCommandArg> {
+    if (this.coreWorkflows.size === 0) await this.reload({ showReport: false })
+    const target = isOperationHubWorkflowMutationTarget(arg) ? arg : undefined
+    let id = target?.workflowId ?? (typeof arg === "string" ? arg : undefined)
+    if (id === undefined && Array.from(this.coreWorkflows.values()).some(workflow => workflowContractV2CoreBinding(workflow))) {
+      const trustError = await requireTrustedWorkspace("ワークフローを実行")
+      if (trustError) return arg
+      const workflows = this.listCoreWorkflows()
+      const selected = workflows.length === 1 ? workflows[0] : (await vscode.window.showQuickPick(
+        workflows.map(workflow => ({ label: workflow.label, description: workflow.name, detail: workflow.description, workflow })),
+        { title: "ワークフローを実行" }
+      ))?.workflow
+      id = selected?.id
+      if (!id) return ""
+      arg = id
+    }
+    const workflow = id ? this.coreWorkflows.get(id) : undefined
+    if (workflow) await this.assertContractV2RunCreationReady(workflow)
+    return arg
+  }
+
   private async workflowRootCandidates(): Promise<MarkerRootCandidate[]> {
     const folders = vscode.workspace.workspaceFolders ?? []
     if (folders.length === 0) return []
@@ -299,7 +332,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
     return markerRoots.length > 0 ? markerRoots : fallbackWorkspaceRootCandidates(folders)
   }
 
-  reload(options: { showReport: boolean }): Promise<void> {
+  async reload(options: { showReport: boolean }): Promise<void> {
     return this.catalogReloads.run(() => this.reloadCatalog(options))
   }
 

@@ -1,3 +1,4 @@
+import { workflowContractV2CoreBinding } from "../workflowContractV2View"
 import * as path from "path"
 import {
   ARTIFACT_MANIFEST_STATE_KEY,
@@ -184,14 +185,19 @@ interface TaskSnapshotImportState {
 export function buildOperationHubModel(input: OperationHubModelInput): OperationHubModel {
   const workflowCatalog = buildWorkflowCatalog(input.workflows)
   const runMonitor = input.runs
-    .map((item) => summarizeRunForHub(
+    .map((item) => {
+      const summary = summarizeRunForHub(
       item.root,
       item.run,
       input.focusedRunId,
       item.revision,
       input.focusedWorkspaceRoot,
       item.heldRecovery
-    ))
+    )
+      const workflow = input.workflows.find(candidate => candidate.id === item.run.workflowId)
+      if (workflow && workflowContractV2CoreBinding(workflow as CoreWorkflowDefinition)) summary.primaryActions = summary.primaryActions.filter(action => action.id === "inspectRunControl")
+      return summary
+    })
     .sort((a, b) => Number(b.focused) - Number(a.focused) || b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, 20)
   const activeRunCount = runMonitor.filter((run) => !["completed", "failed"].includes(run.status)).length
@@ -351,11 +357,11 @@ function buildWorkflowCatalog(workflows: OperationHubWorkflowInput[]): Operation
     .map((workflow) => ({
       id: workflow.id,
       label: workflow.label || workflow.id,
-      description: workflow.description || "",
+      description: workflowContractV2CoreBinding(workflow as CoreWorkflowDefinition) ? `${workflow.description || ""} 検証のみ・実行不可` : workflow.description || "",
       category: workflow.category || "未分類",
       requiredInputCount: Object.values(workflow.inputs || {}).filter((input) => Boolean(input.required)).length,
       artifactCount: workflow.artifacts?.length ?? 0,
-      primaryActions: [
+      primaryActions: workflowContractV2CoreBinding(workflow as CoreWorkflowDefinition) ? [] : [
         {
           id: "runWorkflow",
           label: "開始",

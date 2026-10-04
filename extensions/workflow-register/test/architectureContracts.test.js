@@ -176,7 +176,7 @@ const frozenLegacyImports = [
  ['src/commands/validateWorkflow.ts','../core/workflowCompiler','legacy-v1-editor-validation'],
  ['src/bobWorkflowFactory.ts','./core/contractV2/bobProfile','audited-F7-task-probe']
 ].map(([path,importName,reason]) => ({path,import:importName,reason}))
-const consumerPaths = ['workflowContractV2Entrypoint','workflowContractV2Product','workflowContractV2ProviderLifecycle','workflowContractV2View','workflowDefinitionLoader','workflowRegistrationService','workflowRegisterService','workflowRuntimeFactory','bobWorkflowFactory','workflowBobTaskBinding','extension','extensionWithAuthoring','commands/validateWorkflow','gui/operationHubProvider','gui/operationHubModel'].map(p=>'src/'+p+'.ts')
+const consumerPaths = ['workflowContractV2Entrypoint','workflowContractV2Product','workflowContractV2ProviderLifecycle','workflowContractV2View','workflowContractV2ExecutionGuard','workflowContractV2RunStateStore','workflowDefinitionLoader','workflowRegistrationService','workflowRegisterService','workflowRuntimeFactory','bobWorkflowFactory','workflowBobTaskBinding','extension','extensionWithAuthoring','commands/validateWorkflow','gui/operationHubProvider','gui/operationHubModel'].map(p=>'src/'+p+'.ts')
 const privateImports = /(?:^|\/)(?:workflowCompiler|parser|predicateCompiler|providerRegistry|bobProfile|packageLoader|packageFileSystemNode|packageRoot|yaml|ajv)$/
 
 test('V2 consumer architecture freezes legacy exceptions and rejects private compilation paths',()=>{
@@ -184,6 +184,8 @@ test('V2 consumer architecture freezes legacy exceptions and rejects private com
  const sources=Object.fromEntries(consumerPaths.map(p=>[p,fs.readFileSync(path.join(extensionRoot,p),'utf8')]))
  assertConsumerImports(sources,allowlist)
  assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2View.ts':sources['src/workflowContractV2View.ts']+'\nimport { compileWorkflowDocument } from "./core/workflowCompiler"'},allowlist),/private import/)
+ assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2View.ts':sources['src/workflowContractV2View.ts']+'\nimport yaml from "js-yaml"'},allowlist),/private import/)
+ assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2View.ts':sources['src/workflowContractV2View.ts']+'\nimport { compile } from "./core/contractV2/compiler"'},allowlist),/private import/)
  assert.throws(()=>assertConsumerImports(sources,[...allowlist,{path:'src/workflowContractV2View.ts',import:'./core/workflowCompiler',reason:'new exception'}]),/frozen/)
  assert.throws(()=>assertConsumerImports(sources,allowlist.map((x,i)=>i?x:{...x,reason:'broader reason'})),/frozen/)
 })
@@ -198,7 +200,7 @@ function assertConsumerImports(sources,allowlist) {
    const allowed=/core\/contractV2\/diagnostics$/.test(name)||allowlist.some(x=>x.path===file&&x.import===name)
     || (file==='src/workflowContractV2Product.ts'&&productAuthority.has(name))
     || (file==='src/workflowBobTaskBinding.ts'&&name==='./core/contractV2/bobProfile')
-   if((privateImports.test(name)||name==='./workflowAdapter'||/core\/contractV2\//.test(name))&&!allowed) throw Error('private import '+file+': '+name)
+   if((privateImports.test(name)||/(?:^|\/)(?:js-yaml|yaml|ajv)(?:$|\/)/.test(name)||name==='./workflowAdapter'||/core\/contractV2\//.test(name))&&!allowed) throw Error('private import '+file+': '+name)
   }
   const visit=node=>{
    if((ts.isImportDeclaration(node)||ts.isExportDeclaration(node))&&node.moduleSpecifier&&ts.isStringLiteral(node.moduleSpecifier)){

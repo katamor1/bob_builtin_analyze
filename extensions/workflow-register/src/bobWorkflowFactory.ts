@@ -1,3 +1,4 @@
+import { assertWorkflowContractV2DefinitionShadow } from "./workflowContractV2ExecutionGuard"
 import {
   BOB_2_0_1_PROFILE_DIGEST,
   BOB_REQUIRED_TASK_CAPABILITIES,
@@ -27,6 +28,7 @@ export function createBobWorkflow(
   definition: WorkflowDefinition,
   runner: BobWorkflowStepRunner
 ): BobWorkflow {
+  assertWorkflowContractV2DefinitionShadow(definition)
   const bobTaskBinding = definition.bobTaskBinding ?? DEFAULT_BOB_TASK_BINDING
   const steps = buildWorkflowSteps(definition, runner, bobTaskBinding)
   return {

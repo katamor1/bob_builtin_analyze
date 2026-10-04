@@ -1,3 +1,5 @@
+import { assertWorkflowContractV2Shadow, assertWorkflowContractV2DefinitionShadow } from "./workflowContractV2ExecutionGuard"
+import { ContractV2GuardedRunStateStore } from "./workflowContractV2RunStateStore"
 import * as vscode from "vscode"
 import {
   BobWorkflowEngineRunner,
@@ -23,10 +25,10 @@ import {
 } from "./core/contractV2"
 import { WorkflowEngine } from "./core/engine"
 import type { ManualCompletionInput, ManualCompletionResult, WorkflowEngineOptions } from "./core/engine"
-import type { AgentProvider } from "./core/model"
+import type { CoreWorkflowDefinition, AgentProvider } from "./core/model"
 import { createDefaultResultSinkRegistry, ResultSinkRegistry } from "./core/resultSinkRegistry"
 import { FileRunControlStore, RunControlStore } from "./core/runControlStore"
-import { FileRunStateStore, RunStateStore } from "./core/runStateStore"
+import { RunStateStore } from "./core/runStateStore"
 import { FileTaskSnapshotStore, TaskSnapshotStore } from "./core/taskSnapshots"
 import { findMarkerRoots, rootHasMarker } from "./core/workspaceRoots"
 import { requireTrustedCommandExecution } from "./workspaceTrust"
@@ -47,6 +49,8 @@ export interface WorkflowRuntimeFactoryOptions {
   agentProvider: () => AgentProvider | undefined
   inputsProvider: (workflow: WorkflowDefinition, provided: Record<string, unknown>) => ReturnType<BobWorkflowRunnerInputCollector>
   gateRegistry: BobWorkflowGateRegistry
+  contractV2BeforeRun?: (workflow: CoreWorkflowDefinition) => Promise<void> | void
+  beforeCreateRun?: (workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>) => Promise<void> | void
   onManualStepHeld?: (input: { workflow: import("./core/model").CoreWorkflowDefinition; run: import("./core/model").WorkflowRunState; step: import("./core/model").EngineStep; active: ActiveStep }) => Promise<void> | void
 }
 
@@ -71,7 +75,7 @@ export class WorkflowRuntimeFactory {
 
   createEngine(workspaceRoot: string, agentProvider?: AgentProvider): WorkflowEngine {
     const snapshotStore = this.createTaskSnapshotStore(workspaceRoot)
-    return new WorkflowEngine({
+    return new ContractV2BoundaryWorkflowEngine({
       actions: this.options.actionRegistry,
       resultSinks: this.createResultSinks(workspaceRoot),
       runStore: this.createRunStore(workspaceRoot),
@@ -82,11 +86,15 @@ export class WorkflowRuntimeFactory {
       recoverResultText: snapshotStore
         ? (input) => recoverResultTextFromSnapshots(snapshotStore, input.workflow, input.run, input.step)
         : undefined
-    })
+    }, workflow => this.beforeRun(workflow))
   }
 
   createBobWorkflowRunner(workflow: WorkflowDefinition): BobWorkflowEngineRunner {
-    return new BobWorkflowEngineRunner({
+    const beforeRun = async () => {
+      await this.options.contractV2BeforeRun?.(workflow.core)
+      assertWorkflowContractV2DefinitionShadow(workflow)
+    }
+    return new ContractV2BoundaryBobRunner({
       definition: workflow,
       coreWorkflow: workflow.core,
       actionRegistry: this.options.actionRegistry,
@@ -103,11 +111,16 @@ export class WorkflowRuntimeFactory {
         ...extractTaskWorkflowInputs(workflow, task),
         ...provided
       })
-    })
+    }, beforeRun)
+  }
+
+  private async beforeRun(workflow: CoreWorkflowDefinition): Promise<void> {
+    await this.options.contractV2BeforeRun?.(workflow)
+    assertWorkflowContractV2Shadow(workflow)
   }
 
   createRunStore(workspaceRoot: string): RunStateStore {
-    return new FileRunStateStore({ workspaceRoot, engineVersion: this.options.engineVersion })
+    return new ContractV2GuardedRunStateStore({ workspaceRoot, engineVersion: this.options.engineVersion, beforeCreateRun: this.options.beforeCreateRun })
   }
 
   createRunControlStore(workspaceRoot: string): RunControlStore {
@@ -213,4 +226,19 @@ export class WorkflowRuntimeFactory {
       pruneOnSave: config.get<boolean>("taskSnapshots.pruneOnSave", true)
     }
   }
+}
+
+class ContractV2BoundaryWorkflowEngine extends WorkflowEngine {
+  constructor(options: WorkflowEngineOptions, private readonly beforeRun: (workflow: CoreWorkflowDefinition) => Promise<void>) { super(options) }
+  override async runWorkflow(...args: Parameters<WorkflowEngine["runWorkflow"]>): ReturnType<WorkflowEngine["runWorkflow"]> { await this.beforeRun(args[0]); return super.runWorkflow(...args) }
+  override async resumeRun(...args: Parameters<WorkflowEngine["resumeRun"]>): ReturnType<WorkflowEngine["resumeRun"]> { await this.beforeRun(args[1].workflow); return super.resumeRun(...args) }
+  override async resumeRunGuarded(...args: Parameters<WorkflowEngine["resumeRunGuarded"]>): ReturnType<WorkflowEngine["resumeRunGuarded"]> { await this.beforeRun(args[1].workflow); return super.resumeRunGuarded(...args) }
+  override async retryCurrentStep(...args: Parameters<WorkflowEngine["retryCurrentStep"]>): ReturnType<WorkflowEngine["retryCurrentStep"]> { await this.beforeRun(args[1]); return super.retryCurrentStep(...args) }
+  override async approveBranchCheckpoint(...args: Parameters<WorkflowEngine["approveBranchCheckpoint"]>): ReturnType<WorkflowEngine["approveBranchCheckpoint"]> { await this.beforeRun(args[1]); return super.approveBranchCheckpoint(...args) }
+}
+class ContractV2BoundaryBobRunner extends BobWorkflowEngineRunner {
+  constructor(options: ConstructorParameters<typeof BobWorkflowEngineRunner>[0], private readonly beforeRun: () => Promise<void>) { super(options) }
+  override async runSingleWorkflowStep(...args: Parameters<BobWorkflowEngineRunner["runSingleWorkflowStep"]>): Promise<boolean> { await this.beforeRun(); return super.runSingleWorkflowStep(...args) }
+  override async runTodoStep(...args: Parameters<BobWorkflowEngineRunner["runTodoStep"]>): Promise<boolean> { await this.beforeRun(); return super.runTodoStep(...args) }
+  override async runEngineStep(...args: Parameters<BobWorkflowEngineRunner["runEngineStep"]>): Promise<boolean> { await this.beforeRun(); return super.runEngineStep(...args) }
 }
