@@ -240,8 +240,9 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   async runWorkflow(workflowArg?: WorkflowCommandArg, inputs: Record<string, unknown> = {}): Promise<unknown> {
-    workflowArg = await this.guardWorkflowCommand(workflowArg)
-    return this.runCommands.runWorkflow(workflowArg, inputs)
+    const guardedArg = await this.guardWorkflowCommand(workflowArg)
+    if (guardedArg === null) return "ワークフローが選択されていません。一覧から対象を選択してください。"
+    return this.runCommands.runWorkflow(guardedArg, inputs)
   }
 
   async runWorkflowStep(
@@ -249,7 +250,9 @@ export class WorkflowRegisterService implements vscode.Disposable {
     stepId?: string,
     inputs: Record<string, unknown> = {}
   ): Promise<unknown> {
-    workflowId = await this.guardWorkflowCommand(workflowId) as string | undefined
+    const guardedId = await this.guardWorkflowCommand(workflowId)
+    if (guardedId === null) return "ワークフローが選択されていません。一覧から対象を選択してください。"
+    workflowId = guardedId as string | undefined
     return this.runCommands.runWorkflowStep(workflowId, stepId, inputs)
   }
 
@@ -259,7 +262,9 @@ export class WorkflowRegisterService implements vscode.Disposable {
     sourceRunArg?: ArtifactSourceRunArg,
     inputs: Record<string, unknown> = {}
   ): Promise<unknown> {
-    workflowId = await this.guardWorkflowCommand(workflowId) as string | undefined
+    const guardedId = await this.guardWorkflowCommand(workflowId)
+    if (guardedId === null) return "ワークフローが選択されていません。一覧から対象を選択してください。"
+    workflowId = guardedId as string | undefined
     return this.runCommands.startFromStepWithArtifacts(workflowId, stepId, sourceRunArg, inputs)
   }
 
@@ -304,7 +309,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
     assertWorkflowContractV2Shadow(workflow)
   }
 
-  private async guardWorkflowCommand(arg: WorkflowCommandArg): Promise<WorkflowCommandArg> {
+  private async guardWorkflowCommand(arg: WorkflowCommandArg): Promise<WorkflowCommandArg | null> {
     if (this.coreWorkflows.size === 0) await this.reload({ showReport: false })
     const target = isOperationHubWorkflowMutationTarget(arg) ? arg : undefined
     let id = target?.workflowId ?? (typeof arg === "string" ? arg : undefined)
@@ -317,7 +322,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
         { title: "ワークフローを実行" }
       ))?.workflow
       id = selected?.id
-      if (!id) return ""
+      if (!id) return null
       arg = id
     }
     const workflow = id ? this.coreWorkflows.get(id) : undefined

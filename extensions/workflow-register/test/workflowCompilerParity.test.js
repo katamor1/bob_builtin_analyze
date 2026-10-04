@@ -704,3 +704,7 @@ test('V2 pointer reload keeps an unchanged V1 Bob registration and compiled view
  const view=requireWithVscode('workflowContractV2View.js');const core=second.coreWorkflows.find(x=>x.contractV2);assert.equal(Object.isFrozen(core),true);assert.ok(view.workflowContractV2CoreBinding(core));assert.equal(Reflect.deleteProperty(core,'contractV2'),false);
  assert.throws(()=>view.workflowContractV2CoreBinding({...core}),/Unauthenticated/);
 });
+
+test('pure V1 explicit reload preserves source re-registration',async t=>{
+ const root=await fsp.mkdtemp(path.join(os.tmpdir(),'p6-v1-reload-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const file=await writeWorkflow(root,'legacy',legacyWorkflow);resetRuntime(root,[file]);const {registerWorkflows}=requireWithVscode('workflowRegistrationService.js');const first=await registerWorkflows({createRunner:runnerStub});await registerWorkflows({createRunner:runnerStub,previousSource:first.registeredSource,previousLegacyFingerprint:first.legacyFingerprint});assert.equal(runtime.registerSourceCalls,2);assert.equal(runtime.registeredWorkflows.length,2);
+});

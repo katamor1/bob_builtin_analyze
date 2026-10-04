@@ -49,9 +49,9 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
   const executable = loaded.workflows
   const legacyFingerprint = createHash("sha256").update(JSON.stringify({ sourceId, sourceName,
     workflows: executable.map(workflow => [workflow.id, workflow.workflowFile, workflow.core.definitionHash]) })).digest("hex")
-  if ((input.previousLegacyFingerprint === legacyFingerprint)
+  if ((loaded.contractV2SlotCount > 0 && input.previousLegacyFingerprint === legacyFingerprint)
     || (executable.length === 0 && loaded.contractV2SlotCount > 0 && input.previousLegacyFingerprint === undefined)) {
-    return { result: { summary: "Contract v2は検証のみ・実行不可です。", lines }, coreWorkflows,
+    return { result: { summary: executable.length ? "V1の登録に変更はありません。Contract v2は検証のみ・実行不可です。" : "Contract v2は検証のみ・実行不可です。", lines }, coreWorkflows,
       sourceChanged: false, idsChanged: false, legacyFingerprint }
   }
 
