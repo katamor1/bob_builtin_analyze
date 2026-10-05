@@ -1,0 +1,24 @@
+
+const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),cp=require('node:child_process'),crypto=require('node:crypto');
+const {test}=require('node:test');const yazl=require('yazl'),yauzl=require('yauzl');
+const script=path.resolve(__dirname,'../scripts/recompress-vsix.js');
+const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
+async function archive(root){
+ const zip=new yazl.ZipFile();zip.addBuffer(Buffer.from('runtime payload '.repeat(10000)),'extension/out/main.js',{compress:false,mtime:new Date('2026-01-01'),mode:0o100644});
+ zip.addBuffer(Buffer.from('日本語のmetadata'),'extension/readme.md',{compressionLevel:1,mtime:new Date('2026-01-01'),mode:0o100600});
+ zip.addBuffer(Buffer.from('{}'),'extension/package.json',{compress:false,mtime:new Date('2026-01-01')});zip.end();
+ const parts=[];await new Promise((resolve,reject)=>zip.outputStream.on('data',b=>parts.push(b)).on('end',resolve).on('error',reject));
+ const file=path.join(root,'test-extension-1.0.0.vsix');fs.writeFileSync(file,Buffer.concat(parts));return file;
+}
+function setup(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'p6-compression-'));t.after(()=>{assert.equal(path.basename(root).startsWith('p6-compression-'),true);fs.rmSync(root,{recursive:true,force:true});});fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({name:'test-extension',version:'1.0.0'}));return root;}
+function run(root){return cp.spawnSync(process.execPath,[script],{cwd:root,encoding:'utf8',windowsHide:true});}
+function read(file){return new Promise((resolve,reject)=>yauzl.open(file,{lazyEntries:true},(error,zip)=>{
+ if(error)return reject(error);const rows=[];zip.on('error',reject);zip.on('end',()=>resolve(rows));zip.on('entry',entry=>zip.openReadStream(entry,(error,stream)=>{if(error)return reject(error);const data=[];stream.on('error',reject);stream.on('data',b=>data.push(b));stream.on('end',()=>{rows.push({name:entry.fileName,crc:entry.crc32,mode:entry.externalFileAttributes,mtime:entry.lastModFileTime,date:entry.lastModFileDate,sha256:hash(Buffer.concat(data))});zip.readEntry();});}));zip.readEntry();}));}
+test('compression preserves every entry and attribute through independent ZIP reader and is stable',async t=>{
+ const root=setup(t),file=await archive(root),before=fs.readFileSync(file),rows=await read(file);const result=run(root);assert.equal(result.status,0,result.stderr);const after=fs.readFileSync(file);assert.ok(after.length<before.length);assert.deepEqual(await read(file),rows);assert.equal(run(root).status,0);assert.deepEqual(fs.readFileSync(file),after);assert.equal(fs.readdirSync(root).some(x=>x.endsWith('.tmp')),false);
+});
+test('invalid archive and corrupt payload never replace the original',async t=>{
+ for(const mutation of [b=>Buffer.from('not a ZIP'),b=>{const c=Buffer.from(b);c[c.readUInt16LE(26)+c.readUInt16LE(28)+30]^=0xff;return c;},b=>{const c=Buffer.from(b);const i=c.indexOf(Buffer.from([0x50,0x4b,0x01,0x02]));c.writeUInt16LE(1,i+8);return c;},b=>{const c=Buffer.from(b);const i=c.indexOf(Buffer.from([0x50,0x4b,0x01,0x02]));c.writeUInt32LE(0xffffffff,i+20);return c;}]){
+ const root=setup(t),file=await archive(root),bad=mutation(fs.readFileSync(file));fs.writeFileSync(file,bad);const r=run(root);assert.notEqual(r.status,0);assert.deepEqual(fs.readFileSync(file),bad);assert.equal(fs.readdirSync(root).some(x=>x.endsWith('.tmp')),false);
+ }
+});

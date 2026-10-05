@@ -1,3 +1,5 @@
+import { assertWorkflowContractV2Shadow, verifyWorkflowContractV2CurrentPlan, WorkflowContractV2BoundaryError } from "../workflowContractV2ExecutionGuard"
+import type { CompileCurrentWorkflowContractV2Input, WorkflowContractV2CompileResult } from "../workflowContractV2Entrypoint"
 import * as fs from "fs/promises"
 import * as path from "path"
 import * as vscode from "vscode"
@@ -32,6 +34,7 @@ import {
 
 interface OperationHubWorkflowApi {
   listWorkflows: () => CoreWorkflowDefinition[]
+  compileCurrentWorkflowPackage?: (input: CompileCurrentWorkflowContractV2Input) => Promise<WorkflowContractV2CompileResult>
 }
 
 interface OperationHubProviderOptions {
@@ -225,11 +228,17 @@ export class OperationHubProvider implements vscode.Disposable {
       if (!workflow || !workflowRoot) {
         throw refreshRequired(`workflow '${targetId}' は現在の catalog にありません。`)
       }
+      await this.guardShadowWorkflow(workflow)
       try {
         await canonicalOperationHubWorkspaceRoot(workflowRoot, [workspaceRoot])
       } catch {
         throw refreshRequired(`workflow '${targetId}' の workspace が変更されました。`)
       }
+    }
+    if (targetKind === "run") {
+      const validated = await validateOperationHubRunMutationTarget({ source: "operationHub", workspaceRoot, runId: targetId, expectedRevision: message.expectedRevision ?? "" }, [workspaceRoot])
+      const workflow = this.options.api.listWorkflows().find(candidate => candidate.id === validated.snapshot.run.workflowId)
+      if (workflow) await this.guardShadowWorkflow(workflow)
     }
     return {
       identity: {
@@ -241,6 +250,14 @@ export class OperationHubProvider implements vscode.Disposable {
       },
       expectedRevision: message.expectedRevision
     }
+  }
+
+  private async guardShadowWorkflow(workflow: CoreWorkflowDefinition): Promise<void> {
+      await verifyWorkflowContractV2CurrentPlan({ workflow, compileCurrent: input => {
+        if (!this.options.api.compileCurrentWorkflowPackage) throw new WorkflowContractV2BoundaryError("Contract v2 gateway is unavailable.")
+        return this.options.api.compileCurrentWorkflowPackage(input)
+      } })
+      assertWorkflowContractV2Shadow(workflow)
   }
 
   private ensurePanel(): vscode.WebviewPanel {

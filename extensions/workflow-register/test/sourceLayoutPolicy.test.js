@@ -39,7 +39,7 @@ test("workflow run command orchestration is split out of WorkflowRegisterService
   const serviceSource = readSrc("workflowRegisterService.ts")
   assert.match(serviceSource, /import \{ WorkflowRunCommandService \} from "\.\/workflowRunCommands"/)
   assert.match(serviceSource, /private readonly runCommands: WorkflowRunCommandService/)
-  assert.match(serviceSource, /runWorkflow\(workflowArg\?: WorkflowCommandArg, inputs: Record<string, unknown> = \{\}\): Promise<unknown> \{[\s\S]*return this\.runCommands\.runWorkflow\(workflowArg, inputs\)/)
+  assert.match(serviceSource, /runWorkflow\(workflowArg\?: WorkflowCommandArg, inputs: Record<string, unknown> = \{\}\): Promise<unknown> \{[\s\S]*const guardedArg = await this\.guardWorkflowCommand\(workflowArg\)[\s\S]*return this\.runCommands\.runWorkflow\(guardedArg, inputs\)/)
   assert.match(readSrc("workflowRunCommands.ts"), /export type WorkflowCommandArg = string \| OperationHubWorkflowMutationTarget \| undefined/)
   assert.doesNotMatch(serviceSource, /collectCoreWorkflowInputs/)
   assert.doesNotMatch(serviceSource, /pickRunSelection/)

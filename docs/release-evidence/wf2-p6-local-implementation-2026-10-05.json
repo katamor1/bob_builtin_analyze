@@ -1,0 +1,2471 @@
+{
+  "schemaVersion": "bob-builtin-analyze/local-implementation-observation/v1",
+  "repository": "katamor1/bob_builtin_analyze",
+  "sliceId": "WF2-P6-ENTRYPOINT",
+  "state": "LOCAL",
+  "observedAt": "2026-10-04T21:51:57.814Z",
+  "mutationAuthority": false,
+  "activation": "shadow",
+  "base": "90c678d3d33ae61a5523f2d9cf8057538028dd4b",
+  "implementationHead": "d4fe8544d89b172464270b0371ee8b2334dbce30",
+  "implementationTree": "0e6ea3c5732cfd60cb03f5eb657a6cfb2f4d8e47",
+  "sourceReconciliation": {
+    "schemaVersion": 1,
+    "sliceId": "WF2-P6-ENTRYPOINT",
+    "base": "90c678d3d33ae61a5523f2d9cf8057538028dd4b",
+    "implementationHead": "d4fe8544d89b172464270b0371ee8b2334dbce30",
+    "sourceItemCount": 26,
+    "targetSurfaceCount": 24,
+    "rows": [
+      {
+        "sourceItemId": "source-03f3e91bd544a8c107546b31",
+        "path": "extensions/workflow-register/src/workflowContractV2View.ts",
+        "selectedSymbols": [
+          "ContractV2CoreWorkflowDefinition",
+          "ContractV2WorkflowDefinition",
+          "WorkflowContractV2CoreMetadata",
+          "WorkflowContractV2DefinitionBinding",
+          "adaptCompiledWorkflowForProduct",
+          "workflowContractV2Binding",
+          "workflowContractV2CoreMetadata"
+        ],
+        "sourceBlob": "669cc5054ca37e939e690e9775b8c757cac1d5c9",
+        "currentSha256": "cae8521e40e9ec88f1599fe8d2f7ceb89c7fe02188c77344bd69f1faf6aeb3a7",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-1b77ef339188f46fda20ed3f",
+        "path": "extensions/workflow-register/src/workflowContractV2ExecutionGuard.ts",
+        "selectedSymbols": [
+          "WorkflowContractV2BoundaryError",
+          "acquireWorkflowContractV2RunLease",
+          "slotFromMetadata"
+        ],
+        "sourceBlob": "e1a57eaaa249301301d77518d7699d6895be6c83",
+        "currentSha256": "9e8604df2b3e900892016d81726320996f23b9e7fcc240b09256fc61547008e4",
+        "mode": "adapted",
+        "adaptation": "slotFromMetadata is replaced by the private binding slot; public metadata is never authentication."
+      },
+      {
+        "sourceItemId": "source-200e5bffee5f7adee7265389",
+        "path": "extensions/workflow-register/test/workflowContractV2ExecutionGuard.test.js",
+        "selectedSymbols": [
+          "Operation Hub verifies the exact current plan before dispatching a workflow action",
+          "run creation fails closed and releases a lease whose private/current evidence drifted",
+          "run creation skips legacy workflows and returns the exact verified Contract v2 lease",
+          "run-state creation and Operation Hub guard Contract v2 before durable or command dispatch"
+        ],
+        "sourceBlob": "c1b3e593ec18224b4e2e5a7fd8d43123282aa227",
+        "currentSha256": "2001bec335ed44c33b3bc8ac8882e94ed28f26636e02190bc1f6434dce8162a4",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-211ce0e127827b329bdc59e8",
+        "path": "extensions/workflow-register/src/workflowDiscovery.ts",
+        "selectedSymbols": [
+          "WorkflowDiscoveryResult.packages",
+          "WorkflowPackageSlotCandidate",
+          "discoverWorkspaceWorkflowFiles"
+        ],
+        "sourceBlob": "a8a532cccad678f4a074e3aa9b9f01f0bb10e8b5",
+        "currentSha256": "7fd4bcae4e6626186198baad534023f86356b14a5cc20f239fb2821798122990",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-28fc352703ea6a0d36ba82da",
+        "path": "extensions/workflow-register/src/workflowRuntimeFactory.ts",
+        "selectedSymbols": [
+          "ContractV2BeforeRun",
+          "ContractV2BoundaryWorkflowEngine",
+          "WorkflowRuntimeFactory.createBobWorkflowRunner",
+          "WorkflowRuntimeFactory.createRunStore",
+          "WorkflowRuntimeFactoryOptions.beforeCreateRun",
+          "WorkflowRuntimeFactoryOptions.contractV2BeforeRun"
+        ],
+        "sourceBlob": "3294c92dba951f0bc982b2742140c8c969f85ce1",
+        "currentSha256": "799a3aaebf2f8b83a0bf55cbac249ad1b0f2e49c7055f4a271e113dd68b06c71",
+        "mode": "adapted",
+        "adaptation": "ContractV2BeforeRun is represented by an inline function type; the factory owns fixed denial independently of optional hooks."
+      },
+      {
+        "sourceItemId": "source-2d5f40ef64b61e97372163c3",
+        "path": "extensions/workflow-register/test/workflowCatalogReloadCoordinator.test.js",
+        "selectedSymbols": [
+          "catalog reload operations run FIFO and a failure does not block the next provider epoch",
+          "coordinator rejects new work after disposal without cancelling the current owner"
+        ],
+        "sourceBlob": "ac9d374c40225a6124a25204a1a7c3d8349cb1e1",
+        "currentSha256": "ca52d83d3f92084c0604d948130a452767c56acdd0ea1e9d868ef03367efdb75",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-487818564a725885879bc58d",
+        "path": "extensions/workflow-register/src/workflowDefinitionLoader.ts",
+        "selectedSymbols": [
+          "formatContractV2Diagnostics",
+          "loadWorkspaceWorkflows",
+          "slotKey"
+        ],
+        "sourceBlob": "9fabecd566be0bfb5f0520c3a958fa3f5af81ac3",
+        "currentSha256": "6f6b6daa8481837cdb023f015297f077894663de85619f0d751a622546675ccf",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-4ea2851958ad8182f8e6febb",
+        "path": "extensions/workflow-register/test/workflowContractV2Entrypoints.test.js",
+        "selectedSymbols": [
+          "all product consumers share one current-generation handle and one failure diagnostic contract",
+          "entrypoint input rejects proxy and accessor records without invoking behavior",
+          "entrypoint validation uses captured RegExp intrinsics after module load",
+          "run creation acquires the same handle and explicit generation never consults current",
+          "transitional legacy imports are exact and v2 consumers do not reach compiler internals"
+        ],
+        "sourceBlob": "0522f7c12d30bb887e9c8a0ea7a271b2d193e5ce",
+        "currentSha256": "ee6d12a09881e03def5858322574512f2165da2afd5492b006d9d236ce791fe3",
+        "mode": "adapted",
+        "adaptation": "Import-boundary coverage lives in architectureContracts.test.js; runtime gateway tests use real P2/P4/P5 fixtures."
+      },
+      {
+        "sourceItemId": "source-555bdba0baee1b9d0dc5b853",
+        "path": "extensions/workflow-register/src/workflowRegisterService.ts",
+        "selectedSymbols": [
+          "WorkflowRegisterService.acquireCurrentWorkflowPackage",
+          "WorkflowRegisterService.compileCurrentWorkflowPackage",
+          "WorkflowRegisterService.compileWorkflowPackageGeneration",
+          "WorkflowRegisterService.invalidateWorkflowPackageSlot",
+          "WorkflowRegisterService.onContractV2PointerChanged",
+          "WorkflowRegisterService.registerWorkflowProviderContract"
+        ],
+        "sourceBlob": "f2f869d8add801995138a775cc35ec9c45caec40",
+        "currentSha256": "de76f03cb2186bb3b84811823d0fae6e25c1bde41417b6dd83e7c12aa00587c3",
+        "mode": "adapted",
+        "adaptation": "onContractV2PointerChanged is the constructor-owned pointerChanged closure."
+      },
+      {
+        "sourceItemId": "source-57a458266388471a1b32856d",
+        "path": "extensions/workflow-register/src/workflowRegistrationService.ts",
+        "selectedSymbols": [
+          "RegisterWorkflowsInput",
+          "registerWorkflows"
+        ],
+        "sourceBlob": "6c931dab165bf49192b06713f64ba3487742de0f",
+        "currentSha256": "db79475be8e441abc15630bdccf765fc196ddfbbdd7f162523803fa5f47a2cd0",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-60e6fab77af45f9c2bde1ecc",
+        "path": "extensions/workflow-register/src/workflowRegisterService.ts",
+        "selectedSymbols": [
+          "WorkflowRegisterService.assertContractV2RunCreationReady",
+          "WorkflowRegisterService.runWorkflow"
+        ],
+        "sourceBlob": "f2f869d8add801995138a775cc35ec9c45caec40",
+        "currentSha256": "de76f03cb2186bb3b84811823d0fae6e25c1bde41417b6dd83e7c12aa00587c3",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-7021229a1b36012137ed7676",
+        "path": "extensions/workflow-register/src/workflowContractV2Product.ts",
+        "selectedSymbols": [
+          "CreateWorkflowContractV2ProductEntrypointInput",
+          "WorkflowContractV2PlanStoreFacade",
+          "createWorkflowContractV2ProductEntrypoint"
+        ],
+        "sourceBlob": "334e51c53fe15abe8a3905ad38825e3fe1284c93",
+        "currentSha256": "595ad8ef36b41109f668a095aaa18532227b327573555bdd8d51a62b786220dd",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-861855ac2fa66f2a6f18da8b",
+        "path": "extensions/workflow-register/src/core/actionRegistry.ts",
+        "selectedSymbols": [
+          "WorkflowProviderRegistration",
+          "WorkflowProviderRegistrationInput"
+        ],
+        "sourceBlob": "54c64f0732373627e0b4c16951f98e6fbc8d8c7d",
+        "currentSha256": "fb226bb9fcd635a0e60f71954b3c872bc8a4daae82857ba734ec24f9aec31480",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-92520c1f32f5bb800763bb5b",
+        "path": "extensions/workflow-register/test/fixtures/workflow-contract-v2/transitional-legacy-import-allowlist.json",
+        "selectedSymbols": [
+          "test/fixtures/workflow-contract-v2/transitional-legacy-import-allowlist.json"
+        ],
+        "sourceBlob": "6610da2f4db0742db21e210f5920bb7386d718e8",
+        "currentSha256": "f2bae2a98c572ad7b8c24354ba518370ed0d809459a373fc016f5931ccc86258",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-9c85d790c8430b35032bb0b3",
+        "path": "extensions/workflow-register/src/workflowBobTaskBinding.ts",
+        "selectedSymbols": [
+          "AUDITED_BOB_PROFILE_DIGEST",
+          "LEGACY_BOB_TASK_BINDING"
+        ],
+        "sourceBlob": "e78fbbad3f73a25fde70a98e68fa76efcad975f3",
+        "currentSha256": "b58839135a8b6397ee37d3aa8cdcb76565adfbccbebe2081a5e99d20cf68288e",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-a19cf56f8839f61bbf85c8a4",
+        "path": "extensions/workflow-register/src/workflowContractV2Entrypoint.ts",
+        "selectedSymbols": [
+          "CompileCurrentWorkflowContractV2Input",
+          "CompileWorkflowContractV2GenerationInput",
+          "CreateWorkflowContractV2EntrypointInput",
+          "WorkflowContractV2AcquireResult",
+          "WorkflowContractV2CompileResult",
+          "WorkflowContractV2Consumer",
+          "WorkflowContractV2Entrypoint",
+          "WorkflowContractV2Slot",
+          "createWorkflowContractV2Entrypoint"
+        ],
+        "sourceBlob": "6169d97613b0cefee0523d8ee44e7ac3cebd6eb8",
+        "currentSha256": "4f9bdc0b94393fbcbbcb32c7ff0d41d1454b745645b15d5f6edd3741ae72520b",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-b69378eb229cf54aef34ce86",
+        "path": "extensions/workflow-register/test/workflowContractV2ExecutionBoundary.test.js",
+        "selectedSymbols": [
+          "Bob evidence comes from the dedicated audited binding helper",
+          "Bob legacy runner input collection verifies the workflow before it can create or recover a run",
+          "Operation Hub recompiles and compares the displayed current plan before dispatch",
+          "all standalone engine execution paths verify Contract v2 before recovery, resume, retry, or checkpoint work",
+          "direct run-state creation retains a second guard before FileRunStateStore creates a run",
+          "the service acquires the exact current v2 plan, releases it, and fails before R5"
+        ],
+        "sourceBlob": "fd9504d37b568d0281a4e63ede7d36a67ba4d2aa",
+        "currentSha256": "1b5d95a58e2124bf8a0c74bc8a0a508cb34a68dfee4295a77934c0c880b608be",
+        "mode": "adapted",
+        "adaptation": "Historical source-text checks and product lease acquisition are replaced by behavioral route tests and fixed denial. Isolated internal runtime lease tests remain separate."
+      },
+      {
+        "sourceItemId": "source-bcc284e4d66c136f1264b98b",
+        "path": "extensions/workflow-register/src/extension.ts",
+        "selectedSymbols": [
+          "WorkflowRegisterApi.acquireCurrentWorkflowPackage",
+          "WorkflowRegisterApi.compileCurrentWorkflowPackage",
+          "WorkflowRegisterApi.compileWorkflowPackageGeneration",
+          "WorkflowRegisterApi.invalidateWorkflowPackageSlot",
+          "WorkflowRegisterApi.registerWorkflowProviderContract",
+          "activate"
+        ],
+        "sourceBlob": "e77dbb73d91a2dc47f60e2c481c1589da095e08c",
+        "currentSha256": "f91806cf03e77346aeaff80554acab37074a97886760173e8e95ac94df0ee2a0",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-c17b90eda53c1c3096c12b4a",
+        "path": "extensions/workflow-register/src/workflowContractV2RunStateStore.ts",
+        "selectedSymbols": [
+          "ContractV2GuardedRunStateStore.createRun",
+          "ContractV2GuardedRunStateStoreOptions.beforeCreateRun"
+        ],
+        "sourceBlob": "288c7ba6e10c7153e8b3b93628ddabc2a2a32670",
+        "currentSha256": "defde03c4d2a77a17b4b6bf31c69ed448646ab71118aa71e043e5f87141fcb4c",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-c89e42bd9d47e129405c0284",
+        "path": "extensions/workflow-register/src/workflowContractV2ExecutionGuard.ts",
+        "selectedSymbols": [
+          "verifyWorkflowContractV2CurrentPlan"
+        ],
+        "sourceBlob": "e1a57eaaa249301301d77518d7699d6895be6c83",
+        "currentSha256": "9e8604df2b3e900892016d81726320996f23b9e7fcc240b09256fc61547008e4",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-ccdeaf8900368dfaf0e5f97f",
+        "path": "extensions/workflow-register/test/workflowContractV2ProviderLifecycle.test.js",
+        "selectedSymbols": [
+          "failed environment rotation rolls back a new provider registration and retains the prior gateway",
+          "lifecycle disposal revokes registrations, makes wrappers idempotent, and fails closed",
+          "provider registration and disposal rotate the current compiler entrypoint exactly once",
+          "public service API rotates the v2 gateway for provider contract registration lifecycle",
+          "registry accessors are rejected without invocation and captured Set clear survives replacement"
+        ],
+        "sourceBlob": "2a01f56606f9edd15ade754e40432e47014cfb8b",
+        "currentSha256": "dcf34bef7102f655d0444f20859a43f6639b8c1d6239f769cd56866962576444",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-ddbcf5073d1165cea16c732a",
+        "path": "extensions/workflow-register/src/extensionWithAuthoring.ts",
+        "selectedSymbols": [
+          "activate.workflowValidationOptions",
+          "workflowRegister.validateCurrentWorkflow",
+          "workflowRegister.validateWorkspaceWorkflows"
+        ],
+        "sourceBlob": "301d9eeedf2ae460299c66be32c6c3ea3898b47f",
+        "currentSha256": "55708851f660a877aa2bcffcf2c8df87f293a6cb71d2e0e190564057b55e6423",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-e5383e8d285f9ae1a990d45f",
+        "path": "extensions/workflow-register/src/bobWorkflowFactory.ts",
+        "selectedSymbols": [
+          "BobWorkflowStepRunner.runCompiledWorkflowStep",
+          "buildCompiledWorkflowSteps",
+          "buildLegacyWorkflowSteps",
+          "createBobWorkflow",
+          "probeTask"
+        ],
+        "sourceBlob": "f8f0c4e3da1eada4f7cc1a7c84bbc9a6fc6e00c1",
+        "currentSha256": "0b2ce7e132bb0fe4cd2262f18615f74868057b4973c5226eb0962d7eb47d5b6a",
+        "mode": "adapted",
+        "adaptation": "Compiled Bob execution helpers are deliberately omitted under MAX_SHADOW; createBobWorkflow rejects privately bound V2 before task probing. Existing legacy builder remains."
+      },
+      {
+        "sourceItemId": "source-e960b66c70c58f030bd5c259",
+        "path": "extensions/workflow-register/src/workflowCatalogReloadCoordinator.ts",
+        "selectedSymbols": [
+          "WorkflowCatalogReloadCoordinator"
+        ],
+        "sourceBlob": "36b604671f5c05dbb96229e4f3f4e629a806e467",
+        "currentSha256": "82c8a53d3a1da9c8a97e5146c668d21b6f551455ac1ed7fe7b8fdb21e70da7a2",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-efeea41da424681431167d02",
+        "path": "extensions/workflow-register/src/commands/validateWorkflow.ts",
+        "selectedSymbols": [
+          "ValidateWorkflowCommandOptions.compileCurrentWorkflowPackage",
+          "contractV2SlotFromPointer",
+          "formatContractV2Diagnostics",
+          "isContractV2CurrentPointer",
+          "validateCurrentWorkflow",
+          "validateWorkspaceWorkflows"
+        ],
+        "sourceBlob": "60671a4ab1f7bd6998b47c09ee4466e8e1569f77",
+        "currentSha256": "e9d13acd3ab43e859b7f61f13c8f3c17652603ac9730a6875915a9662872affc",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      },
+      {
+        "sourceItemId": "source-fdd3944951a97ce7698e0492",
+        "path": "extensions/workflow-register/src/workflowContractV2ProviderLifecycle.ts",
+        "selectedSymbols": [
+          "WorkflowContractV2ProviderLifecycle",
+          "WorkflowContractV2ProviderLifecycleInput",
+          "WorkflowContractV2ProviderRegistryLike"
+        ],
+        "sourceBlob": "b13581fdd994ce3e8ffac986f8607b8cce499297",
+        "currentSha256": "0e9df7de9431e63f9723df189019e7ae5c21f5b6596f0dc93a4c9e11f0d3d76d",
+        "mode": "reconstructed",
+        "adaptation": "Selected contract reconstructed on current main; historical file not applied wholesale."
+      }
+    ],
+    "mutationAuthority": false
+  },
+  "scopeVerification": {
+    "observedAt": "2026-10-04T20:50:20.276Z",
+    "head": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+    "ownedExpected": 48,
+    "changed": 45,
+    "unexpected": [],
+    "protectedFiles": [
+      {
+        "path": "docs/release-evidence/feature-selection-ledger-2026-08-23.json",
+        "localSha256": "e7603655a9f356d36938fc6d722061aa9a616fcfd8258bde05ad6c30ac9ae894",
+        "gitBaseSha256": "e7603655a9f356d36938fc6d722061aa9a616fcfd8258bde05ad6c30ac9ae894",
+        "byteIdentical": true,
+        "normalizedContentIdentical": true
+      },
+      {
+        "path": "tools/main-consolidation/feature-selection-source-universe.json",
+        "localSha256": "c69adc6b82d1d6d40719e10c116e985890f17d45ee4b99e0feabe76b00d08c79",
+        "gitBaseSha256": "c69adc6b82d1d6d40719e10c116e985890f17d45ee4b99e0feabe76b00d08c79",
+        "byteIdentical": true,
+        "normalizedContentIdentical": true
+      },
+      {
+        "path": "extensions/workflow-register/package-lock.json",
+        "localSha256": "98af66a1aacf5a1adb3d2c152911ceb42272f0fe3ec0a6a5d7f424ffca4ec5b7",
+        "gitBaseSha256": "77d9e7ec0669d4fc845b315b69ae7e87b7a16818941ea2ed67ce52fecbc4e361",
+        "byteIdentical": false,
+        "normalizedContentIdentical": true
+      },
+      {
+        "path": "extensions/bob-bazaar-review/package-lock.json",
+        "localSha256": "74d151476044a5662a8587c9858033453394ada9e1671026bcba94ea03b1bbb4",
+        "gitBaseSha256": "7254490d2fb5997d8bda6c1d66199bc8f8ac3ddd72ea09dc2654c1dd0d29c9ee",
+        "byteIdentical": false,
+        "normalizedContentIdentical": true
+      },
+      {
+        "path": "extensions/bob-code-consistency-review/package-lock.json",
+        "localSha256": "26f9faa20114215a9c9ffa03dccec94502c9a1416aeb7a97d771632707da38e3",
+        "gitBaseSha256": "54ac8370c2c094c9aa7f12ece0ee27694d0761073ac5afeb0bb26da6651bdea8",
+        "byteIdentical": false,
+        "normalizedContentIdentical": true
+      },
+      {
+        "path": ".github/workflows/extensions-quality.yml",
+        "localSha256": "bd707f02bd13649ddd744da8bf80687c0c3afe9e2ee41d2106d5d3df6127bf82",
+        "gitBaseSha256": "2d7e3fa67daf8f0d4b975a76233e0454305afdc7bb608b50dec5cd94bd01d4bd",
+        "byteIdentical": false,
+        "normalizedContentIdentical": true
+      },
+      {
+        "path": ".github/workflows/workflow-contracts.yml",
+        "localSha256": "00e4df01a4dbcfb20ef96a10790401c019910ba5136f389809d8ab0897941e06",
+        "gitBaseSha256": "baa8b7a6a4282854b97056c3b277271511343bd59eae38c874ddc689e04322fe",
+        "byteIdentical": false,
+        "normalizedContentIdentical": true
+      },
+      {
+        "path": ".github/workflows/code-consistency-review-scaffold.yml",
+        "localSha256": "d6143c5083ff74ce45322952b57583731af5e1a1b0dc3c2c0d8f6cdcb60f1576",
+        "gitBaseSha256": "f4016d150ed426585477670859c4faa13d6c29d81226e4344ad160c6b7545491",
+        "byteIdentical": false,
+        "normalizedContentIdentical": true
+      },
+      {
+        "path": ".github/workflows/three-extension-ui-contracts.yml",
+        "localSha256": "dec915cbfc399a4468450ee9563e5dea3077fc4510c21dd179aa4c1415dfc248",
+        "gitBaseSha256": "3d2496834266f83da842951dc8277e32d7d6df296f627d393929b2c78097c33a",
+        "byteIdentical": false,
+        "normalizedContentIdentical": true
+      }
+    ],
+    "unchangedExtensionTrees": [
+      {
+        "path": "extensions/bob-bazaar-review",
+        "baseTree": "756c9415f3911b9c03cd983720d9d11dc87a4659",
+        "currentTree": "756c9415f3911b9c03cd983720d9d11dc87a4659",
+        "unchanged": true
+      },
+      {
+        "path": "extensions/bob-code-consistency-review",
+        "baseTree": "ed8c989574afa7b87086d259739b263ab92547be",
+        "currentTree": "ed8c989574afa7b87086d259739b263ab92547be",
+        "unchanged": true
+      }
+    ],
+    "mutationAuthority": false
+  },
+  "fixPassSourceBinding": {
+    "label": "task6-workflow-full-03",
+    "observedAfterRun": true,
+    "dirtyDuringTest": true,
+    "files": [
+      {
+        "path": ".gitignore",
+        "rawSha256": "8321cf824c8155e4207adc0f5a1bf5cbf51c86c4827edcb1a623809d0ddacf05",
+        "normalizedLfSha256": "4f865f14b903000ebd5c45698b0fe0e37fa061831ed68ae25574bf7a9a391325"
+      },
+      {
+        "path": "extensions/workflow-register/src/commands/validateWorkflow.ts",
+        "rawSha256": "e9d13acd3ab43e859b7f61f13c8f3c17652603ac9730a6875915a9662872affc",
+        "normalizedLfSha256": "e9d13acd3ab43e859b7f61f13c8f3c17652603ac9730a6875915a9662872affc"
+      },
+      {
+        "path": "extensions/workflow-register/src/workflowContractV2RunStateStore.ts",
+        "rawSha256": "defde03c4d2a77a17b4b6bf31c69ed448646ab71118aa71e043e5f87141fcb4c",
+        "normalizedLfSha256": "defde03c4d2a77a17b4b6bf31c69ed448646ab71118aa71e043e5f87141fcb4c"
+      },
+      {
+        "path": "extensions/workflow-register/src/workflowDefinitionLoader.ts",
+        "rawSha256": "6f6b6daa8481837cdb023f015297f077894663de85619f0d751a622546675ccf",
+        "normalizedLfSha256": "6f6b6daa8481837cdb023f015297f077894663de85619f0d751a622546675ccf"
+      },
+      {
+        "path": "extensions/workflow-register/src/workflowDiscovery.ts",
+        "rawSha256": "7fd4bcae4e6626186198baad534023f86356b14a5cc20f239fb2821798122990",
+        "normalizedLfSha256": "7fd4bcae4e6626186198baad534023f86356b14a5cc20f239fb2821798122990"
+      },
+      {
+        "path": "extensions/workflow-register/src/workflowRegisterService.ts",
+        "rawSha256": "de76f03cb2186bb3b84811823d0fae6e25c1bde41417b6dd83e7c12aa00587c3",
+        "normalizedLfSha256": "de76f03cb2186bb3b84811823d0fae6e25c1bde41417b6dd83e7c12aa00587c3"
+      },
+      {
+        "path": "extensions/workflow-register/src/workflowRegistrationService.ts",
+        "rawSha256": "db79475be8e441abc15630bdccf765fc196ddfbbdd7f162523803fa5f47a2cd0",
+        "normalizedLfSha256": "db79475be8e441abc15630bdccf765fc196ddfbbdd7f162523803fa5f47a2cd0"
+      },
+      {
+        "path": "extensions/workflow-register/src/workflowRunCommands.ts",
+        "rawSha256": "1389e315b91752bc4216524ad997c01a5101457e0093af80c615fe31dd58869e",
+        "normalizedLfSha256": "1389e315b91752bc4216524ad997c01a5101457e0093af80c615fe31dd58869e"
+      },
+      {
+        "path": "extensions/workflow-register/src/workflowRuntimeFactory.ts",
+        "rawSha256": "799a3aaebf2f8b83a0bf55cbac249ad1b0f2e49c7055f4a271e113dd68b06c71",
+        "normalizedLfSha256": "799a3aaebf2f8b83a0bf55cbac249ad1b0f2e49c7055f4a271e113dd68b06c71"
+      },
+      {
+        "path": "extensions/workflow-register/test/architectureContracts.test.js",
+        "rawSha256": "6c6b84afc7dce2af99864fc661f42006a3e3ebe711d3e6054456ce8c66daedd0",
+        "normalizedLfSha256": "6c6b84afc7dce2af99864fc661f42006a3e3ebe711d3e6054456ce8c66daedd0"
+      },
+      {
+        "path": "extensions/workflow-register/test/sourceLayoutPolicy.test.js",
+        "rawSha256": "66d187135464fc9b77da906278d775ca68e6544af1415e42d52c446310f7f344",
+        "normalizedLfSha256": "66d187135464fc9b77da906278d775ca68e6544af1415e42d52c446310f7f344"
+      },
+      {
+        "path": "extensions/workflow-register/test/workflowCompilerParity.test.js",
+        "rawSha256": "86e884643b02eaab59f05f7d31b96dd64fd7d9b3dc3e37f0e12919889dbf281f",
+        "normalizedLfSha256": "86e884643b02eaab59f05f7d31b96dd64fd7d9b3dc3e37f0e12919889dbf281f"
+      },
+      {
+        "path": "extensions/workflow-register/test/workflowContractV2ExecutionBoundary.test.js",
+        "rawSha256": "1b5d95a58e2124bf8a0c74bc8a0a508cb34a68dfee4295a77934c0c880b608be",
+        "normalizedLfSha256": "1b5d95a58e2124bf8a0c74bc8a0a508cb34a68dfee4295a77934c0c880b608be"
+      },
+      {
+        "path": "extensions/workflow-register/test/workflowRegister.test.js",
+        "rawSha256": "700d01688abff98f7576fe9fc936f0d8b5e076324e417f00a9711cf012861ba7",
+        "normalizedLfSha256": "700d01688abff98f7576fe9fc936f0d8b5e076324e417f00a9711cf012861ba7"
+      }
+    ],
+    "logSha256": "b0f75fb1a37436e8394f41abc9723528c397614d0c74609e04f2b1914e19e46c",
+    "mutationAuthority": false,
+    "committedHead": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+    "committedTree": "b29daa768cceae147a82f6eb922911e534335e0c"
+  },
+  "immutable": [
+    {
+      "path": "docs/release-evidence/feature-selection-ledger-2026-08-23.json",
+      "bytes": 233499,
+      "sha256": "e7603655a9f356d36938fc6d722061aa9a616fcfd8258bde05ad6c30ac9ae894",
+      "byteIdenticalToBase": true
+    },
+    {
+      "path": "tools/main-consolidation/feature-selection-source-universe.json",
+      "bytes": 1081350,
+      "sha256": "c69adc6b82d1d6d40719e10c116e985890f17d45ee4b99e0feabe76b00d08c79",
+      "byteIdenticalToBase": true
+    }
+  ],
+  "checks": [
+    {
+      "label": "task6-bazaar-ci",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-bazaar-review",
+      "command": "npm",
+      "args": [
+        "ci",
+        "--registry=https://registry.npmjs.org",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 51179,
+      "observedAt": "2026-10-04T19:02:41.407Z",
+      "log": "logs/task6-bazaar-ci.log",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 1704,
+      "logSha256": "cc2eebf936667def8c3b6f5f958b6d65cdbec9718cddace603472ed7248549cb"
+    },
+    {
+      "label": "task6-bazaar-full",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-bazaar-review",
+      "command": "npm",
+      "args": [
+        "test"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 255337,
+      "observedAt": "2026-10-04T19:06:57.371Z",
+      "log": "logs/task6-bazaar-full.log",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 754,
+        "pass": 753,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 1,
+        "todo": 0
+      },
+      "logBytes": 158218,
+      "logSha256": "63bdca26d27e1ecc878534ab803f946256b6f8ebb92762c1b584db3911bf14ba"
+    },
+    {
+      "label": "task6-bob-bazaar-review-architecture-policy",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-bazaar-review",
+      "command": "npm",
+      "args": [
+        "run",
+        "architecture:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 7180,
+      "observedAt": "2026-10-04T19:08:10.406Z",
+      "log": "logs/task6-bob-bazaar-review-architecture-policy.log",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 143,
+      "logSha256": "6ebcd3a4fd38b228bc2cd2603991334cee0dd96abd351723a8c10b30920223fd"
+    },
+    {
+      "label": "task6-bob-bazaar-review-artifact-policy",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-bazaar-review",
+      "command": "npm",
+      "args": [
+        "run",
+        "artifact:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 6590,
+      "observedAt": "2026-10-04T19:08:52.896Z",
+      "log": "logs/task6-bob-bazaar-review-artifact-policy.log",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 166,
+      "logSha256": "1db28684b8a13d43d88f1032795144df031ca32322958097c972a23d83f80e02"
+    },
+    {
+      "label": "task6-bob-bazaar-review-audit-prod",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-bazaar-review",
+      "command": "npm",
+      "args": [
+        "run",
+        "audit:prod"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 20997,
+      "observedAt": "2026-10-04T19:08:45.812Z",
+      "log": "logs/task6-bob-bazaar-review-audit-prod.log",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 105,
+      "logSha256": "4985b6704ce3bdc711c6cbb2efbafee23d830c26b63281d0a4454a7d7e6517d8"
+    },
+    {
+      "label": "task6-bob-bazaar-review-dependency-policy",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-bazaar-review",
+      "command": "npm",
+      "args": [
+        "run",
+        "dependency:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 7559,
+      "observedAt": "2026-10-04T19:08:23.830Z",
+      "log": "logs/task6-bob-bazaar-review-dependency-policy.log",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 6,
+        "pass": 6,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 1689,
+      "logSha256": "a69befb37f56a3fba6fb344d36b44d7246251d998a7c7c7227b085a37c02d644"
+    },
+    {
+      "label": "task6-bob-bazaar-review-package-policy",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-bazaar-review",
+      "command": "npm",
+      "args": [
+        "run",
+        "package:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 4409,
+      "observedAt": "2026-10-04T19:12:16.226Z",
+      "log": "logs/task6-bob-bazaar-review-package-policy.log",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 175,
+      "logSha256": "52b6d59fc3716f2938f1af800d14381d0e8f06bcd54059a2009083c4b63a819c"
+    },
+    {
+      "label": "task6-bob-bazaar-review-package",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-bazaar-review",
+      "command": "npm",
+      "args": [
+        "run",
+        "package"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 95854,
+      "observedAt": "2026-10-04T19:12:11.575Z",
+      "log": "logs/task6-bob-bazaar-review-package.log",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 1150,
+      "logSha256": "e982200712628568057d5fca9aa1e7527ab6ed1673d04766621a95321e4e7c15"
+    },
+    {
+      "label": "task6-bob-bazaar-review-source-policy",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-bazaar-review",
+      "command": "npm",
+      "args": [
+        "run",
+        "source:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 5080,
+      "observedAt": "2026-10-04T19:08:15.934Z",
+      "log": "logs/task6-bob-bazaar-review-source-policy.log",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 141,
+      "logSha256": "80ae5483864d3f8bdeb9a8ee862b6613f6b86bbab31379944f590cc900b15dc8"
+    },
+    {
+      "label": "task6-bob-bazaar-review-unused-policy",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-bazaar-review",
+      "command": "npm",
+      "args": [
+        "run",
+        "unused:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 101722,
+      "observedAt": "2026-10-04T19:10:35.104Z",
+      "log": "logs/task6-bob-bazaar-review-unused-policy.log",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 249,
+      "logSha256": "84bcaafa0464efe052e182883babf23a19493af21d3ca0cb0187b0d9dd56cc43"
+    },
+    {
+      "label": "task6-bob-code-consistency-review-architecture-policy",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-code-consistency-review",
+      "command": "npm",
+      "args": [
+        "run",
+        "architecture:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 6633,
+      "observedAt": "2026-10-04T19:13:06.801Z",
+      "log": "logs/task6-bob-code-consistency-review-architecture-policy.log",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 153,
+      "logSha256": "8711ab7148bedca21e38ea7f013fb3037e3786fbf5dd8786c19c5a66d5db2aac"
+    },
+    {
+      "label": "task6-bob-code-consistency-review-audit-prod",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-code-consistency-review",
+      "command": "npm",
+      "args": [
+        "run",
+        "audit:prod"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 14286,
+      "observedAt": "2026-10-04T19:13:31.168Z",
+      "log": "logs/task6-bob-code-consistency-review-audit-prod.log",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 115,
+      "logSha256": "25f63c25f43143bc37da823e7fde5e6192ed1ca2b329cedc2570e869dd4501b5"
+    },
+    {
+      "label": "task6-bob-code-consistency-review-dependency-policy",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-code-consistency-review",
+      "command": "npm",
+      "args": [
+        "run",
+        "dependency:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 4968,
+      "observedAt": "2026-10-04T19:13:16.661Z",
+      "log": "logs/task6-bob-code-consistency-review-dependency-policy.log",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 723,
+      "logSha256": "0918b7e92e71deb86968060159840b6bf013cad08a86b1e59de4726e6ba47497"
+    },
+    {
+      "label": "task6-bob-code-consistency-review-package-policy",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-code-consistency-review",
+      "command": "npm",
+      "args": [
+        "run",
+        "package:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 3867,
+      "observedAt": "2026-10-04T19:15:00.013Z",
+      "log": "logs/task6-bob-code-consistency-review-package-policy.log",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 195,
+      "logSha256": "724164c1b61180354dc14948c56c4ba0eac722877819de0f42737b16b1c3a71b"
+    },
+    {
+      "label": "task6-bob-code-consistency-review-package",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-code-consistency-review",
+      "command": "npm",
+      "args": [
+        "run",
+        "package"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 84284,
+      "observedAt": "2026-10-04T19:14:55.862Z",
+      "log": "logs/task6-bob-code-consistency-review-package.log",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 1250,
+      "logSha256": "40955ab74376324f3aad1be17c0e5dea03870ed7b935d74617ce88494808c0a2"
+    },
+    {
+      "label": "task6-bob-code-consistency-review-source-policy",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-code-consistency-review",
+      "command": "npm",
+      "args": [
+        "run",
+        "source:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 4389,
+      "observedAt": "2026-10-04T19:13:11.495Z",
+      "log": "logs/task6-bob-code-consistency-review-source-policy.log",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 151,
+      "logSha256": "3f4c4bcf796ec154a3685ba47d48e200d4fa8dd357ed1f75106e30c88d728d64"
+    },
+    {
+      "label": "task6-ccr-ci",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-code-consistency-review",
+      "command": "npm",
+      "args": [
+        "ci",
+        "--registry=https://registry.npmjs.org",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 58852,
+      "observedAt": "2026-10-04T19:09:00.172Z",
+      "log": "logs/task6-ccr-ci.log",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 1704,
+      "logSha256": "95926e50322e97de9ad540a2b0a0a5af20433c974137278b38ccb169ad659d52"
+    },
+    {
+      "label": "task6-ccr-full",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\bob-code-consistency-review",
+      "command": "npm",
+      "args": [
+        "test"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 152182,
+      "observedAt": "2026-10-04T19:11:33.094Z",
+      "log": "logs/task6-ccr-full.log",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 328,
+        "pass": 328,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 73419,
+      "logSha256": "83ae34f0093560fc7f431123bb720794f531093a05fa23e7570da220c33e6edb"
+    },
+    {
+      "label": "task6-final-local-check-02",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        ".superpowers/sdd/2026-10-05-wf2-p6-entrypoint/verify-final-local.cjs"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 2224,
+      "observedAt": "2026-10-04T21:13:14.652Z",
+      "log": "logs/task6-final-local-check-02.log",
+      "headAtStart": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "treeAtStart": "abdebe8fc0db3780e42999fd64678ab08dbfc7ca",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 256,
+      "logSha256": "4c2604a7af66dc551842dc78864d87b917cef203809a1c704b52067766fec0d2"
+    },
+    {
+      "label": "task6-final-local-check",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        ".superpowers/sdd/2026-10-05-wf2-p6-entrypoint/verify-final-local.cjs"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 2325,
+      "observedAt": "2026-10-04T21:10:43.259Z",
+      "log": "logs/task6-final-local-check.log",
+      "headAtStart": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+      "treeAtStart": "b29daa768cceae147a82f6eb922911e534335e0c",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 256,
+      "logSha256": "4c2604a7af66dc551842dc78864d87b917cef203809a1c704b52067766fec0d2"
+    },
+    {
+      "label": "task6-final-status-check",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        "tools/main-consolidation/create-feature-integration-status.mjs",
+        "--check"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 635,
+      "observedAt": "2026-10-04T21:13:15.474Z",
+      "log": "logs/task6-final-status-check.log",
+      "headAtStart": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "treeAtStart": "abdebe8fc0db3780e42999fd64678ab08dbfc7ca",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 0,
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "task6-package-independent-read-02",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        ".superpowers/sdd/2026-10-05-wf2-p6-entrypoint/read-final-packages.cjs"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 3100,
+      "observedAt": "2026-10-04T20:51:58.453Z",
+      "log": "logs/task6-package-independent-read-02.log",
+      "headAtStart": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+      "treeAtStart": "b29daa768cceae147a82f6eb922911e534335e0c",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 1306,
+      "logSha256": "2202e0869168eb0fd156709989697cfb7f03f55972a97489526b51d9a20c1a68"
+    },
+    {
+      "label": "task6-package-independent-read",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-File",
+        ".superpowers/sdd/2026-10-05-wf2-p6-entrypoint/read-final-packages.ps1"
+      ],
+      "exitCode": 1,
+      "signal": null,
+      "durationMs": 1417,
+      "observedAt": "2026-10-04T20:50:41.566Z",
+      "log": "logs/task6-package-independent-read.log",
+      "headAtStart": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+      "treeAtStart": "b29daa768cceae147a82f6eb922911e534335e0c",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 705,
+      "logSha256": "30e3a442c95c3c2a641cb48a0e1f651567b7d35801e963a6c7142673e06f0fd6"
+    },
+    {
+      "label": "task6-program-full-02",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        "--test",
+        "tools/main-consolidation/test/*.test.mjs"
+      ],
+      "exitCode": 1,
+      "signal": null,
+      "durationMs": 858530,
+      "observedAt": "2026-10-04T20:42:28.320Z",
+      "log": "logs/task6-program-full-02.log",
+      "headAtStart": "6b6efe31a8e027894200b40ea770ff5270335291",
+      "treeAtStart": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 854,
+        "pass": 842,
+        "fail": 12,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 211083,
+      "logSha256": "3be81c51a765e80438807f53632fec06eb390e8c347973abc7a18126a8a3b102"
+    },
+    {
+      "label": "task6-program-full-03",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        "--test",
+        "tools/main-consolidation/test/*.test.mjs"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 985251,
+      "observedAt": "2026-10-04T21:05:12.947Z",
+      "log": "logs/task6-program-full-03.log",
+      "headAtStart": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+      "treeAtStart": "b29daa768cceae147a82f6eb922911e534335e0c",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 854,
+        "pass": 854,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 192216,
+      "logSha256": "821ad98cd31fb5c194ab518d8f921776900fc4100a1406aeae615b4c284b5a08"
+    },
+    {
+      "label": "task6-program-full",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        "--test",
+        "tools/main-consolidation/test/*.test.mjs"
+      ],
+      "exitCode": 1,
+      "signal": null,
+      "durationMs": 1015372,
+      "observedAt": "2026-10-04T19:18:18.470Z",
+      "log": "logs/task6-program-full.log",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 844,
+        "pass": 773,
+        "fail": 71,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 303104,
+      "logSha256": "a4e977afc2ef330c6c5147eac3eb9d1c298a3e78ac6c41d31fcf2300cd46087b"
+    },
+    {
+      "label": "task6-program-longpath-probe",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        "--test",
+        "--test-name-pattern=creates a staged archive whose real bundle restores every branch head",
+        "tools/main-consolidation/test/create-main-consolidation-archive.test.mjs"
+      ],
+      "exitCode": 1,
+      "signal": null,
+      "durationMs": 8524,
+      "observedAt": "2026-10-04T19:26:53.468Z",
+      "log": "logs/task6-program-longpath-probe.log",
+      "headAtStart": "658442c3f0308d7fc2821fa89fdc58aced46f16b",
+      "treeAtStart": "6e39b9d834f17888f3aa58e62ad9800b509d94ea",
+      "scopedGitLongpaths": true,
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 1,
+        "pass": 0,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 1483,
+      "logSha256": "267bbd2643ff851b51355282cb46d5ab309882705fe657fd728e6b8d4748bb89"
+    },
+    {
+      "label": "task6-program-shortpath-probe",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        "--test",
+        "--test-name-pattern=creates a staged archive whose real bundle restores every branch head",
+        "tools/main-consolidation/test/create-main-consolidation-archive.test.mjs"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 20526,
+      "observedAt": "2026-10-04T19:29:40.853Z",
+      "log": "logs/task6-program-shortpath-probe.log",
+      "headAtStart": "658442c3f0308d7fc2821fa89fdc58aced46f16b",
+      "treeAtStart": "6e39b9d834f17888f3aa58e62ad9800b509d94ea",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 330,
+      "logSha256": "8f2c9314b2ca44c634222009c9cbda08781aa611d25d392693d92f5485e45ca6"
+    },
+    {
+      "label": "task6-publication-whitespace-compile",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "compile"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 7046,
+      "observedAt": "2026-10-04T21:50:01.450Z",
+      "log": "logs/task6-publication-whitespace-compile.log",
+      "headAtStart": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "treeAtStart": "abdebe8fc0db3780e42999fd64678ab08dbfc7ca",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 48,
+      "logSha256": "d2878af553c5d9e037818a539ed880b6a68b6ee0d930965505e64c0c8e211bae"
+    },
+    {
+      "label": "task6-publication-whitespace-focused",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "node",
+      "args": [
+        "--test",
+        "test/workflowCatalogReloadCoordinator.test.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 377,
+      "observedAt": "2026-10-04T21:50:02.824Z",
+      "log": "logs/task6-publication-whitespace-focused.log",
+      "headAtStart": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "treeAtStart": "abdebe8fc0db3780e42999fd64678ab08dbfc7ca",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 588,
+      "logSha256": "323c9157ff1a9d44947f25e4a2bc8cbe9a69183fdfa5c255cc960dba93473cbe"
+    },
+    {
+      "label": "task6-publication-whitespace-green",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "git",
+      "args": [
+        "diff",
+        "--check",
+        "90c678d3d33ae61a5523f2d9cf8057538028dd4b",
+        "--",
+        ".",
+        ":(exclude)docs/release-evidence/workflow-contract-v2-foundation-doc-sync.patch"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 298,
+      "observedAt": "2026-10-04T21:49:54.245Z",
+      "log": "logs/task6-publication-whitespace-green.log",
+      "headAtStart": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "treeAtStart": "abdebe8fc0db3780e42999fd64678ab08dbfc7ca",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 161,
+      "logSha256": "6c57466eead11bf3fd51ab4a53c9f47e4dfd5f8390b2cb509fcdb43e94466f50"
+    },
+    {
+      "label": "task6-publication-whitespace-red",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "git",
+      "args": [
+        "diff",
+        "--check",
+        "90c678d3d33ae61a5523f2d9cf8057538028dd4b...HEAD",
+        "--",
+        ".",
+        ":(exclude)docs/release-evidence/workflow-contract-v2-foundation-doc-sync.patch"
+      ],
+      "exitCode": 2,
+      "signal": null,
+      "durationMs": 280,
+      "observedAt": "2026-10-04T21:47:01.452Z",
+      "log": "logs/task6-publication-whitespace-red.log",
+      "headAtStart": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "treeAtStart": "abdebe8fc0db3780e42999fd64678ab08dbfc7ca",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 96,
+      "logSha256": "599d6582e23cffb513419bb85e8055f234f7a7324fe891946f30fecfee8bba81"
+    },
+    {
+      "label": "task6-review-boundary-red",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "node",
+      "args": [
+        "--test",
+        "--test-name-pattern=malformed V2 structural|direct persisted-run|guarded persisted-run",
+        "test/workflowCompilerParity.test.js",
+        "test/workflowContractV2ExecutionBoundary.test.js"
+      ],
+      "exitCode": 1,
+      "signal": null,
+      "durationMs": 3108,
+      "observedAt": "2026-10-04T20:35:08.287Z",
+      "log": "logs/task6-review-boundary-red.log",
+      "headAtStart": "6b6efe31a8e027894200b40ea770ff5270335291",
+      "treeAtStart": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 3,
+        "pass": 0,
+        "fail": 3,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 3666,
+      "logSha256": "f1d0638fd2f4bfebdb7dc2455c9d8f9f0bf93ad505d6a0c33c5d7bee53e8fb10"
+    },
+    {
+      "label": "task6-review-compile-02",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "compile"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 18788,
+      "observedAt": "2026-10-04T20:40:07.933Z",
+      "log": "logs/task6-review-compile-02.log",
+      "headAtStart": "6b6efe31a8e027894200b40ea770ff5270335291",
+      "treeAtStart": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 48,
+      "logSha256": "d2878af553c5d9e037818a539ed880b6a68b6ee0d930965505e64c0c8e211bae"
+    },
+    {
+      "label": "task6-review-compile",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "compile"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 16971,
+      "observedAt": "2026-10-04T20:39:01.519Z",
+      "log": "logs/task6-review-compile.log",
+      "headAtStart": "6b6efe31a8e027894200b40ea770ff5270335291",
+      "treeAtStart": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 48,
+      "logSha256": "d2878af553c5d9e037818a539ed880b6a68b6ee0d930965505e64c0c8e211bae"
+    },
+    {
+      "label": "task6-review-regressions-green-02",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "node",
+      "args": [
+        "--test",
+        "test/workflowCompilerParity.test.js",
+        "test/workflowContractV2ExecutionBoundary.test.js",
+        "test/workflowContractV2ExecutionGuard.test.js",
+        "test/workflowRegister.test.js",
+        "test/sourceLayoutPolicy.test.js",
+        "test/architectureContracts.test.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 5473,
+      "observedAt": "2026-10-04T20:42:10.531Z",
+      "log": "logs/task6-review-regressions-green-02.log",
+      "headAtStart": "6b6efe31a8e027894200b40ea770ff5270335291",
+      "treeAtStart": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 64,
+        "pass": 64,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 13931,
+      "logSha256": "f09d9d6cb2463454b6b570733d7323ceaa772a3381602f46df61cf6c1caa791a"
+    },
+    {
+      "label": "task6-review-regressions-green",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "node",
+      "args": [
+        "--test",
+        "test/workflowCompilerParity.test.js",
+        "test/workflowContractV2ExecutionBoundary.test.js",
+        "test/workflowContractV2ExecutionGuard.test.js",
+        "test/workflowRegister.test.js",
+        "test/sourceLayoutPolicy.test.js",
+        "test/architectureContracts.test.js"
+      ],
+      "exitCode": 1,
+      "signal": null,
+      "durationMs": 6097,
+      "observedAt": "2026-10-04T20:40:46.529Z",
+      "log": "logs/task6-review-regressions-green.log",
+      "headAtStart": "6b6efe31a8e027894200b40ea770ff5270335291",
+      "treeAtStart": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 64,
+        "pass": 62,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 78396,
+      "logSha256": "741f68314880bde7d865205987936706b53902a82d3999d912efc9a9e916fee8"
+    },
+    {
+      "label": "task6-review-regressions-red",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "node",
+      "args": [
+        "--test",
+        "--test-name-pattern=mixed V1 registration retries|file exclusions cannot|malformed V2 slot IDs",
+        "test/workflowCompilerParity.test.js"
+      ],
+      "exitCode": 1,
+      "signal": null,
+      "durationMs": 1960,
+      "observedAt": "2026-10-04T20:30:25.388Z",
+      "log": "logs/task6-review-regressions-red.log",
+      "headAtStart": "6b6efe31a8e027894200b40ea770ff5270335291",
+      "treeAtStart": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 7,
+        "pass": 0,
+        "fail": 7,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 10449,
+      "logSha256": "19a87318fdff9e9bec1a69a92fb98e22631a2f248156837f612458ebf9cd7b1f"
+    },
+    {
+      "label": "task6-ui-full-02",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        "--test",
+        "scripts/three-extension-command-surface.test.js",
+        "scripts/three-extension-documentation-contract.test.js",
+        "scripts/bazaar-review-documentation-parity.test.js",
+        "scripts/code-consistency-documentation-parity.test.js",
+        "scripts/workflow-register-documentation-parity.test.js",
+        "scripts/extension-host-smoke-contract.test.js",
+        "scripts/three-extension-ui-contract-workflow.test.js",
+        "scripts/ci-baseline-summary.test.js",
+        "scripts/verify-ci-head.test.js",
+        "scripts/exact-head-ci-contract.test.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 6182,
+      "observedAt": "2026-10-04T20:50:48.012Z",
+      "log": "logs/task6-ui-full-02.log",
+      "headAtStart": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+      "treeAtStart": "b29daa768cceae147a82f6eb922911e534335e0c",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 68,
+        "pass": 68,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 15571,
+      "logSha256": "7a889fbd2c0348cfb0cdd9df7d3a3ff85f1f14a6b2b43e06b26fcdf573b264ef"
+    },
+    {
+      "label": "task6-ui-full",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        "--test",
+        "scripts/three-extension-command-surface.test.js",
+        "scripts/three-extension-documentation-contract.test.js",
+        "scripts/bazaar-review-documentation-parity.test.js",
+        "scripts/code-consistency-documentation-parity.test.js",
+        "scripts/workflow-register-documentation-parity.test.js",
+        "scripts/extension-host-smoke-contract.test.js",
+        "scripts/three-extension-ui-contract-workflow.test.js",
+        "scripts/ci-baseline-summary.test.js",
+        "scripts/verify-ci-head.test.js",
+        "scripts/exact-head-ci-contract.test.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 15172,
+      "observedAt": "2026-10-04T19:01:39.242Z",
+      "log": "logs/task6-ui-full.log",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 68,
+        "pass": 68,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 15591,
+      "logSha256": "6d603a3667e1bf87d6e9c67885e5c3e99a4319d72b0ae1f7e8cba93304539fb7"
+    },
+    {
+      "label": "task6-v1-focused",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        "--test",
+        ".superpowers/sdd/2026-10-05-wf2-p6-entrypoint/v1-command-regressions.test.cjs"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 1275,
+      "observedAt": "2026-10-04T19:24:50.572Z",
+      "log": "logs/task6-v1-focused.log",
+      "headAtStart": "658442c3f0308d7fc2821fa89fdc58aced46f16b",
+      "treeAtStart": "6e39b9d834f17888f3aa58e62ad9800b509d94ea",
+      "scopedGitLongpaths": true,
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 503,
+      "logSha256": "1b0ed53a4323d653c5f4b5d33407426e8f0f894e5c724de9b00a2e4bb8cccc87"
+    },
+    {
+      "label": "task6-v1-regressions-red",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        "--test",
+        ".superpowers/sdd/2026-10-05-wf2-p6-entrypoint/v1-command-regressions.test.cjs"
+      ],
+      "exitCode": 1,
+      "signal": null,
+      "durationMs": 4249,
+      "observedAt": "2026-10-04T19:10:33.032Z",
+      "log": "logs/task6-v1-regressions-red.log",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 2,
+        "pass": 0,
+        "fail": 2,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 1949,
+      "logSha256": "2d98806364c1dac450aa1dcfdc9fdd2f026abaa6b6e20088249e93a38bbd3b04"
+    },
+    {
+      "label": "task6-workflow-compile-02",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "compile"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 9736,
+      "observedAt": "2026-10-04T19:23:41.036Z",
+      "log": "logs/task6-workflow-compile-02.log",
+      "headAtStart": "658442c3f0308d7fc2821fa89fdc58aced46f16b",
+      "treeAtStart": "6e39b9d834f17888f3aa58e62ad9800b509d94ea",
+      "scopedGitLongpaths": true,
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 48,
+      "logSha256": "d2878af553c5d9e037818a539ed880b6a68b6ee0d930965505e64c0c8e211bae"
+    },
+    {
+      "label": "task6-workflow-compile-03",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "compile"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 11305,
+      "observedAt": "2026-10-04T19:29:59.421Z",
+      "log": "logs/task6-workflow-compile-03.log",
+      "headAtStart": "658442c3f0308d7fc2821fa89fdc58aced46f16b",
+      "treeAtStart": "6e39b9d834f17888f3aa58e62ad9800b509d94ea",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 48,
+      "logSha256": "d2878af553c5d9e037818a539ed880b6a68b6ee0d930965505e64c0c8e211bae"
+    },
+    {
+      "label": "task6-workflow-compile",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "compile"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 44495,
+      "observedAt": "2026-10-04T19:02:08.974Z",
+      "log": "logs/task6-workflow-compile.log",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 48,
+      "logSha256": "d2878af553c5d9e037818a539ed880b6a68b6ee0d930965505e64c0c8e211bae"
+    },
+    {
+      "label": "task6-workflow-full-02",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "node",
+      "args": [
+        "--test",
+        "--test-concurrency=2",
+        "test/*.test.js"
+      ],
+      "exitCode": 1,
+      "signal": null,
+      "durationMs": 249054,
+      "observedAt": "2026-10-04T19:42:24.631Z",
+      "log": "logs/task6-workflow-full-02.log",
+      "headAtStart": "6b6efe31a8e027894200b40ea770ff5270335291",
+      "treeAtStart": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 2025,
+        "pass": 2023,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 1,
+        "todo": 0
+      },
+      "logBytes": 434966,
+      "logSha256": "26768168191f0105724d19226fd1addeb680602d41c416f0bb3dbab62d37ae2b"
+    },
+    {
+      "label": "task6-workflow-full-03",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "node",
+      "args": [
+        "--test",
+        "--test-concurrency=2",
+        "test/*.test.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 229528,
+      "observedAt": "2026-10-04T20:47:03.129Z",
+      "log": "logs/task6-workflow-full-03.log",
+      "headAtStart": "6b6efe31a8e027894200b40ea770ff5270335291",
+      "treeAtStart": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.bob\\t6",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 2035,
+        "pass": 2034,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 1,
+        "todo": 0
+      },
+      "logBytes": 404072,
+      "logSha256": "b0f75fb1a37436e8394f41abc9723528c397614d0c74609e04f2b1914e19e46c"
+    },
+    {
+      "label": "task6-workflow-full",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "node",
+      "args": [
+        "--test",
+        "--test-concurrency=2",
+        "test/*.test.js"
+      ],
+      "exitCode": 1,
+      "signal": null,
+      "durationMs": 914493,
+      "observedAt": "2026-10-04T19:17:24.328Z",
+      "log": "logs/task6-workflow-full.log",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 2023,
+        "pass": 2012,
+        "fail": 10,
+        "cancelled": 0,
+        "skipped": 1,
+        "todo": 0
+      },
+      "logBytes": 511580,
+      "logSha256": "28d4e25fecdb2941a4d640cdfbc57d8b92d50a2d99bad9c891aaf93f88d602a7"
+    },
+    {
+      "label": "task6-workflow-register-architecture-policy-02",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "architecture:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 2685,
+      "observedAt": "2026-10-04T20:48:24.331Z",
+      "log": "logs/task6-workflow-register-architecture-policy-02.log",
+      "headAtStart": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+      "treeAtStart": "b29daa768cceae147a82f6eb922911e534335e0c",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 143,
+      "logSha256": "bfc0f4de938b34efc61eeb183f712717776ec09505dca38bdcf6a5c1bd58e3c0"
+    },
+    {
+      "label": "task6-workflow-register-architecture-policy",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "architecture:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 2319,
+      "observedAt": "2026-10-04T19:32:44.860Z",
+      "log": "logs/task6-workflow-register-architecture-policy.log",
+      "headAtStart": "6b6efe31a8e027894200b40ea770ff5270335291",
+      "treeAtStart": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 143,
+      "logSha256": "bfc0f4de938b34efc61eeb183f712717776ec09505dca38bdcf6a5c1bd58e3c0"
+    },
+    {
+      "label": "task6-workflow-register-audit-prod-02",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "audit:prod"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 4224,
+      "observedAt": "2026-10-04T20:48:31.919Z",
+      "log": "logs/task6-workflow-register-audit-prod-02.log",
+      "headAtStart": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+      "treeAtStart": "b29daa768cceae147a82f6eb922911e534335e0c",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 105,
+      "logSha256": "44b3410ca0031c13bc0ec0763412d27d1baf8dd10e61c7f56f4e8df2f18d5854"
+    },
+    {
+      "label": "task6-workflow-register-audit-prod",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "audit:prod"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 3819,
+      "observedAt": "2026-10-04T19:32:51.676Z",
+      "log": "logs/task6-workflow-register-audit-prod.log",
+      "headAtStart": "6b6efe31a8e027894200b40ea770ff5270335291",
+      "treeAtStart": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 105,
+      "logSha256": "44b3410ca0031c13bc0ec0763412d27d1baf8dd10e61c7f56f4e8df2f18d5854"
+    },
+    {
+      "label": "task6-workflow-register-dependency-policy-02",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "dependency:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 1650,
+      "observedAt": "2026-10-04T20:48:27.616Z",
+      "log": "logs/task6-workflow-register-dependency-policy-02.log",
+      "headAtStart": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+      "treeAtStart": "b29daa768cceae147a82f6eb922911e534335e0c",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 3,
+        "pass": 3,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 954,
+      "logSha256": "3e0e9ced96565e237c1baafe757aa8be13a4bcb8c39047e7072c8410582486bf"
+    },
+    {
+      "label": "task6-workflow-register-dependency-policy",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "dependency:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 1400,
+      "observedAt": "2026-10-04T19:32:47.774Z",
+      "log": "logs/task6-workflow-register-dependency-policy.log",
+      "headAtStart": "6b6efe31a8e027894200b40ea770ff5270335291",
+      "treeAtStart": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 3,
+        "pass": 3,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 953,
+      "logSha256": "6f3143004773be57efe5180266e9af72ade27022d8a4a30881ab8d1f99394eb9"
+    },
+    {
+      "label": "task6-workflow-register-package-02",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "package"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 42400,
+      "observedAt": "2026-10-04T20:49:14.464Z",
+      "log": "logs/task6-workflow-register-package-02.log",
+      "headAtStart": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+      "treeAtStart": "b29daa768cceae147a82f6eb922911e534335e0c",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 1290,
+      "logSha256": "e1a7004eb85ddd315cf676e31cd054f20155370cf42f6732e38de5b623f00865"
+    },
+    {
+      "label": "task6-workflow-register-package-policy-02",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "package:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 3440,
+      "observedAt": "2026-10-04T20:49:18.139Z",
+      "log": "logs/task6-workflow-register-package-policy-02.log",
+      "headAtStart": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+      "treeAtStart": "b29daa768cceae147a82f6eb922911e534335e0c",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 173,
+      "logSha256": "55510c446621a3819cdce2a6375a9151c3378f77e0895f82623e305c82e97ecf"
+    },
+    {
+      "label": "task6-workflow-register-package-policy",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "package:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 1680,
+      "observedAt": "2026-10-04T19:33:16.318Z",
+      "log": "logs/task6-workflow-register-package-policy.log",
+      "headAtStart": "6b6efe31a8e027894200b40ea770ff5270335291",
+      "treeAtStart": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 173,
+      "logSha256": "9db53b7ae8982287377d931d80123ebfed8be897b858c402d251e90d1a17cd24"
+    },
+    {
+      "label": "task6-workflow-register-package",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "package"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 22716,
+      "observedAt": "2026-10-04T19:33:14.536Z",
+      "log": "logs/task6-workflow-register-package.log",
+      "headAtStart": "6b6efe31a8e027894200b40ea770ff5270335291",
+      "treeAtStart": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 1290,
+      "logSha256": "bda42bfbf203adaee227ccbf2cd2b63b74925b80a1db726c461ef21fceba17e1"
+    },
+    {
+      "label": "task6-workflow-register-source-policy-02",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "source:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 1451,
+      "observedAt": "2026-10-04T20:48:25.864Z",
+      "log": "logs/task6-workflow-register-source-policy-02.log",
+      "headAtStart": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+      "treeAtStart": "b29daa768cceae147a82f6eb922911e534335e0c",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 167,
+      "logSha256": "11b79111c527ab31a53f400c00c658138de35c0f782f7e9500cd2cb038732498"
+    },
+    {
+      "label": "task6-workflow-register-source-policy",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "npm",
+      "args": [
+        "run",
+        "source:policy"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 1347,
+      "observedAt": "2026-10-04T19:32:46.287Z",
+      "log": "logs/task6-workflow-register-source-policy.log",
+      "headAtStart": "6b6efe31a8e027894200b40ea770ff5270335291",
+      "treeAtStart": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 167,
+      "logSha256": "11b79111c527ab31a53f400c00c658138de35c0f782f7e9500cd2cb038732498"
+    },
+    {
+      "label": "task6-workflow-regression-focused",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "node",
+      "args": [
+        "--test",
+        "--test-concurrency=2",
+        "test/bobGateLifecycle.test.js",
+        "test/workflowContractV2BobProfile.test.js",
+        "test/workflowRegister.test.js",
+        "test/workflowCompilerParity.test.js",
+        "test/workflowContractV2ExecutionBoundary.test.js",
+        "test/workflowContractV2ExecutionGuard.test.js",
+        "test/architectureContracts.test.js"
+      ],
+      "exitCode": 1,
+      "signal": null,
+      "durationMs": 53232,
+      "observedAt": "2026-10-04T19:26:06.412Z",
+      "log": "logs/task6-workflow-regression-focused.log",
+      "headAtStart": "658442c3f0308d7fc2821fa89fdc58aced46f16b",
+      "treeAtStart": "6e39b9d834f17888f3aa58e62ad9800b509d94ea",
+      "scopedGitLongpaths": true,
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 126,
+        "pass": 125,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 26517,
+      "logSha256": "62680efc476e1385a0c4cc6beadae474772f80cef86c38356b473196c219b886"
+    },
+    {
+      "label": "task6-workflow-regression-green",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\extensions\\workflow-register",
+      "command": "node",
+      "args": [
+        "--test",
+        "--test-concurrency=2",
+        "test/bobGateLifecycle.test.js",
+        "test/workflowContractV2BobProfile.test.js",
+        "test/workflowRegister.test.js",
+        "test/workflowCompilerParity.test.js",
+        "test/workflowContractV2ExecutionBoundary.test.js",
+        "test/workflowContractV2ExecutionGuard.test.js",
+        "test/architectureContracts.test.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 59562,
+      "observedAt": "2026-10-04T19:30:59.315Z",
+      "log": "logs/task6-workflow-regression-green.log",
+      "headAtStart": "658442c3f0308d7fc2821fa89fdc58aced46f16b",
+      "treeAtStart": "6e39b9d834f17888f3aa58e62ad9800b509d94ea",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.superpowers\\t6",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 126,
+        "pass": 126,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 25802,
+      "logSha256": "354ba57062c77204d29cad6181a5c3c796f6acd3046a275aa6a820cdf36b7bc1"
+    },
+    {
+      "label": "task6-write-local-evidence",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        ".superpowers/sdd/2026-10-05-wf2-p6-entrypoint/write-local-evidence.cjs"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 843,
+      "observedAt": "2026-10-04T21:08:53.374Z",
+      "log": "logs/task6-write-local-evidence.log",
+      "headAtStart": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+      "treeAtStart": "b29daa768cceae147a82f6eb922911e534335e0c",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {},
+      "logBytes": 389,
+      "logSha256": "a22fbe753bc0207a9d9137e7d6bc312cdb5d0cd4e1847434b0ab365412621bf0"
+    },
+    {
+      "label": "task6-publication-ui-green",
+      "cwd": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze",
+      "command": "node",
+      "args": [
+        "--test",
+        "scripts/three-extension-command-surface.test.js",
+        "scripts/three-extension-documentation-contract.test.js",
+        "scripts/bazaar-review-documentation-parity.test.js",
+        "scripts/code-consistency-documentation-parity.test.js",
+        "scripts/workflow-register-documentation-parity.test.js",
+        "scripts/extension-host-smoke-contract.test.js",
+        "scripts/three-extension-ui-contract-workflow.test.js",
+        "scripts/ci-baseline-summary.test.js",
+        "scripts/verify-ci-head.test.js",
+        "scripts/exact-head-ci-contract.test.js"
+      ],
+      "exitCode": 0,
+      "signal": null,
+      "durationMs": 2242,
+      "observedAt": "2026-10-04T21:52:44.286Z",
+      "log": "logs/task6-publication-ui-green.log",
+      "headAtStart": "d4fe8544d89b172464270b0371ee8b2334dbce30",
+      "treeAtStart": "0e6ea3c5732cfd60cb03f5eb657a6cfb2f4d8e47",
+      "scopedGitLongpaths": true,
+      "temporaryRoot": "C:\\Users\\stell\\.codex\\worktrees\\v2-p6-entrypoint\\bob_builtin_analyze\\.t",
+      "mutationAuthority": false,
+      "counts": {
+        "tests": 68,
+        "pass": 68,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "logBytes": 15553,
+      "logSha256": "22c6c34fcb617484f3c778d3f217b153fd4965944932b88ba3af6fc7453cfdcb"
+    }
+  ],
+  "packages": [
+    {
+      "extension": "workflow-register",
+      "path": ".superpowers/sdd/2026-10-05-wf2-p6-entrypoint/packages/final-f8ff1ccf/workflow-register-0.1.0.vsix",
+      "file": "workflow-register-0.1.0.vsix",
+      "bytes": 1197704,
+      "sha256": "ed0991a9e5f35cc6ec9ea68391e82063caf48a2659c3b2d755f88fcda84d174b",
+      "entries": 897,
+      "maxBytes": 1200000,
+      "budgetPass": true
+    },
+    {
+      "extension": "bob-bazaar-review",
+      "path": ".superpowers/sdd/2026-10-05-wf2-p6-entrypoint/packages/final-f8ff1ccf/bob-bazaar-review-0.3.0.vsix",
+      "file": "bob-bazaar-review-0.3.0.vsix",
+      "bytes": 3767456,
+      "sha256": "aa4977a6a864f8986074613379ba52b8744c43768b48b53d3bb81283c3e2ef9d",
+      "entries": 1822,
+      "maxBytes": 12000000,
+      "budgetPass": true
+    },
+    {
+      "extension": "bob-code-consistency-review",
+      "path": ".superpowers/sdd/2026-10-05-wf2-p6-entrypoint/packages/final-f8ff1ccf/bob-code-consistency-review-0.1.0.vsix",
+      "file": "bob-code-consistency-review-0.1.0.vsix",
+      "bytes": 3721538,
+      "sha256": "b33c5fea866af1272fbf343030599e2a4ebe5134a17aa353ded786b5796cab54",
+      "entries": 1914,
+      "maxBytes": 11000000,
+      "budgetPass": true
+    }
+  ],
+  "independentPackageReads": [
+    {
+      "extension": "workflow-register",
+      "bytes": 1197704,
+      "entries": 897,
+      "sha256": "ed0991a9e5f35cc6ec9ea68391e82063caf48a2659c3b2d755f88fcda84d174b",
+      "entryManifest": "package-entry-manifests/workflow-register.json",
+      "entryManifestSha256": "668a8b0141ffccd6bb9bbc9678183f034d32e4ac3d5d271effefad3d08bb2341",
+      "independentlyReadable": true,
+      "crcVerified": true,
+      "reader": "yauzl (independent ZIP decoder)"
+    },
+    {
+      "extension": "bob-bazaar-review",
+      "bytes": 3767456,
+      "entries": 1822,
+      "sha256": "aa4977a6a864f8986074613379ba52b8744c43768b48b53d3bb81283c3e2ef9d",
+      "entryManifest": "package-entry-manifests/bob-bazaar-review.json",
+      "entryManifestSha256": "d288b6dace24b5f69a50bcc572b5e4e961e1474eb93f7774aa7da72fba4bc417",
+      "independentlyReadable": true,
+      "crcVerified": true,
+      "reader": "yauzl (independent ZIP decoder)"
+    },
+    {
+      "extension": "bob-code-consistency-review",
+      "bytes": 3721538,
+      "entries": 1914,
+      "sha256": "b33c5fea866af1272fbf343030599e2a4ebe5134a17aa353ded786b5796cab54",
+      "entryManifest": "package-entry-manifests/bob-code-consistency-review.json",
+      "entryManifestSha256": "5b12a6e095951fd907343a26df8a886e6ac96f1ab34e2fa37742f9ebc3c2baaa",
+      "independentlyReadable": true,
+      "crcVerified": true,
+      "reader": "yauzl (independent ZIP decoder)"
+    }
+  ],
+  "review": {
+    "schemaVersion": "bob-builtin-analyze/local-branch-review/v1",
+    "state": "reviewed-with-one-verified-fix-pass",
+    "reviewedBase": "90c678d3d33ae61a5523f2d9cf8057538028dd4b",
+    "reviewedHead": "6b6efe31a8e027894200b40ea770ff5270335291",
+    "reviewedTree": "944f6c014498fc4ebe3d98996b57d5bb1e2295df",
+    "reviewer": {
+      "agent": "/root/p6_whole_branch_final_review",
+      "model": "gpt-6-astra",
+      "freshContext": true,
+      "reviewCount": 1,
+      "readOnly": true,
+      "resumedAfterUsageLimit": true
+    },
+    "originalAssessment": "No: four Important findings before fixes",
+    "critical": [],
+    "important": [
+      {
+        "id": "P6-REVIEW-1",
+        "title": "V2 structural reservation survives exclusions and malformed entries",
+        "files": [
+          "src/workflowDiscovery.ts"
+        ],
+        "redLabels": [
+          "task6-review-regressions-red",
+          "task6-review-boundary-red"
+        ],
+        "tests": [
+          "file exclusions cannot hide V2 slot authority and enable same-slot V1 fallback",
+          "malformed V2 structural entries reserve their slot without a searchable workflow file"
+        ],
+        "status": "fixed-and-test-verified"
+      },
+      {
+        "id": "P6-REVIEW-2",
+        "title": "Malformed discovered IDs diagnosed per candidate",
+        "files": [
+          "src/workflowDefinitionLoader.ts",
+          "src/commands/validateWorkflow.ts"
+        ],
+        "redLabels": [
+          "task6-review-regressions-red"
+        ],
+        "tests": [
+          "malformed V2 slot IDs are diagnosed per candidate while separate V1 remains usable"
+        ],
+        "status": "fixed-and-test-verified"
+      },
+      {
+        "id": "P6-REVIEW-3",
+        "title": "Failed V1 registration is retried in mixed workspaces",
+        "files": [
+          "src/workflowRegistrationService.ts"
+        ],
+        "redLabels": [
+          "task6-review-regressions-red"
+        ],
+        "tests": [
+          "mixed V1 registration retries a partial failure before caching an unchanged reload"
+        ],
+        "status": "fixed-and-test-verified"
+      },
+      {
+        "id": "P6-REVIEW-4",
+        "title": "Persisted run commands refuse V2 before coordination, recovery and writes",
+        "files": [
+          "src/workflowRunCommands.ts",
+          "src/workflowContractV2RunStateStore.ts",
+          "src/workflowRuntimeFactory.ts",
+          "src/workflowRegisterService.ts"
+        ],
+        "redLabels": [
+          "task6-review-boundary-red"
+        ],
+        "tests": [
+          "direct persisted-run commands reject V2 before coordination, saves, gates and engine creation",
+          "guarded persisted-run loading denies V2 before journal recovery and direct save"
+        ],
+        "status": "fixed-and-test-verified"
+      }
+    ],
+    "minor": [],
+    "declinedToJudge": [
+      "P7 manifests, runtime activation, provider invocation and contribution bridge are beyond shadow scope.",
+      "Hosted CI and installed VS Code/Bob UAT were not performed.",
+      "Final Task6 evidence/publication/merge/preservation/cleanup were beyond immutable reviewed head."
+    ],
+    "allDeclinedItemsLedgered": true,
+    "focusedGreenLabel": "task6-review-regressions-green-02",
+    "focusedCounts": {
+      "tests": 64,
+      "pass": 64,
+      "fail": 0
+    },
+    "fullGreenLabel": "task6-workflow-full-03",
+    "fixPassCount": 1,
+    "secondReviewPerformed": false,
+    "mutationAuthority": false,
+    "fixHead": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+    "fixTree": "b29daa768cceae147a82f6eb922911e534335e0c",
+    "fullCounts": {
+      "tests": 2035,
+      "pass": 2034,
+      "skipped": 1,
+      "fail": 0
+    }
+  },
+  "rulings": [
+    "Ruling: Use Windows Node equivalents for the Bash workspace/task helpers — this host runs PowerShell and the approved technical root is explicit — cost if wrong: missing helper bookkeeping, checked through briefs/BASE/logs.",
+    "Ruling: Retain this technical workspace through verified external preservation and separately approved native archive — repository append-only evidence protocol and approved local scope override generic skill deletion — cost if wrong: additional local disk use.",
+    "Task 1: Ruling: Add one exact .gitattributes LF rule for P5 completion — current auto text checkout changes canonical bytes and invalidates the registry; same proven P4 recovery contract — cost if wrong: one additional scoped text rule.",
+    "Task 6: Ruling: Update two existing structural tests for the moved F7 binding, guarded run store and approved compression script — their assertions name pre-P6 implementation shapes while behavioral contracts remain required — cost if wrong: two additional test-only files in the diff.",
+    "Task 6: Ruling: Set core.longpaths only in child Git process environments — 71 program failures share Windows bundle path overflow under the owned technical TMP; no global Git config or product path change — cost if wrong: test Git path handling differs from the host default.",
+    "Task 6: Ruling: Use task-marked .superpowers/t6 as the child-process temporary root — core.longpaths fixes bundle creation but Git bundle verify still rejects deep absolute paths; the shorter root stays inside this worktree and has an exclusive ownership marker — cost if wrong: one additional ignored temporary directory, retained through preservation/cleanup.",
+    "Task 6: Ruling: Update sourceLayoutPolicy.test.js to recognize guarded async command delegation — the actual run orchestration remains in WorkflowRunCommandService; its old regex requires forwarding the unselected argument — cost if wrong: one additional test-only maintenance file.",
+    "Final: Ruling: Include workflowRunCommands.ts in the fix scope and bind persisted reads through the existing guarded store — direct next/resume/retry/checkpoint branches bypass engine guards and can recover/write/accept gates first — cost if wrong: one additional product surface and additive internal workflow resolver plumbing.",
+    "Final: Ruling: Reserve slots with current.json or versions structural entries independently of search matches — hidden/wrong-type/incomplete V2 markers must not restore same-slot legacy execution — cost if wrong: a V1 slot using these reserved structural names becomes validation-only until its layout is clarified.",
+    "Final: Ruling: P7 manifests, runtime activation, provider invocation and contribution bridge remain deferred — the authorized slice is fixed shadow and reasonable users receive validation/display only — cost if wrong: later runtime functionality is delayed until separately scoped work.",
+    "Final: Ruling: Hosted CI and installed VS Code/Bob UAT remain pending — local tests/source review cannot establish installed product outcomes — cost if wrong: platform integration issues remain undiscovered before those separate gates.",
+    "Final: Ruling: Final evidence/publication/merge/preservation/cleanup are completion gates after the reviewed implementation — the reviewer assessed the immutable code head, not future external operations — cost if wrong: final evidence consistency requires executor checks and separately authorized exact-head hosted acceptance.",
+    "Task 6: Ruling: Shorten child TMP further to task-marked .bob/t6 inside the same worktree — three nested program cases use longer staging labels whose bundle paths still exceed 260 characters at .superpowers/t6 (calculated 264); the new longest path is 257 — cost if wrong: one additional ignored task-only temporary root to preserve and clean separately. Prior TMP and all failure logs are retained.",
+    "Task 6: Ruling: Use exclusive task-marked .t and add one exact /.t/ ignore rule — the final marker case label is longer than the prior probe; worst paths are 258/259 bytes for 5/6-digit PIDs here, while .bob/t6 still gives 263/264 — cost if wrong: one additional .gitignore rule and retained temporary root; no product or archive-tool changes. Prior roots and attempts remain intact.",
+    "- Ruling: PR CIの末尾空行1 byteを同じ所有範囲で修正し、558 compiled outputsのbyte一致、compile・関連2 tests・base-to-candidate whitespace gateで検証する。先行full suites/review/hosted CIのheadは書き換えず保持し、新candidateの4 hosted gatesは別C再公開後に再実行する。Cost: LOCAL evidence/source bindingを再観測し、new exact-head CIの所要時間を負担する。"
+  ],
+  "gatesRequired": [
+    "task6-workflow-full-03",
+    "task6-program-full-03",
+    "task6-ui-full-02",
+    "task6-package-independent-read-02",
+    "task6-bazaar-full",
+    "task6-ccr-full",
+    "task6-workflow-register-architecture-policy-02",
+    "task6-workflow-register-source-policy-02",
+    "task6-workflow-register-dependency-policy-02",
+    "task6-workflow-register-audit-prod-02",
+    "task6-workflow-register-package-02",
+    "task6-workflow-register-package-policy-02",
+    "task6-bob-bazaar-review-architecture-policy",
+    "task6-bob-bazaar-review-source-policy",
+    "task6-bob-bazaar-review-dependency-policy",
+    "task6-bob-bazaar-review-audit-prod",
+    "task6-bob-bazaar-review-package",
+    "task6-bob-bazaar-review-package-policy",
+    "task6-bob-code-consistency-review-architecture-policy",
+    "task6-bob-code-consistency-review-source-policy",
+    "task6-bob-code-consistency-review-dependency-policy",
+    "task6-bob-code-consistency-review-audit-prod",
+    "task6-bob-code-consistency-review-package",
+    "task6-bob-code-consistency-review-package-policy",
+    "task6-bob-bazaar-review-artifact-policy",
+    "task6-bob-bazaar-review-unused-policy",
+    "task6-publication-whitespace-green",
+    "task6-publication-whitespace-compile",
+    "task6-publication-whitespace-focused",
+    "task6-publication-ui-green"
+  ],
+  "logReplacementNote": "First successful Workflow policy logs were replaced by the same-label rerun before append-only label guarding; initial failed full suites and all subsequent attempts are retained.",
+  "productEffects": {
+    "evidenceKind": "test-fixture-counters",
+    "productUatPending": true,
+    "v2Lease": false,
+    "providerDispatch": false,
+    "bobActivation": false,
+    "bobTask": false,
+    "runCreation": false,
+    "artifactStaging": false
+  },
+  "pending": [
+    "normal update of existing Draft PR #182 branch to corrected exact candidate, with separate C confirmation",
+    "four new exact-head manual hosted workflows and automatic PR checks for corrected candidate",
+    "separate exact merge authorization and four main workflows",
+    "same-hash product UAT and VSIX installation authorization",
+    "external preservation and separately authorized cleanup/native archive",
+    "P6 VERIFIED completion observation",
+    "P7 and later migration slices"
+  ],
+  "priorLocalObservation": {
+    "head": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+    "implementationHead": "f8ff1ccf42ce05505e1844107397ab181b01bb58",
+    "implementationTree": "b29daa768cceae147a82f6eb922911e534335e0c",
+    "gitBlobOid": "802b8d290a2f2271ee0637e4a4b98ff0704eb596",
+    "sha256": "fe95b5c7488d9679ef9fa33b42e0dab692d2871e79b800ac8f132fd43464ffbe"
+  },
+  "postPublicationCorrection": {
+    "schemaVersion": "bob-builtin-analyze/ci-whitespace-correction/v1",
+    "previousCandidate": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+    "previousTree": "abdebe8fc0db3780e42999fd64678ab08dbfc7ca",
+    "path": "extensions/workflow-register/src/workflowCatalogReloadCoordinator.ts",
+    "oldBytes": 1313,
+    "oldSha256": "a7a8a1acd8393b2585e889e34489aa17a4ca9e13e7b8e0450dc4b7f85821ec05",
+    "newBytes": 1312,
+    "newSha256": "82c8a53d3a1da9c8a97e5146c668d21b6f551455ac1ed7fe7b8fdb21e70da7a2",
+    "bytesRemoved": 1,
+    "removedHex": "0a",
+    "failure": {
+      "runId": 37237008346,
+      "jobId": 111538050847,
+      "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37237008346",
+      "step": "Verify changed-file whitespace",
+      "message": "new blank line at EOF"
+    },
+    "activation": "shadow",
+    "mutationAuthority": false,
+    "remoteRepublishPending": true,
+    "compiledOutputs": {
+      "files": 558,
+      "allBytesUnchanged": true,
+      "beforeManifest": "compiler-output-before-whitespace.json",
+      "manifestSha256": "f0b71746841d285cd8d8cf862bc7922aff059a637fe792df50888896c68598af"
+    },
+    "observedAt": "2026-10-04T21:50:02.283Z",
+    "correctionHead": "d4fe8544d89b172464270b0371ee8b2334dbce30",
+    "correctionTree": "0e6ea3c5732cfd60cb03f5eb657a6cfb2f4d8e47",
+    "localValidation": [
+      "task6-publication-whitespace-green",
+      "task6-publication-whitespace-compile",
+      "task6-publication-whitespace-focused",
+      "task6-publication-ui-green"
+    ],
+    "fullSuiteAndReviewApplicability": "Original full suites and one review/fix pass remain bound to their recorded prior source bytes and heads. This subsequent CI formatting correction removes one trailing LF only; all 558 compiler outputs remain byte-identical. No new full-suite execution, second whole-branch review or hosted acceptance of the corrected head is claimed.",
+    "currentExactHeadHostedCiPending": true,
+    "previousManualCi": {
+      "head": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "result": "success",
+      "requiredJobs": 11,
+      "successfulRequiredJobs": 11,
+      "expectedSkippedJobs": [
+        "Extension source metrics"
+      ],
+      "observation": ".superpowers/sdd/2026-10-05-wf2-p6-entrypoint/publication/candidate-publication-observation-20261004214844636-11cb5b.json",
+      "sha256": "1adfcf678b5b9d1c682ec272f4876c294ff28fd6f74cca9dbd3c77754fcfdc5c",
+      "runs": [
+        {
+          "file": "extensions-quality.yml",
+          "id": 37237026261,
+          "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37237026261",
+          "dispatchNonce": "4fcb93f73fd14f45206ad62cea3768a0"
+        },
+        {
+          "file": "workflow-contracts.yml",
+          "id": 37237029914,
+          "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37237029914",
+          "dispatchNonce": "1bb9d184ab5227faf21c17f2611ef372"
+        },
+        {
+          "file": "code-consistency-review-scaffold.yml",
+          "id": 37237033408,
+          "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37237033408",
+          "dispatchNonce": "f9c29cdd16bc066f76c8845216f27db4"
+        },
+        {
+          "file": "three-extension-ui-contracts.yml",
+          "id": 37237036953,
+          "url": "https://github.com/katamor1/bob_builtin_analyze/actions/runs/37237036953",
+          "dispatchNonce": "7fc080a0f23505d8d15ca1b27b96b534"
+        }
+      ]
+    },
+    "previousAutomaticCi": {
+      "head": "86ff3f2bd8e8dd5600042bc9545a33604f53310c",
+      "quality": {
+        "id": 37237008243,
+        "conclusion": "success"
+      },
+      "contracts": {
+        "id": 37237008298,
+        "conclusion": "success"
+      },
+      "ui": {
+        "id": 37237008346,
+        "conclusion": "failure",
+        "step": "Verify changed-file whitespace"
+      }
+    },
+    "reviewCount": 1,
+    "additionalCiFormattingCorrection": true
+  }
+}

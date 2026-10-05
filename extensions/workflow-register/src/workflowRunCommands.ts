@@ -1,3 +1,4 @@
+import { assertWorkflowContractV2Shadow } from "./workflowContractV2ExecutionGuard"
 import * as fs from "fs/promises"
 import * as path from "path"
 import * as vscode from "vscode"
@@ -106,6 +107,7 @@ export class WorkflowRunCommandService {
       ? this.options.coreWorkflows.get(workflowId)
       : await this.pickCoreWorkflow()
     if (!workflow) return "ワークフローが選択されていません。一覧から対象を選択してください。"
+    assertWorkflowContractV2Shadow(workflow)
     const root = operationHubTarget
       ? await this.validateOperationHubWorkflowRoot(operationHubTarget, workflow)
       : workflow.workflowRoot ?? await this.pickWorkflowRoot("ワークフローのワークスペースを選択")
@@ -134,6 +136,7 @@ export class WorkflowRunCommandService {
       ? this.options.coreWorkflows.get(workflowId)
       : await this.pickCoreWorkflow()
     if (!workflow) return "ワークフローが選択されていません。一覧から対象を選択してください。"
+    assertWorkflowContractV2Shadow(workflow)
     const step = stepId
       ? workflow.engineSteps.find((candidate) => candidate.id === stepId)
       : await this.pickWorkflowStep(workflow)
@@ -169,6 +172,7 @@ export class WorkflowRunCommandService {
       ? this.options.coreWorkflows.get(workflowId)
       : await this.pickCoreWorkflow()
     if (!workflow) return "ワークフローが選択されていません。一覧から対象を選択してください。"
+    assertWorkflowContractV2Shadow(workflow)
     const step = stepId
       ? workflow.engineSteps.find((candidate) => candidate.id === stepId)
       : await this.pickWorkflowStep(workflow)
@@ -300,6 +304,7 @@ export class WorkflowRunCommandService {
   const previewRun = await runStore.loadRun(selection.runId)
   if (!previewRun) throw new Error(`実行 ${selection.runId} が見つかりません。実行一覧を更新してから再度選択してください。`)
   assertWorkflowRunStateWritable(previewRun)
+  this.assertPersistedWorkflow(previewRun)
   const previewWorkflow = this.options.coreWorkflows.get(previewRun.workflowId)
   if (!previewWorkflow) throw new Error(`Workflow definition is not loaded: ${previewRun.workflowId}`)
   const snapshotStore = new FileTaskSnapshotStore({ workspaceRoot: selection.root })
@@ -359,6 +364,7 @@ export class WorkflowRunCommandService {
     "artifact-import",
     () => coordinateWorkflowRunExecution(runStore, selection.runId, "importTaskSnapshotArtifacts", async () => {
       const run = await runStore.loadRun(selection.runId)
+      if (run) this.assertPersistedWorkflow(run)
       if (!run) throw new Error(`実行 ${selection.runId} が見つかりません。実行一覧を更新してから再度選択してください。`)
       const workflow = this.options.coreWorkflows.get(run.workflowId)
       if (!workflow) throw new Error(`ワークフロー定義 ${run.workflowId} が読み込まれていません。定義を再読み込みしてください。`)
@@ -430,6 +436,7 @@ export class WorkflowRunCommandService {
     if (expectedRevision) await assertOperationHubRunRevision(root, runId, expectedRevision)
     const runStore = this.options.runtimeFactory.createRunStore(root)
     const run = await runStore.loadRun(runId)
+    if (run) this.assertPersistedWorkflow(run)
     if (!run) throw new Error(`実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。`)
     if (run.status === "reviewing") {
       return this.warnStepGate("現在のステップは人による確認待ちです。結果を承認するか、現在のステップを再試行してください。")
@@ -517,6 +524,7 @@ export class WorkflowRunCommandService {
       await vscode.window.showWarningMessage(message)
       return message
     }
+    assertWorkflowContractV2Shadow(workflow)
     const stepId = run.currentStep ?? run.steps.find((candidate) => candidate.status === "held")?.id
     const step = stepId ? workflow.engineSteps.find((candidate) => candidate.id === stepId) : undefined
     if (!step) {
@@ -578,6 +586,7 @@ export class WorkflowRunCommandService {
     const runStore = this.options.runtimeFactory.createRunStore(selection.root)
     const previewRun = await runStore.loadRun(selection.runId)
     if (!previewRun) throw new Error(`実行 ${selection.runId} が見つかりません。実行一覧を更新してから再度選択してください。`)
+    this.assertPersistedWorkflow(previewRun)
     const previewWorkflow = this.options.coreWorkflows.get(previewRun.workflowId)
     const previewAssessment = await this.assessHeldRunRecovery(selection.root, previewRun, previewWorkflow)
     if (previewAssessment.kind !== "detached-resumable") {
@@ -607,6 +616,7 @@ export class WorkflowRunCommandService {
         if (expectedRevision) await assertOperationHubRunRevision(selection.root, selection.runId, expectedRevision)
         const currentRun = await runStore.loadRun(selection.runId)
         if (!currentRun) throw new Error(`実行 ${selection.runId} が見つかりません。実行一覧を更新してから再度選択してください。`)
+        this.assertPersistedWorkflow(currentRun)
         const workflow = this.options.coreWorkflows.get(currentRun.workflowId)
         if (!workflow) throw new Error(`ワークフロー定義が読み込まれていません: ${currentRun.workflowId}。ワークフロー定義を再読み込みしてから再実行してください。`)
         const agentProvider = reviewTaskRegistry.agentProviderForRun(selection.root, currentRun.runId, workflow)
@@ -654,9 +664,11 @@ export class WorkflowRunCommandService {
     await this.ensureWorkflowsLoaded()
     const selection = await this.selectRun(runId)
     if (!selection) return runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。実行一覧から対象を選択してください。"
+    if (selection.run) this.assertPersistedWorkflow(selection.run)
     return this.options.coordinateGateDecision(selection.root, selection.runId, "checkpoint-approve", async () => {
       const runStore = this.options.runtimeFactory.createRunStore(selection.root)
       const run = await runStore.loadRun(selection.runId)
+      if (run) this.assertPersistedWorkflow(run)
       if (!run) throw new Error(`実行 ${selection.runId} が見つかりません。実行一覧を更新してから再度選択してください。`)
       const workflow = this.options.coreWorkflows.get(run.workflowId)
       if (!workflow) throw new Error(`ワークフロー定義 ${run.workflowId} が読み込まれていません。定義を再読み込みしてください。`)
@@ -673,8 +685,10 @@ export class WorkflowRunCommandService {
   async abortBranchCheckpoint(runId?: string): Promise<unknown> {
     const trustError = await requireTrustedWorkspace("分岐チェックポイントを中止")
     if (trustError) return trustError
+    await this.ensureWorkflowsLoaded()
     const selection = await this.selectRun(runId)
     if (!selection) return runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。実行一覧から対象を選択してください。"
+    if (selection.run) this.assertPersistedWorkflow(selection.run)
     return this.options.coordinateGateDecision(selection.root, selection.runId, "checkpoint-abort", async () => {
       const engine = this.options.runtimeFactory.createEngine(selection.root)
       const result = await engine.abortBranchCheckpoint(selection.runId, CHECKPOINT_ABORT_REASON)
@@ -742,6 +756,7 @@ export class WorkflowRunCommandService {
     if (expectedRevision) await assertOperationHubRunRevision(root, runId, expectedRevision)
     const runStore = this.options.runtimeFactory.createRunStore(root)
     const run = await runStore.loadRun(runId)
+    if (run) this.assertPersistedWorkflow(run)
     if (!run) throw new Error(`実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。`)
     if (mode === "resume" && run.status === "checkpoint") {
       return this.warnStepGate("Current run is waiting at a branch checkpoint. Approve or abort the checkpoint before resuming.")
@@ -894,6 +909,11 @@ export class WorkflowRunCommandService {
     await this.options.runtimeFactory.createRunStore(root).saveRun(run)
   }
 
+  private assertPersistedWorkflow(run: WorkflowRunState): void {
+    const workflow = this.options.coreWorkflows.get(run.workflowId)
+    if (workflow) assertWorkflowContractV2Shadow(workflow)
+  }
+
   private async ensureWorkflowsLoaded(): Promise<void> {
     if (this.options.coreWorkflows.size === 0) await this.options.ensureWorkflowsLoaded()
   }
@@ -907,6 +927,7 @@ export class WorkflowRunCommandService {
         runArg,
         roots.map((candidate) => candidate.root)
       )
+      this.assertPersistedWorkflow(validated.snapshot.run)
       return {
         root: validated.workspaceRoot,
         runId: runArg.runId,
@@ -914,9 +935,11 @@ export class WorkflowRunCommandService {
       }
     }
     const runId = resolveRunId(runArg)
-    return runId
-      ? findRunSelection(runId, roots, (root) => this.options.runtimeFactory.createRunStore(root))
-      : pickRunSelection(roots, (root) => this.options.runtimeFactory.createRunStore(root))
+    const selection = runId
+      ? await findRunSelection(runId, roots, (root) => this.options.runtimeFactory.createRunStore(root))
+      : await pickRunSelection(roots, (root) => this.options.runtimeFactory.createRunStore(root))
+    if (selection?.run) this.assertPersistedWorkflow(selection.run)
+    return selection
   }
 
   private async validateOperationHubWorkflowRoot(

@@ -17,6 +17,7 @@ class RelativePattern {
 }
 
 const vscode = {
+  Uri: { file: fsPath => ({ fsPath }) },
   RelativePattern,
   workspace: {
     get workspaceFolders() {
@@ -44,7 +45,7 @@ const vscode = {
     }
   },
   extensions: {
-    getExtension: () => ({
+    getExtension: () => { runtime.bobGetExtensionCalls++;return ({
       id: "IBM.bob-code",
       isActive: true,
       packageJSON: { version: runtime.bobVersion ?? "2.0.1" },
@@ -54,7 +55,7 @@ const vscode = {
           return runtime.source
         }
       }
-    })
+    }) }
   }
 }
 
@@ -79,6 +80,7 @@ function resetRuntime(workspaceRoot, files) {
     configuration: { sourceId: "workflow-register", sourceName: "Workflow Register" },
     commandCalls: [],
     registerSourceCalls: 0,
+    bobGetExtensionCalls: 0,
     registeredWorkflows: [],
     activeTextEditor: undefined
   }
@@ -105,6 +107,9 @@ function findWorkflowFiles(pattern) {
     : runtime.workspaceFolders.map((folder) => path.resolve(folder.uri.fsPath))
   return runtime.files.filter((file) => roots.some((root) => {
     const relative = path.relative(root, file.fsPath).replace(/\\/g, "/")
+    const glob = pattern.pattern ?? ""
+    if (glob.endsWith("current.json")) return /^\.bob\/workflows\/[^/]+\/current\.json$/.test(relative)
+    if (glob.endsWith("workflow.yaml")) return /^\.bob\/workflows\/[^/]+\/versions\/[^/]+\/workflow\.yaml$/.test(relative)
     return /^\.bob\/workflows\/[^/]+\/WORKFLOW\.md$/.test(relative)
   }))
 }
@@ -655,3 +660,166 @@ function compareText(left, right) {
 function countOccurrences(value, search) {
   return value.split(search).length - 1
 }
+
+const {publishNodeFixture}=require('./workflowContractV2EntrypointTestSupport')
+function shadowGateway(){
+ const {ActionRegistry}=requireWithVscode('core/actionRegistry.js');const {WorkflowPlanStore}=require(path.join(outRoot,'core/contractV2'));const store=new WorkflowPlanStore();let acquired=0;
+ const {createWorkflowContractV2ProductEntrypoint}=require(path.join(outRoot,'workflowContractV2Product'));
+ const gateway=createWorkflowContractV2ProductEntrypoint({actionRegistry:new ActionRegistry(),planStore:{getOrCompile:input=>store.getOrCompile(input),acquire:input=>{acquired++;return store.acquire(input);},invalidate:(a,b)=>store.invalidateSlot(a,b)}});
+ return {gateway,acquired:()=>acquired};
+}
+async function shadowWorkspace(t){const root=await fsp.mkdtemp(path.join(os.tmpdir(),'p6-shadow-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const collection=path.join(root,'.bob/workflows');const published=publishNodeFixture(collection);const pointer=path.join(collection,'minimal/current.json'),generation=path.join(collection,...published.published.base,'workflow.yaml');return {root,collection,pointer,generation};}
+test('shadow-only registration displays compiled view without Bob activation, registration, runner or deactivation',async t=>{
+ const f=await shadowWorkspace(t);resetRuntime(f.root,[f.pointer,f.generation]);const g=shadowGateway();let runners=0,deactivated=0;
+ const {registerWorkflows}=requireWithVscode('workflowRegistrationService.js');const result=await registerWorkflows({contractV2:g.gateway,createRunner(){runners++;return runnerStub();},previousSource:{deactivate(){deactivated++;},log(){},registerWorkflow(){}}});
+ assert.equal(result.coreWorkflows.length,1,result.result.lines.join('\n'));assert.equal(result.coreWorkflows[0].contractV2.schemaVersion,'workflow-contract-v2-view/v1');
+ assert.equal(runtime.bobGetExtensionCalls,0);assert.equal(runtime.registerSourceCalls,0);assert.equal(runtime.registeredWorkflows.length,0);assert.equal(runners,0);assert.equal(deactivated,0);assert.equal(g.acquired(),0);
+});
+test('invalid or missing current pointer reserves its V2 slot and never falls back to its valid V1 document',async t=>{
+ for(const kind of ['invalid','missing','gateway-missing']){
+ const f=await shadowWorkspace(t),legacy=await writeWorkflow(f.root,'minimal',legacyWorkflow),other=await writeWorkflow(f.root,'other',legacyWorkflow.replace('legacy-workflow','other-workflow'));await fsp.writeFile(f.pointer,'{}');
+ if(kind==='missing')await fsp.unlink(f.pointer);resetRuntime(f.root,[...(kind==='missing'?[]:[f.pointer]),f.generation,legacy,other]);const g=shadowGateway();
+ const {loadWorkspaceWorkflows}=requireWithVscode('workflowDefinitionLoader.js');const result=await loadWorkspaceWorkflows('workflow-register',kind==='gateway-missing'?undefined:g.gateway);
+ assert.equal(result.coreWorkflows.length,1,result.diagnostics.join('\n'));assert.equal(result.coreWorkflows[0].workflowFile,other);assert.ok(result.diagnostics.some(x=>/WF2_PACKAGE_LAYOUT_INVALID|gateway|current.json/.test(x)));assert.equal(g.acquired(),0);
+ }
+});
+test('multi-root same-name V2 slots get separate valid collection identities',async t=>{
+ const a=await shadowWorkspace(t),b=await shadowWorkspace(t);resetRuntime(a.root,[a.pointer,a.generation,b.pointer,b.generation]);runtime.workspaceFolders.push({name:'second',uri:{fsPath:b.root}});
+ const {discoverWorkspaceWorkflowFiles}=requireWithVscode('workflowDiscovery.js');const result=await discoverWorkspaceWorkflowFiles();assert.equal(result.packages.length,2);assert.notEqual(result.packages[0].collectionId,result.packages[1].collectionId);assert.ok(result.packages.every(x=>/^collection-[a-f0-9]{64}$/.test(x.collectionId)));
+});
+test('V2 validation and registration report the same loader failure while V1 remains synchronous',async t=>{
+ const f=await shadowWorkspace(t);await fsp.writeFile(f.pointer,'{}');resetRuntime(f.root,[f.pointer,f.generation]);const g=shadowGateway();
+ const {loadWorkspaceWorkflows}=requireWithVscode('workflowDefinitionLoader.js'),commands=requireWithVscode('commands/validateWorkflow.js');const loaded=await loadWorkspaceWorkflows('workflow-register',g.gateway);let report;
+ await commands.validateWorkspaceWorkflows({sourceId:'workflow-register',compileCurrentWorkflowPackage:input=>g.gateway.compileCurrent(input),showMarkdownReport:async(...args)=>{report=args;}});
+ assert.ok(loaded.diagnostics.some(x=>x.includes('[WF2_PACKAGE_LAYOUT_INVALID]')));assert.ok(report[2].some(x=>x.includes('[WF2_PACKAGE_LAYOUT_INVALID]')));
+ const result=commands.validateTextDocument({uri:{fsPath:path.join(f.root,'.bob/workflows/v1/WORKFLOW.md')},getText:()=>legacyWorkflow},{sourceId:'workflow-register'});assert.equal(typeof result.then,'undefined');assert.equal(result.ok,true);
+});
+
+test('V2 pointer reload keeps an unchanged V1 Bob registration and compiled view binding stays private',async t=>{
+ const f=await shadowWorkspace(t),legacy=await writeWorkflow(f.root,'other',legacyWorkflow);resetRuntime(f.root,[f.pointer,f.generation,legacy]);const g=shadowGateway();let runners=0;
+ const {registerWorkflows}=requireWithVscode('workflowRegistrationService.js');const first=await registerWorkflows({contractV2:g.gateway,createRunner(){runners++;return runnerStub();}});
+ assert.equal(runtime.registeredWorkflows.length,1);assert.equal(runners,1);assert.equal(first.coreWorkflows.length,2);
+ const second=await registerWorkflows({contractV2:g.gateway,previousSource:first.registeredSource,previousLegacyFingerprint:first.legacyFingerprint,createRunner(){runners++;return runnerStub();}});
+ assert.equal(second.sourceChanged,false);assert.equal(runtime.registerSourceCalls,1);assert.equal(runners,1);
+ const view=requireWithVscode('workflowContractV2View.js');const core=second.coreWorkflows.find(x=>x.contractV2);assert.equal(Object.isFrozen(core),true);assert.ok(view.workflowContractV2CoreBinding(core));assert.equal(Reflect.deleteProperty(core,'contractV2'),false);
+ assert.throws(()=>view.workflowContractV2CoreBinding({...core}),/Unauthenticated/);
+});
+
+test('pure V1 explicit reload preserves source re-registration',async t=>{
+ const root=await fsp.mkdtemp(path.join(os.tmpdir(),'p6-v1-reload-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const file=await writeWorkflow(root,'legacy',legacyWorkflow);resetRuntime(root,[file]);const {registerWorkflows}=requireWithVscode('workflowRegistrationService.js');const first=await registerWorkflows({createRunner:runnerStub});await registerWorkflows({createRunner:runnerStub,previousSource:first.registeredSource,previousLegacyFingerprint:first.legacyFingerprint});assert.equal(runtime.registerSourceCalls,2);assert.equal(runtime.registeredWorkflows.length,2);
+});
+
+
+test('mixed V1 registration retries a partial failure before caching an unchanged reload', async t => {
+  const f = await shadowWorkspace(t)
+  const firstFile = await writeWorkflow(f.root, 'first', legacyWorkflow)
+  const secondFile = await writeWorkflow(f.root, 'second', legacyWorkflow.replace('legacy-workflow', 'second-workflow'))
+  resetRuntime(f.root, [f.pointer, f.generation, firstFile, secondFile])
+  const g = shadowGateway()
+  const originalRegister = runtime.source.registerWorkflow
+  let attempts = 0
+  let failed = false
+  runtime.source.registerWorkflow = workflow => {
+    attempts += 1
+    if (!failed) { failed = true; throw new Error('Transient Bob registration failure') }
+    return originalRegister(workflow)
+  }
+  const { registerWorkflows } = requireWithVscode('workflowRegistrationService.js')
+  const first = await registerWorkflows({ contractV2: g.gateway, createRunner: runnerStub })
+  assert.equal(first.registeredIds.size, 1)
+  const second = await registerWorkflows({ contractV2: g.gateway, createRunner: runnerStub,
+    previousSource: first.registeredSource, previousLegacyFingerprint: first.legacyFingerprint })
+  assert.equal(attempts, 4, 'An explicit reload must retry missing V1 registrations')
+  assert.equal(second.registeredIds.size, 2)
+  await registerWorkflows({ contractV2: g.gateway, createRunner: runnerStub,
+    previousSource: second.registeredSource, previousLegacyFingerprint: second.legacyFingerprint })
+  assert.equal(attempts, 4, 'A fully successful unchanged mixed registration should be retained')
+  assert.equal(runtime.registerSourceCalls, 2)
+  assert.equal(g.acquired(), 0)
+})
+
+test('file exclusions cannot hide V2 slot authority and enable same-slot V1 fallback', async t => {
+  const originalFind = vscode.workspace.findFiles
+  vscode.workspace.findFiles = async (pattern, exclude) => {
+    const files = await originalFind(pattern)
+    if (exclude === null) return files
+    return files.filter(uri => uri.fsPath.endsWith('WORKFLOW.md'))
+  }
+  t.after(() => { vscode.workspace.findFiles = originalFind })
+  for (const state of ['valid', 'invalid', 'missing']) {
+    const f = await shadowWorkspace(t)
+    const same = await writeWorkflow(f.root, 'minimal', legacyWorkflow)
+    const other = await writeWorkflow(f.root, 'other', legacyWorkflow.replace('legacy-workflow', 'other-workflow'))
+    if (state === 'invalid') await fsp.writeFile(f.pointer, '{}')
+    if (state === 'missing') await fsp.unlink(f.pointer)
+    resetRuntime(f.root, [same, other, f.generation, ...(state === 'missing' ? [] : [f.pointer])])
+    const g = shadowGateway()
+    const { registerWorkflows } = requireWithVscode('workflowRegistrationService.js')
+    const result = await registerWorkflows({ contractV2: g.gateway, createRunner: runnerStub })
+    assert.ok(result.coreWorkflows.every(workflow => workflow.workflowFile !== same), state)
+    assert.equal(result.coreWorkflows.length, state === 'valid' ? 2 : 1, state)
+    assert.equal(runtime.registeredWorkflows.length, 1, 'Only the separate V1 slot can register')
+    assert.equal(runtime.registeredWorkflows[0].getId(), 'workflow-register.other-workflow')
+    assert.equal(g.acquired(), 0)
+  }
+})
+
+test('malformed V2 slot IDs are diagnosed per candidate while separate V1 remains usable', async t => {
+  for (const route of ['loader', 'registration', 'workspace-validation', 'current-validation']) {
+    await t.test(route, async t => {
+      const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'p6-invalid-slot-'))
+      t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+      const same = await writeWorkflow(root, '123', legacyWorkflow)
+      const other = await writeWorkflow(root, 'other', legacyWorkflow.replace('legacy-workflow', 'other-workflow'))
+      const pointer = path.join(root, '.bob/workflows/123/current.json')
+      await fsp.writeFile(pointer, '{}')
+      resetRuntime(root, [same, other, pointer])
+      const g = shadowGateway()
+      if (route === 'loader' || route === 'registration') {
+        const module = requireWithVscode(route === 'loader' ? 'workflowDefinitionLoader.js' : 'workflowRegistrationService.js')
+        const result = route === 'loader' ? await module.loadWorkspaceWorkflows('workflow-register', g.gateway)
+          : await module.registerWorkflows({ contractV2: g.gateway, createRunner: runnerStub })
+        assert.equal(result.coreWorkflows.length, 1)
+        assert.equal(result.coreWorkflows[0].workflowFile, other)
+        const lines = route === 'loader' ? result.diagnostics : result.result.lines
+        assert.ok(lines.some(line => line.includes('WF2_PACKAGE_LAYOUT_INVALID')))
+        if (route === 'registration') assert.equal(runtime.registeredWorkflows.length, 1)
+      } else {
+        const commands = requireWithVscode('commands/validateWorkflow.js')
+        runtime.activeTextEditor = { document: { uri: { fsPath: pointer }, getText: () => '{}' } }
+        let report
+        const options = { sourceId: 'workflow-register', compileCurrentWorkflowPackage: input => g.gateway.compileCurrent(input),
+          showMarkdownReport: async (...args) => { report = args } }
+        await commands[route === 'workspace-validation' ? 'validateWorkspaceWorkflows' : 'validateCurrentWorkflow'](options)
+        assert.ok(report[2].some(line => line.includes('WF2_PACKAGE_LAYOUT_INVALID')))
+        if (route === 'workspace-validation') assert.match(report[1], /2件/)
+      }
+      assert.equal(g.acquired(), 0)
+    })
+  }
+})
+
+
+test('malformed V2 structural entries reserve their slot without a searchable workflow file', async t => {
+  for (const layout of ['pointer-directory', 'incomplete-generation']) {
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'p6-structural-slot-'))
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+    const same = await writeWorkflow(root, 'minimal', legacyWorkflow)
+    const other = await writeWorkflow(root, 'other', legacyWorkflow.replace('legacy-workflow', 'other-workflow'))
+    const pointer = path.join(root, '.bob/workflows/minimal/current.json')
+    if (layout === 'pointer-directory') await fsp.mkdir(pointer)
+    else {
+      const generation = path.join(root, '.bob/workflows/minimal/versions/incomplete')
+      await fsp.mkdir(generation, { recursive: true })
+      await fsp.writeFile(path.join(generation, 'workflow.lock.json'), '{}')
+    }
+    resetRuntime(root, [same, other])
+    const g = shadowGateway()
+    const { registerWorkflows } = requireWithVscode('workflowRegistrationService.js')
+    const result = await registerWorkflows({ contractV2: g.gateway, createRunner: runnerStub })
+    assert.deepEqual(result.coreWorkflows.map(workflow => workflow.workflowFile), [other], layout)
+    assert.ok(result.result.lines.some(line => line.includes('WF2_PACKAGE_LAYOUT_INVALID')), layout)
+    assert.equal(runtime.registeredWorkflows.length, 1)
+    assert.equal(g.acquired(), 0)
+  }
+})

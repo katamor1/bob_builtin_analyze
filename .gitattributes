@@ -17,3 +17,6 @@ extensions/workflow-register/test/fixtures/reproducible-runtime/** text eol=lf
 
 # Workflow Contract v2 fixtures are reviewed as exact LF bytes.
 extensions/workflow-register/test/fixtures/workflow-contract-v2/** text eol=lf
+
+# P5 completion recovery uses exact canonical LF bytes.
+docs/release-evidence/wf2-p5-completion-2026-10-05.json text eol=lf

@@ -90,7 +90,7 @@ function providerHarness(t) {
   const OperationHubProvider = loadProviderWithVscode(vscode)
   const provider = new OperationHubProvider({ api: { listWorkflows: () => [] }, extensionUri: {} })
   t.after(() => provider.dispose())
-  return { panel, provider, state }
+  return { panel, provider, state, root }
 }
 
 function captureUnhandledRejections(t) {
@@ -150,3 +150,15 @@ test("Operation Hub catches every rejected delayed action refresh once", async (
   assert.deepEqual(unhandled, [])
   assert.deepEqual(state.errors, ["Bob 操作センター: 操作後の自動更新に失敗しました。action refresh failed"])
 })
+
+test('Operation Hub shows V2 as validation only and rejects a forged start message before command dispatch',async t=>{
+ const {provider,state,panel,root}=providerHarness(t);
+ const f=require('./workflowContractV2EntrypointTestSupport').fixture();const result=await f.entrypoint.compileCurrent({slot:f.slot,consumer:'workspace-registration'});
+ const {coreWorkflow}=require('../out/workflowContractV2View').adaptCompiledWorkflowForProduct({handle:result.handle,rawPackage:result.rawPackage,slot:f.slot,root:{root,name:'workspace',workspaceFolderName:'workspace',marker:'.bob',depth:0},currentPointer:{fsPath:path.join(root,'.bob/workflows/minimal/current.json')}});
+ provider.options.api.listWorkflows=()=>[coreWorkflow];provider.options.api.compileCurrentWorkflowPackage=i=>f.entrypoint.compileCurrent(i);
+ await provider.open();assert.match(panel.webview.html,/検証のみ・実行不可/);assert.doesNotMatch(panel.webview.html,/data-action="runWorkflow"/);
+ for(const kind of ['valid','stale','invalid']){
+ if(kind==='stale')f.entrypoint.invalidateSlot(f.slot);if(kind==='invalid')f.adapter.mutate(['minimal','current.json'],Buffer.from('{}'));
+ await provider.handleMessage({type:'operationHub.action',action:'runWorkflow',workflowId:coreWorkflow.id,workspaceRoot:root});assert.deepEqual(state.commands,[]);assert.ok(state.errors.length);assert.equal(f.counters.acquire,0);assert.equal(fs.existsSync(path.join(root,'.bob/workflows/runs')),false);
+ }
+});

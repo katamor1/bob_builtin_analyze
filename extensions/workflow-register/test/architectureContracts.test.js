@@ -168,3 +168,49 @@ test("workflow-register docs cover template customization and snapshot defaults"
   assert.match(unitTestSpec, /WR-UT-036[\s\S]*WR-UT-039/)
   assert.match(realMachineSpec, /WR-RT-036[\s\S]*bzr --no-aliases/)
 })
+
+const frozenLegacyImports = [
+ ['src/workflowDefinitionLoader.ts','./core/workflowCompiler','legacy-v1-document-compilation'],
+ ['src/workflowDefinitionLoader.ts','./workflowAdapter','legacy-v1-bob-adaptation'],
+ ['src/core/workflowValidator.ts','./workflowCompiler','legacy-v1-validator-export-compatibility'],
+ ['src/commands/validateWorkflow.ts','../core/workflowCompiler','legacy-v1-editor-validation'],
+ ['src/bobWorkflowFactory.ts','./core/contractV2/bobProfile','audited-F7-task-probe']
+].map(([path,importName,reason]) => ({path,import:importName,reason}))
+const consumerPaths = ['workflowContractV2Entrypoint','workflowContractV2Product','workflowContractV2ProviderLifecycle','workflowContractV2View','workflowContractV2ExecutionGuard','workflowContractV2RunStateStore','workflowDefinitionLoader','workflowRegistrationService','workflowRegisterService','workflowRuntimeFactory','workflowRunCommands','workflowDiscovery','bobWorkflowFactory','workflowBobTaskBinding','extension','extensionWithAuthoring','commands/validateWorkflow','gui/operationHubProvider','gui/operationHubModel'].map(p=>'src/'+p+'.ts')
+const privateImports = /(?:^|\/)(?:workflowCompiler|parser|predicateCompiler|providerRegistry|bobProfile|packageLoader|packageFileSystemNode|packageRoot|yaml|ajv)$/
+
+test('V2 consumer architecture freezes legacy exceptions and rejects private compilation paths',()=>{
+ const allowlist=JSON.parse(fs.readFileSync(path.join(extensionRoot,'test/fixtures/workflow-contract-v2/transitional-legacy-import-allowlist.json'),'utf8'))
+ const sources=Object.fromEntries(consumerPaths.map(p=>[p,fs.readFileSync(path.join(extensionRoot,p),'utf8')]))
+ assertConsumerImports(sources,allowlist)
+ assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2View.ts':sources['src/workflowContractV2View.ts']+'\nimport { compileWorkflowDocument } from "./core/workflowCompiler"'},allowlist),/private import/)
+ assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2View.ts':sources['src/workflowContractV2View.ts']+'\nimport yaml from "js-yaml"'},allowlist),/private import/)
+ assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2View.ts':sources['src/workflowContractV2View.ts']+'\nimport { compile } from "./core/contractV2/compiler"'},allowlist),/private import/)
+ assert.throws(()=>assertConsumerImports(sources,[...allowlist,{path:'src/workflowContractV2View.ts',import:'./core/workflowCompiler',reason:'new exception'}]),/frozen/)
+ assert.throws(()=>assertConsumerImports(sources,allowlist.map((x,i)=>i?x:{...x,reason:'broader reason'})),/frozen/)
+})
+
+function assertConsumerImports(sources,allowlist) {
+ assert.deepEqual(allowlist,frozenLegacyImports,'transitional legacy import allowlist is frozen')
+ const ts=require('typescript')
+ const productAuthority=new Set(['./core/contractV2/packageLoader','./core/contractV2/packageFileSystemNode','./core/contractV2/packageRoot','./core/contractV2/bobProfile'])
+ for(const [file,source] of Object.entries(sources)) {
+  const tree=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true)
+  const check=(name)=>{
+   const allowed=/core\/contractV2\/diagnostics$/.test(name)||allowlist.some(x=>x.path===file&&x.import===name)
+    || (file==='src/workflowContractV2Product.ts'&&productAuthority.has(name))
+    || (file==='src/workflowBobTaskBinding.ts'&&name==='./core/contractV2/bobProfile')
+   if((privateImports.test(name)||/(?:^|\/)(?:js-yaml|yaml|ajv)(?:$|\/)/.test(name)||name==='./workflowAdapter'||/core\/contractV2\//.test(name))&&!allowed) throw Error('private import '+file+': '+name)
+  }
+  const visit=node=>{
+   if((ts.isImportDeclaration(node)||ts.isExportDeclaration(node))&&node.moduleSpecifier&&ts.isStringLiteral(node.moduleSpecifier)){
+    const clause=node.importClause
+    const typeOnly=node.isTypeOnly||clause?.isTypeOnly||(clause&&!clause.name&&clause.namedBindings&&ts.isNamedImports(clause.namedBindings)&&clause.namedBindings.elements.every(e=>e.isTypeOnly))
+    if(!typeOnly)check(node.moduleSpecifier.text)
+   }
+   if(ts.isCallExpression(node)&&node.arguments.length&&ts.isStringLiteral(node.arguments[0])&&(node.expression.kind===ts.SyntaxKind.ImportKeyword||(ts.isIdentifier(node.expression)&&node.expression.text==='require')))check(node.arguments[0].text)
+   ts.forEachChild(node,visit)
+  }
+  visit(tree)
+ }
+}
