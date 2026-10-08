@@ -18,6 +18,13 @@ interface RegisteredActionProvider {
   token: symbol
 }
 
+const registerWorkflowProviderCaptured = Function.prototype.call.bind(WorkflowProviderRegistry.prototype.register) as (
+  registry: WorkflowProviderRegistry, input: WorkflowProviderRegistrationInput
+) => WorkflowProviderRegistration
+const snapshotWorkflowProviderCaptured = Function.prototype.call.bind(WorkflowProviderRegistry.prototype.snapshot) as (
+  registry: WorkflowProviderRegistry
+) => WorkflowProviderCatalog
+
 const DEFAULT_PROVIDER_SOURCE_ID = "anonymous"
 const WORKFLOW_REGISTER_PROVIDER_SOURCE_ID = "local.workflow-register"
 
@@ -28,11 +35,11 @@ export class ActionRegistry {
   registerWorkflowProviderContract(
     input: WorkflowProviderRegistrationInput
   ): WorkflowProviderRegistration {
-    return this.workflowProviders.register(input)
+    return registerWorkflowProviderCaptured(this.workflowProviders, input)
   }
 
   snapshotWorkflowProviderCatalog(): WorkflowProviderCatalog {
-    return this.workflowProviders.snapshot()
+    return snapshotWorkflowProviderCaptured(this.workflowProviders)
   }
 
   register(provider: ActionProvider): ActionProviderRegistration {
