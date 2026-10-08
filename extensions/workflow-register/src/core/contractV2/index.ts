@@ -24,3 +24,16 @@ export type {
   GetOrCompileWorkflowPlanInput
 } from "./planStore"
 export type { WorkflowPlanLease } from "./planLease"
+
+export {
+  COMPILED_WORKFLOW_PLAN_MANIFEST_SCHEMA_VERSION,
+  createCompiledWorkflowPlanManifest,
+  createCompiledWorkflowPlanManifestPackage,
+  encodeCompiledWorkflowPlanManifest
+} from "./compiledPlanManifest"
+export type {
+  CompiledWorkflowPlanManifest,
+  CompiledWorkflowPlanManifestPackage,
+  CreateCompiledWorkflowPlanManifestInput,
+  CreateCompiledWorkflowPlanManifestPackageInput
+} from "./compiledPlanManifest"
