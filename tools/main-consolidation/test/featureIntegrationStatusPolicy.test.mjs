@@ -251,3 +251,78 @@ test('keeps_p5_canonical_bytes_after_autocrlf_checkout',async t=>{
   writeStdout:()=>assert.fail('check mode must not write output')
  })
 })
+
+const p6Completion=()=>json('../../../docs/release-evidence/wf2-p6-completion-2026-10-08.json')
+const throughP6=()=>({ ...context(),completionObservations:[completion(),wave0bCompletion(),p4Completion(),p5Completion(),p6Completion()] })
+
+test('accepts_verified_p6_completion_and_admits_only_p7',()=>{
+ const record=p6Completion()
+ validateCompletionObservation(record,{programIndex:buildProgramIndex(),evidenceDigests:digests(record)})
+ const c=throughP6(),p=projectIntegrationStatus(c)
+ assert.equal(p.acceptedMainSha,'c5f9fcff29a787cc4f02140800556257bf05c547')
+ assert.equal(p.slices.find(x=>x.sliceId==='WF2-P6-ENTRYPOINT').state,'VERIFIED')
+ assert.equal(p.slices.find(x=>x.sliceId==='WF2-P7-MANIFEST').state,'planned')
+ assert.equal(p.nextSliceId,'WF2-P7-MANIFEST')
+ assert.equal(deriveNextSlice({programIndex:c.programIndex,statusProjection:p}).sliceId,'WF2-P7-MANIFEST')
+ assert.equal(p.boundaries.find(x=>x.id==='WORKFLOW-B-GATE-P').state,'planned')
+ assert.ok(p.capabilities.every(x=>x.observedActivationStatus==='inactive'))
+ assert.deepEqual(p.activeSliceIds,[])
+ assert.equal(p.automaticCleanup,false);assert.equal(p.mutationAuthority,false)
+ assert.equal(record.productRuntimeActivation,'inactive')
+ assert.equal(record.observedMaxActivation,'shadow')
+})
+
+test('rejects_p6_evidence_tamper_and_future_p7_promotion',()=>{
+ const programIndex=buildProgramIndex()
+ validateCompletionObservation(p6Completion(),{programIndex,evidenceDigests:digests(p6Completion())})
+ const mutations=[
+  r=>r.acceptedMainSha='a'.repeat(40),r=>r.sourceHeadSha='b'.repeat(40),r=>r.acceptedTreeSha='c'.repeat(40),
+  r=>r.ci.requiredMainWorkflows[0].jobs[0].checkoutProof.actualHeadSha='d'.repeat(40),
+  r=>r.ci.requiredMainWorkflows[0].jobs[0].checkoutProof.dispatchNonce='e'.repeat(32),
+  r=>r.installedUat.summary.failedCases=1,r=>r.installedUat.cases[0].status='not_run',
+  r=>r.preservation.allPayloadHashesVerified=false,r=>r.preservation.allSupplementHashesVerified=false,
+  r=>r.localOperations.nativeRecoverySha='f'.repeat(40),r=>r.localOperations.localRefDeleteVerified=false,
+  r=>r.localOperations.remoteDeleteVerified=false,r=>r.topology.worktreeCount=2,
+  r=>r.externalEvidence[0].bytes++,r=>r.externalEvidence[0].sha256='0'.repeat(64),
+  r=>r.productRuntimeActivation='active',r=>r.observedMaxActivation='active',r=>r.mutationAuthority=true,
+  ...['requestHash','approvalRecord','providerTranscript','claim','futureRecoveryHead'].map(k=>r=>r[k]='forged')
+ ]
+ for(const mutate of mutations){const record=p6Completion();mutate(record);assert.throws(()=>validateCompletionObservation(record,{programIndex,evidenceDigests:digests(record)}))}
+ const record=p6Completion(),evidenceDigests=digests(record)
+ evidenceDigests[record.externalEvidence[0].id].bytes++
+ assert.throws(()=>validateCompletionObservation(record,{programIndex,evidenceDigests}))
+ const c=throughP6(),original=projectIntegrationStatus(c)
+ for(const mutate of [p=>p.slices.find(x=>x.sliceId==='WF2-P7-MANIFEST').state='VERIFIED',p=>p.completionReferences[4].boundaryId='WF2-P7-MANIFEST',p=>p.capabilities.find(x=>x.id==='WF2-P6-ENTRYPOINT').observedActivationStatus='active',p=>p.mutationAuthority=true]){
+  const p=structuredClone(original);mutate(p);assert.throws(()=>deriveNextSlice({programIndex:c.programIndex,statusProjection:p}))
+ }
+})
+
+test('rejects_p6_nonprefix_duplicate_and_sparse_completions',()=>{
+ const records=throughP6().completionObservations
+ projectIntegrationStatus({...context(),completionObservations:records})
+ const missing=Array(5);records.slice(0,3).forEach((r,i)=>{missing[i]=r});missing[4]=p6Completion()
+ for(const collection of [[p6Completion()],records.slice(0,3).concat(p6Completion()),records.concat(p6Completion()),[...records.slice(0,3),p6Completion(),p5Completion()],missing]){
+  assert.throws(()=>projectIntegrationStatus({...context(),completionObservations:collection}))
+ }
+})
+
+test('generator_includes_p6_and_rejects_completion_byte_drift',async()=>{
+ const {runGenerator}=await import('../create-feature-integration-status.mjs')
+ let output,reads=0
+ await runGenerator(['--print'],{readFile:async path=>{if(path.endsWith('wf2-p6-completion-2026-10-08.json'))reads++;return readFileSync(path)},writeStdout:bytes=>{output=JSON.parse(bytes.toString())}})
+ assert.equal(reads,1,'generator must consume the new canonical completion')
+ assert.equal(output.slices.find(x=>x.sliceId==='WF2-P6-ENTRYPOINT').state,'VERIFIED')
+ assert.equal(output.nextSliceId,'WF2-P7-MANIFEST')
+ await assert.rejects(()=>runGenerator(['--print'],{readFile:async path=>path.endsWith('wf2-p6-completion-2026-10-08.json')?Buffer.concat([readFileSync(path),Buffer.from('\n')]):readFileSync(path),writeStdout:()=>assert.fail('tampered completion must never produce output')}))
+})
+
+test('keeps_p6_canonical_bytes_after_autocrlf_checkout',async t=>{
+ const {mkdtempSync,rmSync}=await import('node:fs'),{tmpdir}=await import('node:os'),{join,resolve,sep,basename}=await import('node:path'),{execFileSync}=await import('node:child_process'),{runGenerator}=await import('../create-feature-integration-status.mjs')
+ const root=fileURLToPath(new URL('../../../',import.meta.url)),temp=mkdtempSync(join(tmpdir(),'p6-canonical-checkout-'))
+ t.after(()=>{assert.equal(resolve(temp).startsWith(resolve(tmpdir())+sep),true);assert.equal(basename(temp).startsWith('p6-canonical-checkout-'),true);rmSync(temp,{recursive:true,force:true})})
+ const relative='docs/release-evidence/wf2-p6-completion-2026-10-08.json'
+ execFileSync('git',['-c','core.autocrlf=true','checkout-index','--prefix='+temp.replaceAll('\\','/')+'/','--',relative],{cwd:root,windowsHide:true})
+ const checkedOut=readFileSync(join(temp,relative)),indexed=execFileSync('git',['show',':'+relative],{cwd:root,windowsHide:true})
+ assert.equal(checkedOut.equals(indexed),true,'fresh core.autocrlf=true checkout must retain exact canonical P6 bytes')
+ await runGenerator(['--check'],{readFile:async path=>path.endsWith('wf2-p6-completion-2026-10-08.json')?checkedOut:readFileSync(path),writeStdout:()=>assert.fail('check mode must not write output')})
+})

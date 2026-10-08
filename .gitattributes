@@ -20,3 +20,6 @@ extensions/workflow-register/test/fixtures/workflow-contract-v2/** text eol=lf
 
 # P5 completion recovery uses exact canonical LF bytes.
 docs/release-evidence/wf2-p5-completion-2026-10-05.json text eol=lf
+
+# P6 completion recovery uses exact canonical LF bytes.
+docs/release-evidence/wf2-p6-completion-2026-10-08.json text eol=lf
