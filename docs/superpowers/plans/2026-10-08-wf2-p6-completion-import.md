@@ -42,7 +42,7 @@
 - [x] Step 5: Append one exact registry entry, one generator input and one exact LF rule; generate the status projection. No validator or admission algorithm changes.
 - [x] Step 6: Run complete status-policy suite, status generator --check and static generators; compare scope, previous completion bytes and all extension tree identities to base.
 - [x] Step 7: Stage an immutable review tree, generate its diff/provenance package, and perform one focused read-only metadata review. Fix material findings with targeted verification; retain the original review.
-- [ ] Step 8: Mark observed steps, commit only the seven owned paths, and verify committed source/record/projection identities plus unchanged primary status.
-- [ ] Step 9: Prepare a concrete exact-head publication/integration proposal, retain branch/worktree, and report local P6 VERIFIED/P7 planned separately from primary P6/P7 planned.
+- [x] Step 8: Mark observed steps, commit only the seven owned paths, and verify committed source/record/projection identities plus unchanged primary status.
+- [x] Step 9: Prepare a concrete exact-head publication/integration proposal, retain branch/worktree, and report local P6 VERIFIED/P7 planned separately from primary P6/P7 planned.
 
 Expected validation commands: `node --test tools/main-consolidation/test/featureIntegrationStatusPolicy.test.mjs`; `node tools/main-consolidation/create-feature-integration-status.mjs --check`; reviewed static generators --check; `git diff --check` and base-to-candidate scope/tree checks. Child TMP/TEMP use task-marked `.t` only.
