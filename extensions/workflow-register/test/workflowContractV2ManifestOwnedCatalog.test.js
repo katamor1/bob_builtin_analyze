@@ -126,7 +126,7 @@ test("control file read rejects a different opened inode before reading", async 
   fs.writeFileSync(alternate, canonical({ schemaVersion: "workflow-provider-catalog-source/v1", providers: [declaration()] }))
   fs.writeFileSync(collections, canonical({ schemaVersion: "workflow-contract-v2-collections/v1", collections: [] }))
   fs.writeFileSync(alternateCollections, canonical({ schemaVersion: "workflow-contract-v2-collections/v1", collections: ["collections/other"] }))
-  const redirects = new Map([[provider, alternate], [collections, alternateCollections]])
+  const redirects = new Map([[await fsp.realpath(provider), alternate], [await fsp.realpath(collections), alternateCollections]])
   for (const [before, opened] of redirects) assert.notEqual(fs.statSync(before, { bigint: true }).ino, fs.statSync(opened, { bigint: true }).ino)
   let reads = 0, closes = 0, opens = 0
   fsp.open = async (file, ...args) => {
