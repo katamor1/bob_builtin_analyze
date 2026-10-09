@@ -44,3 +44,10 @@ tmp/**
 # Repository metadata
 .git/**
 .gitignore
+
+# P7 standalone repository evidence tools are not product runtime entrypoints.
+scripts/compile-workflow-contract-v2-packages.js
+scripts/lib/workflow-contract-v2-environment.js
+
+# P7 build-only AST compactor uses the existing TypeScript dev dependency.
+scripts/lib/compact-manifest-module.js
