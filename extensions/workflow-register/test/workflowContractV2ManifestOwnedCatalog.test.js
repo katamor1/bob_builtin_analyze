@@ -118,3 +118,35 @@ test("control file growth during read is rejected within the byte bound", async 
     assert.ok(observedBytes <= allowed, `read ${observedBytes} bytes after file identity changed; maximum ${allowed}`)
   } finally { fsp.open = originalOpen; delete require.cache[helper] }
 })
+test("control file read rejects a different opened inode before reading", async (t) => {
+  const helper = path.resolve(__dirname, "../scripts/lib/workflow-contract-v2-environment.js")
+  const fsp = require("node:fs/promises"), originalOpen = fsp.open
+  const root = repository(t), provider = path.join(root, "providers.json"), alternate = path.join(root, "alternate.json")
+  const collections = path.join(root, "collections.json"), alternateCollections = path.join(root, "alternate-collections.json")
+  fs.writeFileSync(alternate, canonical({ schemaVersion: "workflow-provider-catalog-source/v1", providers: [declaration()] }))
+  fs.writeFileSync(collections, canonical({ schemaVersion: "workflow-contract-v2-collections/v1", collections: [] }))
+  fs.writeFileSync(alternateCollections, canonical({ schemaVersion: "workflow-contract-v2-collections/v1", collections: ["collections/other"] }))
+  const redirects = new Map([[provider, alternate], [collections, alternateCollections]])
+  for (const [before, opened] of redirects) assert.notEqual(fs.statSync(before, { bigint: true }).ino, fs.statSync(opened, { bigint: true }).ino)
+  let reads = 0, closes = 0, opens = 0
+  fsp.open = async (file, ...args) => {
+    const redirected = redirects.get(file)
+    const handle = await originalOpen(redirected || file, ...args)
+    if (redirected) {
+      opens += 1
+      const read = handle.read.bind(handle), close = handle.close.bind(handle)
+      handle.read = async (...values) => { reads += 1; return read(...values) }
+      handle.close = async () => { closes += 1; return close() }
+    }
+    return handle
+  }
+  delete require.cache[helper]
+  try {
+    const s = subject()
+    await assert.rejects(() => environment(s, root), /changed|identity/i)
+    await assert.rejects(() => s.readWorkflowContractV2Collections({ repositoryRoot: root, collectionsPath: "collections.json" }), /changed|identity/i)
+    assert.equal(opens, 2)
+    assert.equal(reads, 0, "identity mismatch must reject before allocating/reading control bytes")
+    assert.equal(closes, 2, "both mismatched descriptors must close")
+  } finally { fsp.open = originalOpen; delete require.cache[helper] }
+})

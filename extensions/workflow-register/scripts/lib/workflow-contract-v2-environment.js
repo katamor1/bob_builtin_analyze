@@ -151,6 +151,7 @@ async function readCanonicalJsonFile(repositoryRoot, repositoryRelativeFile, lab
   let bytes
   try {
     const openedBefore = await handle.stat({ bigint: true })
+    if (!sameFileSnapshot(before, openedBefore)) throw new TypeError(`${label} changed while it was being opened.`)
     if (!openedBefore.isFile() || openedBefore.size > BigIntConstructor(MAX_CONTROL_BYTES)) {
       throw new TypeError(`${label} must be a bounded regular file.`)
     }

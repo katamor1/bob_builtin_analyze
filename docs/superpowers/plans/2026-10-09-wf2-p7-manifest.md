@@ -157,7 +157,7 @@ package.json、CI job contract、workflow yaml、P6 product gatewayは変更し�
 - [x] Workflow Register: `npm run compile`、`npm test`、`dependency:policy`、`architecture:policy`、`source:policy`、`schema:policy`、`unused:report`、`audit:prod`、`package`、`package:policy`。
 - [x] fresh VSIXでcore manifest exportの存在を確認し、1,200,000 bytes以下を実測する。CLI/helperだけを `.vscodeignore` にexact exclusionで追加。上限増加、required module除外、無関係なdependency削除を禁止。容量超過ならP7 codec/helperの重複をcurrent helpersで削減して同gateを再実行する。
 - [x] Bazaar/CCRのsource tree不変、P6 product gateway / v1 commands / persistence / runtime policy不変を確認し、three-extension qualityの必要checksを実行する。
-- [ ] reviewed candidateはlocal focused/full/policy/package gatesのraw記録、source13 items mapping、omissions、head/tree、VSIX hashesに結合する。fresh reviewer一回。Critical/Importantだけを一回のRED→GREEN修正passで解消し、Minorは記録。
+- [x] reviewed candidateはlocal focused/full/policy/package gatesのraw記録、source13 items mapping、omissions、head/tree、VSIX hashesに結合する。fresh reviewer一回。Critical/Importantだけを一回のRED→GREEN修正passで解消し、Minorは記録。
 - [ ] ローカルcandidate完成後だけ、exact reviewed headに対するDraft PR・4 manual workflows・fixed nonce・自動CI・Ubuntu/Windows manifest raw-byte comparisonを含む具体的C publication案を作る。このB計画の承認ではpush/PR/mergeを実行しない。
 
 ## Execution Order and Completion Boundary
@@ -188,3 +188,5 @@ The approved original is retained in the external preparation record (SHA-256 `c
 - Candidate, failed/partial logs, selected source snapshots and all prior preservation remain retained under the user-approved B scope. No cleanup or publication follows from local green.
 
 Final local gate observation before candidate review: entire unchanged file set2,059 tests /2,058 pass /1 skip /0 fail under concurrency2, short owned OS TMP and owned-process AboveNormal priority (preload recorded externally). Bare and concurrency4 failures, interrupted serial execution and whole-Bob27/26/1 diagnostic remain preserved. Production audit retry0 vulnerabilities after retained registry DNS ENOTFOUND. Policies and3-extension68 contracts pass. No Bob code, assertions, deadlines, dependencies or CI workflow changed.
+
+Single candidate review at1bfc51dd found one Important control-fd/path identity gap and no Critical/Minor. One gated fix pass binds the opened descriptor to the initial inspected snapshot before allocation/read. Regression RED(Missing expected rejection) -> related27 GREEN; complete unchanged file set2,060 tests /2,059 pass /1 skip /0fail under recorded owned-process conditions. No second review. Final head, review/fix derivation and concrete C proposal are bound in append-only external records after this commit.
