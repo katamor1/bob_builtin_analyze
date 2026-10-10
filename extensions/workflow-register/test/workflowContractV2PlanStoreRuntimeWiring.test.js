@@ -67,7 +67,9 @@ test('public plan store facade does not expose private factories or state', () =
   const facade = require('../out/core/contractV2')
   assert.deepEqual(Object.keys(facade).sort(), [
     'WorkflowPlanCompilationError', 'WorkflowPlanInvalidatedError', 'WorkflowPlanStore',
-    'compileWorkflowPackage', 'createAuditedWorkflowCompilerEnvironment'
+    'compileWorkflowPackage', 'createAuditedWorkflowCompilerEnvironment',
+    'COMPILED_WORKFLOW_PLAN_MANIFEST_SCHEMA_VERSION', 'createCompiledWorkflowPlanManifest',
+    'createCompiledWorkflowPlanManifestPackage', 'encodeCompiledWorkflowPlanManifest'
   ].sort())
 })
 

@@ -4,6 +4,13 @@ const fs = require("node:fs")
 const path = require("node:path")
 const zlib = require("node:zlib")
 const crypto = require("node:crypto")
+const { compactManifestModule } = require("./lib/compact-manifest-module")
+const COMPACT_MODULES = new Set([
+  "extension/out/core/contractV2/compiledPlanManifest.js",
+  "extension/out/core/contractV2/index.js",
+  "extension/out/core/actionRegistry.js",
+  "extension/out/core/contractV2/compilerEnvironment.js"
+])
 const MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024
 const crcTable = Array.from({ length: 256 }, (_, value) => {
@@ -71,21 +78,25 @@ function readArchive(bytes) {
   return { rows, end: bytes.subarray(end) }
 }
 function compress(bytes) {
-  const archive = readArchive(bytes), parts = [], directory = []
+  const archive = readArchive(bytes), parts = [], directory = [], expected = []
   let offset = 0
   for (const row of archive.rows) {
-    const packed = zlib.deflateRawSync(row.raw, { level: 9 })
+    const raw = COMPACT_MODULES.has(row.name.toString("utf8")) ? Buffer.from(compactManifestModule(row.raw.toString("utf8")), "utf8") : row.raw
+    expected.push(raw)
+    const packed = zlib.deflateRawSync(raw, { level: 9 }), checksum = crc32(raw)
     const local = Buffer.from(row.local), central = Buffer.from(row.central)
     local.writeUInt16LE(20, 4)
     local.writeUInt16LE(local.readUInt16LE(6) & ~8, 6)
     local.writeUInt16LE(8, 8)
-    local.writeUInt32LE(central.readUInt32LE(16), 14)
+    local.writeUInt32LE(checksum, 14)
     local.writeUInt32LE(packed.length, 18)
-    local.writeUInt32LE(row.raw.length, 22)
+    local.writeUInt32LE(raw.length, 22)
     central.writeUInt16LE(20, 6)
     central.writeUInt16LE(central.readUInt16LE(8) & ~8, 8)
     central.writeUInt16LE(8, 10)
+    central.writeUInt32LE(checksum, 16)
     central.writeUInt32LE(packed.length, 20)
+    central.writeUInt32LE(raw.length, 24)
     central.writeUInt32LE(offset, 42)
     parts.push(local, row.name, row.localExtra, packed)
     directory.push(central)
@@ -96,7 +107,7 @@ function compress(bytes) {
   end.writeUInt32LE(offset, 16)
   const result = Buffer.concat([...parts, table, end]), checked = readArchive(result)
   requireZip(checked.rows.length === archive.rows.length)
-  checked.rows.forEach((row, index) => requireZip(row.name.equals(archive.rows[index].name) && row.raw.equals(archive.rows[index].raw)))
+  checked.rows.forEach((row, index) => requireZip(row.name.equals(archive.rows[index].name) && row.raw.equals(expected[index])))
   return result
 }
 function main() {
@@ -112,6 +123,6 @@ function main() {
     requireZip(fs.readFileSync(target).equals(before))
     fs.renameSync(temporary, target)
   } finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary) }
-  console.log("VSIX compression: " + before.length + " -> " + after.length + " bytes; all entry contents preserved")
+  console.log("VSIX compression: " + before.length + " -> " + after.length + " bytes; P7 module ASTs and all other entry contents preserved")
 }
 try { main() } catch (error) { console.error(error.message); process.exitCode = 1 }

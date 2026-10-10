@@ -12,7 +12,9 @@ import {
   type WorkflowProviderCatalog,
   type WorkflowProviderContractEvidence,
   type WorkflowProviderContractRequirement,
-  type WorkflowProviderOutputEvidence
+  type WorkflowProviderOutputEvidence,
+  type WorkflowProviderRegistration,
+  type WorkflowProviderRegistrationInput
 } from "./providerRegistry"
 
 export type WorkflowCompilerPurpose = "runtime" | "authoring-validation" | "evidence"
@@ -59,6 +61,13 @@ const weakMapSet = Function.prototype.call.bind(WeakMap.prototype.set) as (
   key: object,
   value: WorkflowCompilerEnvironmentState
 ) => WeakMap<object, WorkflowCompilerEnvironmentState>
+
+const registerWorkflowProviderCaptured = Function.prototype.call.bind(WorkflowProviderRegistry.prototype.register) as (
+  registry: WorkflowProviderRegistry, input: WorkflowProviderRegistrationInput
+) => WorkflowProviderRegistration
+const snapshotWorkflowProviderCaptured = Function.prototype.call.bind(WorkflowProviderRegistry.prototype.snapshot) as (
+  registry: WorkflowProviderRegistry
+) => WorkflowProviderCatalog
 
 const INPUT_FIELDS = objectFreeze(["purpose", "providerCatalog", "bobProfile"] as const)
 const BOB_PROFILE_FIELDS = objectFreeze([
@@ -179,7 +188,7 @@ function createCompileOnlyCatalog(
   const providers = source.evidence.providers
   for (let index = 0; index < providers.length; index += 1) {
     const provider = providers[index]
-    registry.register({
+    registerWorkflowProviderCaptured(registry, {
       sourceId: `workflow.compiler.${purpose}.${index}`,
       contract: objectFreeze({
         id: provider.id,
@@ -194,7 +203,7 @@ function createCompileOnlyCatalog(
       })
     })
   }
-  return registry.snapshot()
+  return snapshotWorkflowProviderCaptured(registry)
 }
 
 function cloneProviderOutput(
