@@ -23,3 +23,5 @@ docs/release-evidence/wf2-p5-completion-2026-10-05.json text eol=lf
 
 # P6 completion recovery uses exact canonical LF bytes.
 docs/release-evidence/wf2-p6-completion-2026-10-08.json text eol=lf
+docs/release-evidence/wf2-p7-completion-2026-10-11.json text eol=lf
+docs/release-evidence/wf2-gate-p-completion-2026-10-11.json text eol=lf
