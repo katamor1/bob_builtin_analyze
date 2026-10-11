@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "authority",
+    "catalogSha256",
+    "capabilities"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "workflow-gate-r-active-suite/v1"
+    },
+    "authority": {
+      "const": "integrated_runtime_only"
+    },
+    "catalogSha256": {
+      "const": "dc215522dfcae4c114740b2411e63a90ded87d2f803a8e946bed47be352881f2"
+    },
+    "capabilities": {
+      "type": "array",
+      "maxItems": 0,
+      "items": false
+    }
+  }
+}
