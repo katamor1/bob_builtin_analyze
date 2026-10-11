@@ -1,0 +1,384 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "authority",
+    "catalogSha256",
+    "archive",
+    "paths",
+    "families",
+    "absentLegacyTests"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "workflow-gate-r-archive-inventory/v1"
+    },
+    "authority": {
+      "const": "archive_read_only"
+    },
+    "catalogSha256": {
+      "const": "dc215522dfcae4c114740b2411e63a90ded87d2f803a8e946bed47be352881f2"
+    },
+    "archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fromSha",
+        "toSha",
+        "treeSha",
+        "carrierSha256",
+        "manifests"
+      ],
+      "properties": {
+        "fromSha": {
+          "const": "e860d1ebbafe7068fc6871b16c9586a11b4fe19d"
+        },
+        "toSha": {
+          "const": "a18c09b10fa51702d312e34940a694ad971a48cc"
+        },
+        "treeSha": {
+          "const": "1c37b277ffa2047041c4473c56c112edc9ae98e5"
+        },
+        "carrierSha256": {
+          "const": "2852e9e0e535bbb63165ae01538dd271bd888afe0b7f7dcbca53d193ef24912f"
+        },
+        "manifests": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "root",
+              "sha256"
+            ],
+            "properties": {
+              "root": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "paths": {
+      "type": "array",
+      "minItems": 92,
+      "maxItems": 92,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "classification",
+          "sourceItemIds",
+          "otherSourceItemIds",
+          "predecessorBlobSha",
+          "endpointBlobSha",
+          "history",
+          "blobs"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "classification": {
+            "enum": [
+              "workflow_c_owned",
+              "predecessor_baseline",
+              "transport_metadata"
+            ]
+          },
+          "sourceItemIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "otherSourceItemIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "predecessorBlobSha": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "endpointBlobSha": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "commitSha",
+                "path",
+                "previousBlobSha",
+                "blobSha",
+                "change"
+              ],
+              "properties": {
+                "commitSha": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{40}$"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "previousBlobSha": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{40}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "blobSha": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{40}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "change": {
+                  "type": "string",
+                  "pattern": "^[ACDMRTUXB][0-9]*$"
+                }
+              }
+            }
+          },
+          "blobs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "blobSha",
+                "byteSize",
+                "sha256"
+              ],
+              "properties": {
+                "blobSha": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{40}$"
+                },
+                "byteSize": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "families": {
+      "type": "array",
+      "minItems": 108,
+      "maxItems": 108,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sourceItemId",
+          "path",
+          "family",
+          "kind",
+          "symbols",
+          "primaryOwner",
+          "consumedBy",
+          "rationale",
+          "origins",
+          "policyState"
+        ],
+        "properties": {
+          "sourceItemId": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "family": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "contract",
+              "symbol",
+              "document",
+              "test_family"
+            ]
+          },
+          "symbols": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "primaryOwner": {
+            "enum": [
+              "WF2-R1-PROVENANCE",
+              "WF2-R2-INVOKE",
+              "WF2-R3-ARTIFACT-TX",
+              "WF2-R4-EXECUTOR",
+              "WF2-R5-BOB",
+              "WF2-R6-ARCHIVED"
+            ]
+          },
+          "consumedBy": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "origins": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "trancheId",
+                "path",
+                "snapshotKind",
+                "commitSha",
+                "blobSha",
+                "byteSize",
+                "sha256"
+              ],
+              "properties": {
+                "trancheId": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "snapshotKind": {
+                  "type": "string"
+                },
+                "commitSha": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{40}$"
+                },
+                "blobSha": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{40}$"
+                },
+                "byteSize": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              }
+            }
+          },
+          "policyState": {
+            "enum": [
+              "expected_inactive_planned",
+              "expected_inactive_conditional",
+              "expected_absent_rejected"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "primaryOwner": {
+                  "pattern": "^WF2-R[12]-"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "policyState": {
+                  "const": "expected_inactive_planned"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "primaryOwner": {
+                  "pattern": "^WF2-R[345]-"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "policyState": {
+                  "const": "expected_inactive_conditional"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "primaryOwner": {
+                  "pattern": "^WF2-R6-"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "policyState": {
+                  "const": "expected_absent_rejected"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "absentLegacyTests": {
+      "const": [
+        "extensions/workflow-register/test/workflowContractV2Runtime.test.js",
+        "extensions/workflow-register/test/workflowContractV2BobRuntime.test.js"
+      ]
+    }
+  }
+}
