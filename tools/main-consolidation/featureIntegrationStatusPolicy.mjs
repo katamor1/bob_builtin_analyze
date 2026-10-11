@@ -13,8 +13,10 @@ const COMPLETION_REGISTRY = Object.freeze([
   Object.freeze({sha256:'50edb7589256b8154477db5970c0f3960dc3513d6c887ec7564b4efb58638532',evidenceSha256:'cedbfa7a14539643980131ba9d416da8d92a0738194f38f18c5b534107ae3643',reference:Object.freeze({boundaryId:'WF2-P5-PLANSTORE',sha256:'50edb7589256b8154477db5970c0f3960dc3513d6c887ec7564b4efb58638532',state:'VERIFIED',acceptedMainSha:'90c678d3d33ae61a5523f2d9cf8057538028dd4b'})}),
   Object.freeze({sha256:'0a8f01068b306f387e3e72d185024ab5ab0ce4f04f68b8afe3a4471956937399',evidenceSha256:'b7eeb8bd743cb085bceed6226dc92baf0557bdc6345391bcff30732a64e608a5',reference:Object.freeze({boundaryId:'WF2-P6-ENTRYPOINT',sha256:'0a8f01068b306f387e3e72d185024ab5ab0ce4f04f68b8afe3a4471956937399',state:'VERIFIED',acceptedMainSha:'c5f9fcff29a787cc4f02140800556257bf05c547'})}),
   Object.freeze({sha256:'fe7fc94423170da5ec8838c45cf9636953e16766a70a445064195445a566507e',evidenceSha256:'7ace5d3aa5fb55078cc287f226626a00bdf6615683aa8d2982b76ad207ab1491',reference:Object.freeze({boundaryId:'WF2-P7-MANIFEST',sha256:'fe7fc94423170da5ec8838c45cf9636953e16766a70a445064195445a566507e',state:'VERIFIED',acceptedMainSha:'36c80d9b71b5c3825a9dfcb21ed666e94c54f303'})}),
-  Object.freeze({sha256:'cc316f2c59dcdd37db17c20561067249b235ad84043906d89b547e2c3f965a44',evidenceSha256:'59b0cb77b47ac6a3880560b0591c89aa1edf1630af2f0a5125e9583910539291',reference:Object.freeze({boundaryId:'WORKFLOW-B-GATE-P',sha256:'cc316f2c59dcdd37db17c20561067249b235ad84043906d89b547e2c3f965a44',state:'VERIFIED',acceptedMainSha:'36c80d9b71b5c3825a9dfcb21ed666e94c54f303'})})
+  Object.freeze({sha256:'cc316f2c59dcdd37db17c20561067249b235ad84043906d89b547e2c3f965a44',evidenceSha256:'59b0cb77b47ac6a3880560b0591c89aa1edf1630af2f0a5125e9583910539291',reference:Object.freeze({boundaryId:'WORKFLOW-B-GATE-P',sha256:'cc316f2c59dcdd37db17c20561067249b235ad84043906d89b547e2c3f965a44',state:'VERIFIED',acceptedMainSha:'36c80d9b71b5c3825a9dfcb21ed666e94c54f303'})}),
+  Object.freeze({sha256:'983a10ba98a58811b86550866bca5e6b7b0f6d32966a12c84195e77d3c584d22',evidenceSha256:'189be15fbbdf93ecc4fcaa96cfc8969b8c8affe1590d2b0969a1efbd95a0c041',reference:Object.freeze({boundaryId:'GATE-R-ARCHIVE-INVENTORY',sha256:'983a10ba98a58811b86550866bca5e6b7b0f6d32966a12c84195e77d3c584d22',state:'VERIFIED',acceptedMainSha:'e11b217651b790308d823b689b000c7f7c048a8d'})})
 ])
+const GATE_R_COMPLETION_SCOPES = Object.freeze(['GATE-R-ARCHIVE-INVENTORY','GATE-R-ACTIVE-MANIFEST','GATE-R-VALIDATOR','GATE-R-RUNNER'])
 const hashes = record => Object.fromEntries(record.externalEvidence.map(row=>[row.id,{bytes:row.bytes,sha256:row.sha256}]))
 const gitSha = value => {if(typeof value!=='string'||!/^[a-f0-9]{40}$/.test(value))throw new TypeError('invalid Git identity')}
 const hash256 = value => {if(typeof value!=='string'||!/^[a-f0-9]{64}$/.test(value))throw new TypeError('invalid evidence digest')}
@@ -24,6 +26,20 @@ export function validateCompletionObservation(record,{programIndex,evidenceDiges
   // This is a read-only recovery import, pinned after actual CI/log/archive/ref
   // readback. A new completion needs an additive reviewed registry entry.
   const recordDigest=digest(record)
+  if(record.boundaryId==='GATE-R-ARCHIVE-INVENTORY') {
+    exactKeys(record.composite,['sliceId','ownedScope','scopes'],'Gate R composite')
+    if(record.composite.sliceId!=='GATE-R-ARCHIVE-INVENTORY') throw new TypeError('Gate R composite subject mismatch')
+    same(record.composite.ownedScope,GATE_R_COMPLETION_SCOPES,'Gate R composite owned scopes')
+    if(!Array.isArray(record.composite.scopes)||record.composite.scopes.length!==4) throw new TypeError('Gate R composite requires all four scopes')
+    same(record.composite.scopes.map(row=>row.id),GATE_R_COMPLETION_SCOPES,'Gate R composite scope identities')
+    for(const row of record.composite.scopes) {
+      exactKeys(row,['id','state','artifact'],'Gate R composite scope')
+      if(row.state!=='COMPLETE') throw new TypeError('Gate R composite scope incomplete')
+      exactKeys(row.artifact,['path','bytes','sha256'],'Gate R composite artifact')
+      if(!Number.isSafeInteger(row.artifact.bytes)||row.artifact.bytes<=0) throw new TypeError('Gate R composite artifact size')
+      hash256(row.artifact.sha256)
+    }
+  }
   const registration=COMPLETION_REGISTRY.find(entry=>entry.sha256===recordDigest)
   if(!registration) throw new TypeError('unregistered completion observation')
   if(digest(evidenceDigests)!==registration.evidenceSha256) throw new TypeError('actual evidence digest registry mismatch')
@@ -37,7 +53,15 @@ function projectReferences(programIndex,decisions,completionReferences) {
   completionReferences.forEach((reference,index)=>same(reference,COMPLETION_REGISTRY[index].reference,'registered completion prefix'))
   const verifiedIds=new Set(completionReferences.map(reference=>reference.boundaryId))
   const wave0aVerified=verifiedIds.has('WAVE-0A-CONTROL-PLANE')
-  return {schemaVersion:'bob-builtin-analyze/feature-integration-status/v1',programIndexSha256:digest(programIndex),selectionLedgerSha256:LEDGER_SHA256,completionReferences:structuredClone(completionReferences),acceptedMainSha:completionReferences.at(-1)?.acceptedMainSha??null,boundaries:programIndex.planBoundaries.map(boundary=>({id:boundary.id,state:verifiedIds.has(boundary.id)?'VERIFIED':'planned'})),slices:programIndex.programAtomicSlices.map(slice=>({sliceId:slice.sliceId,ordinal:slice.ordinal,boundaryId:slice.boundaryId,state:verifiedIds.has(slice.sliceId)?'VERIFIED':'planned',observedActivationStatus:'inactive',immediatePredecessor:structuredClone(slice.immediatePredecessor)})),capabilities:decisions.map(cap=>({...cap,executionState:verifiedIds.has(cap.id)?'VERIFIED':cap.disposition==='selected'||cap.disposition==='conditional'?'planned':'not_applicable',observedActivationStatus:'inactive'})),gateP:structuredClone(programIndex.downstreamProtocolPolicy.gateP),activeSliceIds:[],nextSliceId:wave0aVerified?programIndex.programAtomicSlices.find(slice=>!verifiedIds.has(slice.sliceId))?.sliceId??null:null,automaticCleanup:false,mutationAuthority:false,limits:'Historical observation only. Local implementation is not VERIFIED. Descriptor derivation is not human approval or execution permission.'}
+  // Only this pinned composite owns four tooling facets. Boundaries and mutation
+  // slice IDs retain their one-reference semantics; no generic scope promotion.
+  const verifiedCapabilityIds=new Set(verifiedIds)
+  if(verifiedIds.has('GATE-R-ARCHIVE-INVENTORY')) {
+    const descriptor=programIndex.programAtomicSlices.find(row=>row.sliceId==='GATE-R-ARCHIVE-INVENTORY')
+    same(descriptor.ownedScope,GATE_R_COMPLETION_SCOPES,'closed Gate R composite catalog scopes')
+    for(const id of GATE_R_COMPLETION_SCOPES) verifiedCapabilityIds.add(id)
+  }
+  return {schemaVersion:'bob-builtin-analyze/feature-integration-status/v1',programIndexSha256:digest(programIndex),selectionLedgerSha256:LEDGER_SHA256,completionReferences:structuredClone(completionReferences),acceptedMainSha:completionReferences.at(-1)?.acceptedMainSha??null,boundaries:programIndex.planBoundaries.map(boundary=>({id:boundary.id,state:verifiedIds.has(boundary.id)?'VERIFIED':'planned'})),slices:programIndex.programAtomicSlices.map(slice=>({sliceId:slice.sliceId,ordinal:slice.ordinal,boundaryId:slice.boundaryId,state:verifiedIds.has(slice.sliceId)?'VERIFIED':'planned',observedActivationStatus:'inactive',immediatePredecessor:structuredClone(slice.immediatePredecessor)})),capabilities:decisions.map(cap=>({...cap,executionState:verifiedCapabilityIds.has(cap.id)?'VERIFIED':cap.disposition==='selected'||cap.disposition==='conditional'?'planned':'not_applicable',observedActivationStatus:'inactive'})),gateP:structuredClone(programIndex.downstreamProtocolPolicy.gateP),activeSliceIds:[],nextSliceId:wave0aVerified?programIndex.programAtomicSlices.find(slice=>!verifiedIds.has(slice.sliceId))?.sliceId??null:null,automaticCleanup:false,mutationAuthority:false,limits:'Historical observation only. Local implementation is not VERIFIED. Descriptor derivation is not human approval or execution permission.'}
 }
 
 export function projectIntegrationStatus(inputs) {

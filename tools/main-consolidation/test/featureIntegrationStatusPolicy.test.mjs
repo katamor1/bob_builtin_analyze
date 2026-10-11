@@ -429,3 +429,50 @@ test('keeps_p7_gate_p_exact_lf_bytes_after_autocrlf_index_checkout',async t=>{
  }
  await runGenerator(['--check'],{readFile:async path=>{for(const [name,bytes]of checkout)if(path.endsWith(name))return bytes;return readFileSync(path)},writeStdout:()=>assert.fail('check mode must not emit')})
 })
+
+// Gate R is one composite migration slice; four tooling capabilities do not
+// create four new catalog mutation rows or authorize runtime execution.
+const gateRCompletion=()=>json('../../../docs/release-evidence/wf2-gate-r-completion-2026-10-12.json');
+const throughGateR=()=>({...throughGateP(),completionObservations:[...throughGateP().completionObservations,gateRCompletion()]});
+const gateROwnedIds=['GATE-R-ARCHIVE-INVENTORY','GATE-R-ACTIVE-MANIFEST','GATE-R-VALIDATOR','GATE-R-RUNNER'];
+test('accepts_exact_gate_r_composite_record_with_all_four_scopes',()=>{
+ const r=gateRCompletion();validateCompletionObservation(r,{programIndex:buildProgramIndex(),evidenceDigests:digests(r)});
+ assert.equal(r.acceptedMainSha,'e11b217651b790308d823b689b000c7f7c048a8d');assert.equal(r.productRuntimeActivation,'inactive');
+ assert.deepEqual(r.composite.ownedScope,gateROwnedIds);assert.equal(r.composite.scopes.length,4);
+ assert.ok(r.composite.scopes.every(s=>s.state==='COMPLETE'));assert.equal(r.activeRuntime.bootstrap.runtimeSuiteState,'NOT_RUN_EMPTY');
+});
+test('one_verified_gate_r_slice_promotes_only_its_four_tooling_capabilities',()=>{
+ const c=throughGateR(),p=projectIntegrationStatus(c);assert.equal(p.slices.length,20);assert.equal(p.completionReferences.length,8);
+ assert.equal(p.slices.find(r=>r.sliceId==='GATE-R-ARCHIVE-INVENTORY').state,'VERIFIED');
+ for(const id of gateROwnedIds)assert.equal(p.capabilities.find(r=>r.id===id).executionState,'VERIFIED');
+ for(const id of ['WF2-R1-PROVENANCE','WF2-R2-INVOKE','WF2-R3-ARTIFACT-TX','WF2-R4-EXECUTOR','WF2-R5-BOB','WF2-R6-ARCHIVED'])assert.notEqual(p.capabilities.find(r=>r.id===id).executionState,'VERIFIED');
+ assert.equal(p.boundaries.find(r=>r.id==='WORKFLOW-B-GATE-P').state,'VERIFIED');
+ assert.equal(p.boundaries.find(r=>r.id==='WORKFLOW-C-SAFE-PREFIX').state,'planned');
+ assert.equal(deriveNextSlice({programIndex:c.programIndex,statusProjection:p}).sliceId,'WF2-R1-PROVENANCE');
+ assert.deepEqual(p.activeSliceIds,[]);assert.equal(p.automaticCleanup,false);assert.equal(p.mutationAuthority,false);
+ assert.ok(p.capabilities.every(r=>r.observedActivationStatus==='inactive'));
+});
+test('gate_r_absent_prefix_keeps_all_four_facets_planned',()=>{
+ const c=throughGateP(),p=projectIntegrationStatus(c);for(const id of gateROwnedIds)assert.equal(p.capabilities.find(r=>r.id===id).executionState,'planned');
+ assert.equal(deriveNextSlice({programIndex:c.programIndex,statusProjection:p}).sliceId,'GATE-R-ARCHIVE-INVENTORY');
+});
+for(const [name,mutate]of [
+ ['missing owned facet',r=>r.composite.ownedScope.pop()],
+ ['duplicate owned facet',r=>r.composite.ownedScope.push(r.composite.ownedScope[0])],
+ ['R1 owned facet expansion',r=>r.composite.ownedScope.push('WF2-R1-PROVENANCE')],
+ ['missing completed facet',r=>r.composite.scopes.pop()],
+ ['partial completed facet',r=>r.composite.scopes[3].state='PARTIAL'],
+ ['conditional completed facet replacement',r=>r.composite.scopes[3].id='WF2-R3-ARTIFACT-TX'],
+ ['unknown composite key',r=>r.composite.promoteAll=true]
+])test('closed_gate_r_composite_rejects_'+name,()=>{const r=gateRCompletion();mutate(r);assert.throws(()=>validateCompletionObservation(r,{programIndex:buildProgramIndex(),evidenceDigests:digests(r)}),/composite/);});
+test('rejects_gate_r_nonprefix_and_duplicate_completions',()=>{
+ const r=gateRCompletion(),full=throughGateR();for(const list of [[r],[...throughP7().completionObservations,r],[...full.completionObservations,r]])assert.throws(()=>projectIntegrationStatus({...context(),completionObservations:list}));
+});
+test('rejects_gate_r_evidence_authority_and_empty_runtime_falsepass_tamper',()=>{
+ const original=gateRCompletion();for(const mutate of [r=>r.externalEvidence[0].bytes++,r=>r.externalEvidence[0].sha256='0'.repeat(64),r=>r.mutationAuthority=true,r=>r.activeRuntime.capabilities.push('WF2-R1-PROVENANCE'),r=>r.activeRuntime.bootstrap.runtimeSuiteState='PASSED',r=>r.acceptedMainSha='a'.repeat(40)]){const r=structuredClone(original);mutate(r);assert.throws(()=>validateCompletionObservation(r,{programIndex:buildProgramIndex(),evidenceDigests:digests(r)}))}
+ const actual=digests(original);actual[original.externalEvidence[0].id].bytes++;assert.throws(()=>validateCompletionObservation(original,{programIndex:buildProgramIndex(),evidenceDigests:actual}));
+});
+test('rejects_premature_runtime_and_unregistered_generic_scope_projection',()=>{
+ const c=throughGateR(),original=projectIntegrationStatus(c);for(const id of ['WF2-R1-PROVENANCE','WF2-R2-INVOKE','WF2-R3-ARTIFACT-TX','WF2-R6-ARCHIVED']){const p=structuredClone(original);p.capabilities.find(r=>r.id===id).executionState='VERIFIED';assert.throws(()=>deriveNextSlice({programIndex:c.programIndex,statusProjection:p}));}
+ const p=structuredClone(original);p.completionReferences[7].boundaryId='GATE-R-RUNNER';assert.throws(()=>deriveNextSlice({programIndex:c.programIndex,statusProjection:p}));
+});

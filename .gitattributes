@@ -32,3 +32,6 @@ tools/main-consolidation/gate-r-archive-inventory.json text eol=lf
 tools/main-consolidation/gate-r-active-suite.json text eol=lf
 docs/release-evidence/schemas/workflow-gate-r-archive-inventory.schema.json text eol=lf
 docs/release-evidence/schemas/workflow-gate-r-active-suite.schema.json text eol=lf
+
+# Gate R composite completion is a closed canonical LF recovery input.
+docs/release-evidence/wf2-gate-r-completion-2026-10-12.json text eol=lf
