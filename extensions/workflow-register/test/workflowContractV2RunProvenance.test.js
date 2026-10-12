@@ -61,3 +61,18 @@ test('R1_unauthenticated_core_view_rejects_before_owner_allocation', async t => 
   await assert.rejects(c.runWithWorkflowContractV2PlanLease(lease, () => store.createRunFromPlanLease({ ...f.coreWorkflow }, lease, {})), /authentic|view/i)
   assert.equal(allocations, 0); assert.equal(lease.released, true)
 })
+
+test('R1_future_journal_is_read_only_before_recovery_with_live_lease',async t=>{
+ const c=context(),root=tempWorkspace(t),f=await fixtureR1(root),lease=await f.acquire(),store=new(Store())({workspaceRoot:root});let run;
+ await c.runWithWorkflowContractV2PlanLease(lease,async()=>{run=await store.createRunFromPlanLease(f.coreWorkflow,lease,{});await store.saveRun(run);});
+ const eventApi=require('../out/core/runtime/runEventLog'),journalApi=require('../out/core/runtime/runStateJournal');
+ const dir=path.join(root,'.bob/workflows/runs',run.runId),previousBytes=fs.readFileSync(path.join(dir,'run.json')),previous=JSON.parse(fs.readFileSync(path.join(dir,'events.ndjson'),'utf8').trim());
+ const future={...run,schemaVersion:'workflow-register/run-state/v2'},previousRunHash=eventApi.hashWorkflowRunBytes(previousBytes);
+ const nextEvent=eventApi.buildWorkflowRunEvent({run:future,kind:'run.updated',occurredAt:'2026-10-12T00:00:01.000Z',previousEvent:previous,previousRunHash});
+ const journal=journalApi.buildWorkflowRunJournal({transactionId:'future-fixture',runId:run.runId,createdAt:nextEvent.occurredAt,previousRunHash,previousEventHash:previous.hash,nextRun:future,nextEvent});
+ fs.writeFileSync(path.join(dir,'run-state.journal.json'),journalApi.serializeWorkflowRunJournal(journal));const before=snapshot(root,run.runId);
+ await c.runWithWorkflowContractV2PlanLease(lease,async()=>{
+  await assert.rejects(store.loadRun(run.runId));assert.deepEqual(snapshot(root,run.runId),before,'no materialized/event/journal write before future-schema refusal');
+  await assert.rejects(store.saveRun(run));assert.deepEqual(snapshot(root,run.runId),before);
+ });
+});

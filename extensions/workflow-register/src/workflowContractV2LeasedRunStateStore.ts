@@ -4,7 +4,7 @@ import { FileRunStateStore, type FileRunStateStoreOptions } from "./core/runStat
 import type { RunStateLockOptions } from "./core/runtime/runStateStore"
 import { readContainedRunFile } from "./core/runtime/runStatePath"
 import { readRunDurabilityFile } from "./core/runtime/runDurabilityPath"
-import { decodeWorkflowRunState } from "./core/runtime/runStateCodec"
+import { decodeWorkflowRunState, assertWorkflowRunStateWritable } from "./core/runtime/runStateCodec"
 import { cloneAndFreezeJsonValue } from "./core/contractV2/jsonValue"
 import { requireActiveWorkflowPlanLease, type WorkflowPlanLease } from "./core/contractV2/planLease"
 import { createWorkflowContractV2RunState } from "./core/contractV2/runPlanState"
@@ -62,11 +62,12 @@ export class ContractV2LeasedRunStateStore extends FileRunStateStore {
     const raw = await optional(() => readContainedRunFile(this.workspaceRoot, runId))
     if (raw) this.assertRecord(JSON.parse(raw.bytes.toString("utf8")), runId, execution)
     const journal = await optional(() => readRunDurabilityFile(this.workspaceRoot, runId, "run-state.journal.json"))
-    if (journal) this.assertRecord((JSON.parse(journal.bytes.toString("utf8")) as { nextRun?: unknown }).nextRun, runId, execution)
+    if (journal) this.assertRecord((JSON.parse(journal.bytes.toString("utf8")) as { nextRun?: unknown }).nextRun, runId, execution, true)
   }
-  private assertRecord(value: unknown, runId: string, execution: boolean): void {
+  private assertRecord(value: unknown, runId: string, execution: boolean, pendingRecovery = false): void {
     if (!marked(value)) return
     const run = decodeWorkflowRunState(value, runId).run
+    if (pendingRecovery) assertWorkflowRunStateWritable(run)
     if (execution) requireWorkflowContractV2RunPlanLeaseForExecution(this.workspaceRoot, run)
     else requireWorkflowContractV2RunPlanLease(this.workspaceRoot, run)
   }

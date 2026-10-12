@@ -105,6 +105,9 @@ jobs:
       - name: Schema policy
         run: npm run schema:policy
 
+      - name: Contract v2 product runtime reachability
+        run: node scripts/check-contract-v2-runtime-reachability.js
+
       - name: Unused dependency report
         run: npm run unused:report
 
@@ -386,6 +389,10 @@ jobs:
 
       - name: Unit tests
         run: npm test
+
+      - name: Contract v2 product runtime reachability
+        if: matrix.extension == 'workflow-register'
+        run: node scripts/check-contract-v2-runtime-reachability.js
 
       - name: Package
         run: npm run package

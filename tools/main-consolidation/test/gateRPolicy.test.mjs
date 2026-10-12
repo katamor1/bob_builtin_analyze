@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 const repository = fileURLToPath(new URL('../../../', import.meta.url));
-test('empty bootstrap validates inventory without claiming runtime execution', () => {
+test('R1 active suites validate inventory and measured inactive product wiring', () => {
   const result = spawnSync(process.execPath, ['tools/main-consolidation/run-gate-r.mjs'], { cwd: repository, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   const observation = JSON.parse(result.stdout);
-  assert.equal(observation.state, 'INVENTORY_ONLY');
+  assert.equal(observation.state, 'ACTIVE_TEST_SUITES_PASSED');
   assert.equal(observation.inventoryValidation, 'PASSED');
-  assert.equal(observation.runtimeSuiteState, 'NOT_RUN_EMPTY');
-  assert.equal(observation.runtimeSuitesExecuted, 0);
+  assert.equal(observation.runtimeSuiteState, 'PASSED');
+  assert.equal(observation.runtimeSuitesExecuted, 8);
+  assert.deepEqual(observation.activeCapabilityIds,['WF2-R1-PROVENANCE']);
   assert.equal(observation.archiveTestsExecuted, 0);
   assert.equal(observation.providerDispatches, 0);
   assert.equal(observation.bobDispatches, 0);
@@ -28,14 +29,16 @@ test('inventory command prints the complete classified archive rather than just 
 
 import { readFileSync } from 'node:fs';
 import * as policy from '../gateRPolicy.mjs';
+import { gateRExpectedMainFiles } from '../gateRMainAdmissionPolicy.mjs';
+const mainFiles = () => gateRExpectedMainFiles();
 const inventoryBytes = readFileSync(new URL('../gate-r-archive-inventory.json', import.meta.url));
 const activeBytes = readFileSync(new URL('../gate-r-active-suite.json', import.meta.url));
 const catalogBytes = readFileSync(new URL('../gate-r-archive-source-catalog.json', import.meta.url));
 const clone = bytes => JSON.parse(bytes);
 const reject = operation => assert.throws(operation, /Gate R|catalog|inventory|active|canonical|baseline|path|object|array|alias|key|identity/i);
-test('valid sealed inventory and empty manifest are admitted', () => {
+test('valid sealed inventory and R1 manifest are admitted', () => {
   assert.equal(policy.validateGateRInventory(inventoryBytes).state, 'VALID');
-  assert.equal(policy.validateGateRActiveSuite(activeBytes).state, 'VALID_EMPTY');
+  assert.equal(policy.validateGateRActiveSuite(activeBytes).state, 'VALID_R1');
 });
 const mutations = [
  ['missing historical path', i => i.paths.pop()],
@@ -80,7 +83,7 @@ test('validator rejects sparse object array',()=>{const a=clone(activeBytes);a.c
 test('validator rejects hidden/accessor data without invoking getters',()=>{const a=clone(activeBytes);let calls=0;Object.defineProperty(a,'capabilities',{get(){calls++;return []},enumerable:true});reject(()=>policy.validateGateRActiveSuite(a));assert.equal(calls,0);});
 test('canonical data rejects object aliases',()=>{const shared={value:1};reject(()=>policy.gateRCanonicalJson({a:shared,b:shared}));});
 test('catalog cannot be replaced by caller supplied source data',()=>{const c=clone(catalogBytes);c.endpointPaths.pop();reject(()=>policy.validateGateRCatalog(policy.gateRCanonicalJson(c)));});
-test('existing shared-path baseline is accepted without archive filename bans',()=>{const files=clone(catalogBytes).baseline.files;assert.equal(policy.validateGateRRepositoryFiles(files),true);});
+test('existing shared-path baseline is accepted without archive filename bans',()=>{const files=mainFiles();assert.equal(policy.validateGateRRepositoryFiles(files),true);});
 for(const [name,mutate] of [
  ['changed shared P6 blob',f=>{f.find(x=>x.path.endsWith('workflowRegisterService.ts')).blobSha='0'.repeat(40)}],
  ['removed baseline source',f=>f.splice(f.findIndex(x=>x.path.endsWith('workflowRegisterService.ts')),1)],
@@ -88,7 +91,7 @@ for(const [name,mutate] of [
  ['new inactive source',f=>f.push({mode:'100644',path:'extensions/workflow-register/src/core/contractV2/providerInvocation.ts',blobSha:'0'.repeat(40)})],
  ['new archived test',f=>f.push({mode:'100644',path:'extensions/workflow-register/test/workflowContractV2BobRuntime.test.js',blobSha:'0'.repeat(40)})],
  ['duplicate path',f=>f.push({...f[0]})]
-]) test('repository rejects '+name,()=>{const f=clone(catalogBytes).baseline.files;mutate(f);reject(()=>policy.validateGateRRepositoryFiles(f));});
+]) test('repository rejects '+name,()=>{const f=mainFiles();mutate(f);reject(()=>policy.validateGateRRepositoryFiles(f));});
 for(const [command,args] of [['run-gate-r.mjs',['--output','owned']],['run-gate-r.mjs',['--module','archive.js']],['create-gate-r-inventory.mjs',['--root','archive']]])test('CLI rejects arbitrary authority '+command+' '+args[0],()=>{const r=spawnSync(process.execPath,['tools/main-consolidation/'+command,...args],{cwd:repository,encoding:'utf8'});assert.notEqual(r.status,0);assert.match(r.stderr,/accepts only/);assert.equal(r.stdout,'');});
 
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, linkSync, rmSync } from 'node:fs';
@@ -105,3 +108,46 @@ test('contained reader rejects physical directory alias',t=>{const root=dataRoot
 test('contained reader rejects hard-linked file identity',t=>{const root=dataRoot(t);writeFileSync(join(root,'data.txt'),'safe');linkSync(join(root,'data.txt'),join(root,'linked.txt'));reject(()=>policy.readGateRContainedFile(root,'linked.txt'));});
 test('contained reader rejects an aliased root itself',t=>{const root=dataRoot(t);mkdirSync(join(root,'physical'));writeFileSync(join(root,'physical','data.txt'),'safe');symlinkSync(join(root,'physical'),join(root,'alias'),process.platform==='win32'?'junction':'dir');reject(()=>policy.readGateRContainedFile(join(root,'alias'),'data.txt'));});
 test('both public CLI forms emit identical canonical bytes',()=>{const a=spawnSync(process.execPath,['tools/main-consolidation/run-gate-r.mjs'],{cwd:repository,encoding:'utf8'});const b=spawnSync(process.execPath,['tools/main-consolidation/run-gate-r.mjs','--check'],{cwd:repository,encoding:'utf8'});assert.equal(a.status,0,a.stderr);assert.equal(b.status,0,b.stderr);assert.equal(a.stdout,b.stdout);assert.equal(a.stdout.endsWith('\n'),true);assert.equal(a.stdout.includes('\r'),false);});
+
+test('R1 canonical data rejects proxy traps before inspection',()=>{let reads=0;const proxy=new Proxy({safe:true},{getPrototypeOf(){reads++;throw TypeError('proxy trap');}});assert.throws(()=>policy.gateRCanonicalJson(proxy),TypeError);assert.equal(reads,0);});
+
+const r1FamilyRows = [
+ ['source-3266621c45ba21fc5873f61d','workflowContractV2ExecutionGuard.test.js','R1_authentic_lease_rejects_before_read'],
+ ['source-34c61efc427121c81952998a','workflowContractV2RunProvenanceProjection.test.js','R1_plan_projection_contains_no_bodies'],
+ ['source-41c31bf3997087539134b1c2','workflowContractV2RunLeaseDisposal.test.js','R1_all_private_retained_leases_release_once'],
+ ['source-718be8379c70ab754a9d7484','workflowContractV2RunSchemaType.test.js','R1_run_only_discriminator_preserves_public_schema'],
+ ['source-75c07aaa99be8455bdc3285f','workflowContractV2ExecutionBoundary.test.js','R1_public_paths_have_zero_runtime_effects'],
+ ['source-a5eabe004258ac7de4b9ebdb','workflowContractV2TerminalLeaseRelease.test.js','R1_terminal_release_follows_durable_hooks'],
+ ['source-ba56f810f0c338c02ff4e864','workflowContractV2RuntimeLeaseScope.test.js','R1_closed_scope_blocks_detached_work'],
+ ['source-fde858a48c84d66184d3513a','workflowContractV2RunProvenance.test.js','R1_exact_provenance_and_stale_write_checks']
+].map(([sourceItemId,name,required])=>({sourceItemId,testPath:'extensions/workflow-register/test/'+name,requiredCaseNames:[required]}));
+test('R1 exact active-eight manifest is admitted without future completion authority',()=>{const active={schemaVersion:'workflow-gate-r-active-suite/v1',authority:'integrated_runtime_only',catalogSha256:policy.GATE_R_CATALOG_SHA256,capabilities:[{capabilityId:'WF2-R1-PROVENANCE',testFamilies:r1FamilyRows}]};assert.equal(policy.validateGateRActiveSuite(active).state,'VALID_R1');});
+const tap = name => 'TAP version 13\n# Subtest: '+name+'\nok 1 - '+name+'\n  ---\n  duration_ms: 1\n  type: test\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1\n';
+const child = stdout => ({stdout,stderr:'',exitCode:0,signal:null,timedOut:false,outputOverflow:false});
+test('R1 completed required TAP case is genuine success',()=>{assert.equal(typeof policy.validateGateRTestObservation,'function');assert.equal(policy.validateGateRTestObservation(r1FamilyRows[0],child(tap(r1FamilyRows[0].requiredCaseNames[0]))).state,'PASSED');});
+for(const [name,mutate] of [
+ ['missing required case',o=>o.stdout=tap('unrelated')],['required skip',o=>o.stdout=o.stdout.replace('ok 1 - ','ok 1 - ').replace('\n  ---',' # SKIP disabled\n  ---')],
+ ['required todo',o=>o.stdout=o.stdout.replace('\n  ---',' # TODO future\n  ---')],['failed case',o=>o.stdout=o.stdout.replace('ok 1 - ','not ok 1 - ')],
+ ['incomplete TAP',o=>o.stdout=o.stdout.slice(0,o.stdout.indexOf('1..1'))],['duplicate TAP summary',o=>o.stdout+='# tests 1\n'],
+ ['unsettled exit',o=>o.exitCode=null],['signal',o=>o.signal='SIGTERM'],['timeout',o=>o.timedOut=true],['overflow',o=>o.outputOverflow=true],['cancelled',o=>o.stdout=o.stdout.replace('# cancelled 0','# cancelled 1')]
+])test('R1 child rejects '+name,()=>{assert.equal(typeof policy.validateGateRTestObservation,'function');const o=child(tap(r1FamilyRows[0].requiredCaseNames[0]));mutate(o);assert.throws(()=>policy.validateGateRTestObservation(r1FamilyRows[0],o),/Gate R|TAP|case|child|timeout|output/i);});
+
+test('R1 child rejects fractional TAP totals',()=>{const o=child(tap(r1FamilyRows[0].requiredCaseNames[0]));o.stdout=o.stdout.replace('# tests 1','# tests 1.5').replace('# pass 1','# pass 1.5');assert.throws(()=>policy.validateGateRTestObservation(r1FamilyRows[0],o),/TAP/);});
+test('R1 child rejects malformed diagnostics despite complete summaries',()=>{const o=child(tap(r1FamilyRows[0].requiredCaseNames[0]));o.stdout=o.stdout.replace('  ...\n','');assert.throws(()=>policy.validateGateRTestObservation(r1FamilyRows[0],o),/TAP/);});
+const wiring=()=>({schemaVersion:'workflow-r1-product-wiring/v1',counterScope:'contract_v2_product_paths',observedProductSurfaces:['validation','registration','operation_hub','authoring','legacy_v1'],v2ProductLeaseAcquisitions:0,providerDispatches:0,bobDispatches:0,v2ProductRunDirectoryCreations:0,v2ProductArtifactStages:0});
+test('R1 wiring counters are derived from the closed real observation',()=>{const result=policy.validateGateRProductWiringObservation(wiring());assert.equal(result.counterScope,'contract_v2_product_paths');assert.equal(result.v2ProductLeaseAcquisitions,0);assert.match(result.wiringObservationSha256,/^[a-f0-9]{64}$/);});
+for(const [name,mutate]of [
+ ['nonzero lease',o=>o.v2ProductLeaseAcquisitions++],['nonzero provider',o=>o.providerDispatches++],['nonzero Bob',o=>o.bobDispatches++],['nonzero run directory',o=>o.v2ProductRunDirectoryCreations++],['nonzero artifacts',o=>o.v2ProductArtifactStages++],['missing surface',o=>o.observedProductSurfaces.pop()],['wrong order',o=>o.observedProductSurfaces.reverse()],['unknown counter',o=>o.otherEffects=0],['missing counter',o=>delete o.bobDispatches],['wrong scope',o=>o.counterScope='all_effects']
+])test('R1 wiring rejects '+name,()=>{const o=wiring();mutate(o);assert.throws(()=>policy.validateGateRProductWiringObservation(o),TypeError);});
+
+import { readdirSync, copyFileSync, existsSync } from 'node:fs';
+for(const target of ['extensions/workflow-register/test/workflowContractV2GateR.test.js','npm test'])test('R1 recursive fixture is rejected before any child is scheduled: '+target,t=>{
+ const owned=dataRoot(t),tools=join(owned,'tools/main-consolidation');mkdirSync(tools,{recursive:true});
+ const source=join(repository,'tools/main-consolidation');
+ for(const name of readdirSync(source))if(name.endsWith('.mjs')||['gate-r-archive-source-catalog.json','gate-r-archive-inventory.json'].includes(name))copyFileSync(join(source,name),join(tools,name));
+ const a=clone(activeBytes);a.capabilities[0].testFamilies[0].testPath=target;writeFileSync(join(tools,'gate-r-active-suite.json'),policy.gateRCanonicalJson(a));
+ const scheduled=join(owned,'scheduled.txt'),preload=join(owned,'observe-child.mjs');
+ writeFileSync(preload,'import cp from "node:child_process";import{syncBuiltinESMExports}from"node:module";import{appendFileSync}from"node:fs";cp.spawn=()=>{appendFileSync('+JSON.stringify(scheduled)+',"spawn");throw Error("child scheduled");};syncBuiltinESMExports();');
+ const result=spawnSync(process.execPath,['--import',pathToFileURL(preload).href,join(tools,'run-gate-r.mjs')],{cwd:owned,encoding:'utf8',timeout:10000});
+ assert.notEqual(result.status,0);assert.match(result.stderr,/active suite requires exact R1/);assert.equal(result.stdout,'');assert.equal(existsSync(scheduled),false);
+});

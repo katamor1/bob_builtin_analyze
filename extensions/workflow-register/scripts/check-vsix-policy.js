@@ -83,6 +83,9 @@ function checkForbiddenEntries(entries) {
     { pattern: /^extension\/.*\.vsix$/, reason: "nested VSIX" },
     { pattern: /^extension\/out\/.*\.map$/, reason: "compiled extension source map" }
   ]
+  for (const name of ["run-unused-checks", "recompress-vsix", "check-vsix-policy", "check-import-cycles", "check-export-star-policy", "check-contract-v2-runtime-reachability"]) {
+    rules.push({ pattern: new RegExp(`^extension/scripts/${name}\\.js$`), reason: "build/CI tool" })
+  }
 
   const violations = []
   for (const entry of entries) {
@@ -115,7 +118,14 @@ function main() {
   }
 
   const mainEntry = normalizeMain(packageJson.main)
-  for (const requiredEntry of ["extension/package.json", mainEntry]) {
+  const r1RuntimeEntries = [
+    "core/contractV2/planLease", "core/contractV2/runPlanProvenance", "core/contractV2/runPlanLeaseContext",
+    "core/contractV2/runPlanState", "core/contractV2/runLeaseExecutionCoordinator", "core/contractV2/index",
+    "core/runtime/runStateCodec", "core/runProvenance", "workflowContractV2ExecutionGuard",
+    "workflowContractV2LeasedRunStateStore", "workflowContractV2RuntimeBoundary", "workflowContractV2RunStateStore",
+    "workflowRunCommands", "workflowContractV2Product", "workflowContractV2Entrypoint", "workflowContractV2ProviderLifecycle"
+  ].map(name => `extension/out/${name}.js`)
+  for (const requiredEntry of ["extension/package.json", mainEntry, ...r1RuntimeEntries]) {
     if (!entryNames.has(requiredEntry)) {
       errors.push(`Missing required VSIX entry: ${requiredEntry}`)
     }

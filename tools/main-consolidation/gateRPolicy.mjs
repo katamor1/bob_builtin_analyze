@@ -1,82 +1,20 @@
-import { readFileSync, lstatSync, realpathSync, readdirSync, existsSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { resolve, relative, isAbsolute, sep } from 'node:path';
+import { resolve } from 'node:path';
 import { canonicalJson } from './featureIntegrationProgramPolicy.mjs';
+import { gateRActiveTestFamilies, validateGateRMainRepository, validateGateRMainRepositoryFiles } from './gateRMainAdmissionPolicy.mjs';
+import { gateRCanonicalJson, gateRDigest, validateGateRPath, readGateRContainedFile, gateRInputData as inputData, gateROrderedUnique as orderedUnique, gateRPathRows as pathRows } from './gateRData.mjs';
+export { gateRCanonicalJson, gateRDigest, validateGateRPath, readGateRContainedFile } from './gateRData.mjs';
 
 export const GATE_R_CATALOG_SHA256 = 'dc215522dfcae4c114740b2411e63a90ded87d2f803a8e946bed47be352881f2';
 const SOURCE_UNIVERSE_SHA256 = 'c69adc6b82d1d6d40719e10c116e985890f17d45ee4b99e0feabe76b00d08c79';
 export const gateRRepositoryRoot = new URL('../../', import.meta.url);
 const root = fileURLToPath(gateRRepositoryRoot);
-const allowedNewTest = 'extensions/workflow-register/test/workflowContractV2GateR.test.js';
 const artifactPath = name => 'tools/main-consolidation/' + name;
 const fail = reason => { throw new TypeError('Gate R: ' + reason); };
-const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 const sha1 = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
 const exact = (value, keys, label) => { if (!value || Array.isArray(value) || typeof value !== 'object' || Object.keys(value).length !== keys.length || keys.some(k => !Object.hasOwn(value, k))) fail(label + ' exact keys'); };
-export const gateRDigest = bytes => createHash('sha256').update(bytes).digest('hex');
 
-// The existing canonicalizer rejects accessors, sparse arrays and non-plain data.
-// Add global alias/prototype-key rejection before it can inspect any values.
-export function gateRCanonicalJson(value) {
-  const seen = new Set();
-  function guard(v) {
-    if (v === null || typeof v !== 'object') return;
-    if (seen.has(v)) fail('object alias or cycle');
-    seen.add(v);
-    const proto = Object.getPrototypeOf(v);
-    if (!Array.isArray(v) && proto !== null && proto !== Object.prototype) fail('non-plain object');
-    for (const key of Reflect.ownKeys(v)) {
-      if (typeof key !== 'string' || ['__proto__', 'prototype', 'constructor'].includes(key)) fail('prototype or symbol key');
-      const descriptor = Object.getOwnPropertyDescriptor(v, key);
-      if (!Object.hasOwn(descriptor, 'value')) fail('accessor object data');
-      guard(descriptor.value);
-    }
-  }
-  guard(value);
-  return Buffer.from(JSON.stringify(JSON.parse(canonicalJson(value)), null, 2) + '\n');
-}
-function inputData(input, label) {
-  if (Buffer.isBuffer(input) || input instanceof Uint8Array || typeof input === 'string') {
-    const bytes = Buffer.from(input);
-    let value; try { value = JSON.parse(bytes); } catch { fail(label + ' invalid canonical JSON'); }
-    if (!bytes.equals(gateRCanonicalJson(value))) fail(label + ' noncanonical bytes');
-    return value;
-  }
-  gateRCanonicalJson(input); return input;
-}
-export function validateGateRPath(value) {
-  if (typeof value !== 'string' || !value || value.startsWith('/') || /[:\\\x00-\x1f\x7f]/.test(value) || value.split('/').some(p => !p || p === '.' || p === '..')) fail('invalid repository path');
-  return value;
-}
-function orderedUnique(rows, key, label) {
-  const values = rows.map(r => key ? r[key] : r);
-  if (values.some((v, i) => i && compare(values[i - 1], v) >= 0)) fail(label + ' duplicate or order');
-}
-function pathRows(rows, label) {
-  orderedUnique(rows, 'path', label);
-  const folded = new Set();
-  for (const row of rows) { validateGateRPath(row.path); const fold = row.path.toLowerCase(); if (folded.has(fold)) fail(label + ' case alias'); folded.add(fold); }
-}
-// This reader has no executable authority. Production callers always use the
-// fixed module repository root; tests may supply an owned data-fixture root.
-export function readGateRContainedFile(dataRoot, repositoryPath) {
-  validateGateRPath(repositoryPath);
-  const base = resolve(dataRoot), target = resolve(base, ...repositoryPath.split('/'));
-  const rel = relative(base, target);
-  if (!rel || isAbsolute(rel) || rel === '..' || rel.startsWith('..' + sep)) fail('path escapes repository');
-  const physicalEqual = (a, b) => process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
-  if (lstatSync(base).isSymbolicLink() || !physicalEqual(realpathSync(base), base)) fail('root alias');
-  let current = base;
-  for (const part of repositoryPath.split('/')) {
-    current = resolve(current, part);
-    const stat = lstatSync(current);
-    if (stat.isSymbolicLink() || !physicalEqual(realpathSync(current), current)) fail('path alias');
-  }
-  const stat = lstatSync(target);
-  if (!stat.isFile() || stat.nlink !== 1) fail('nonregular or linked file');
-  return readFileSync(target);
-}
 const readArtifact = name => readGateRContainedFile(root, artifactPath(name));
 let cachedCatalog;
 export function validateGateRCatalog(input) {
@@ -134,47 +72,86 @@ export function validateGateRInventory(input) {
 export function validateGateRActiveSuite(input) {
   const value = inputData(input, 'active suite');
   readGateRCatalog();
-  const expected = {schemaVersion:'workflow-gate-r-active-suite/v1',authority:'integrated_runtime_only',catalogSha256:GATE_R_CATALOG_SHA256,capabilities:[]};
-  if (!gateRCanonicalJson(value).equals(gateRCanonicalJson(expected))) fail('active suite requires proven empty integrated runtime set');
-  return Object.freeze({state:'VALID_EMPTY'});
+  const expected = {schemaVersion:'workflow-gate-r-active-suite/v1',authority:'integrated_runtime_only',catalogSha256:GATE_R_CATALOG_SHA256,capabilities:[{capabilityId:'WF2-R1-PROVENANCE',testFamilies:gateRActiveTestFamilies()}]};
+  if (!gateRCanonicalJson(value).equals(gateRCanonicalJson(expected))) fail('active suite requires exact R1 families and current paths');
+  return Object.freeze({state:'VALID_R1'});
 }
 export function validateGateRRepositoryFiles(input) {
-  gateRCanonicalJson(input);
-  if (!Array.isArray(input)) fail('baseline files array');
-  pathRows(input, 'baseline input');
-  for (const f of input) { exact(f, ['path','mode','blobSha'], 'baseline row'); if (f.mode !== '100644' && f.mode !== '100755') fail('baseline file mode'); if (!sha1(f.blobSha)) fail('baseline blob'); }
-  const source = input.filter(f => f.path !== allowedNewTest), expected = readGateRCatalog().baseline.files;
-  if (!gateRCanonicalJson(source).equals(gateRCanonicalJson(expected))) fail('baseline drift or inactive source/test activation');
-  return true;
-}
-function blobHash(bytes) { return createHash('sha1').update(Buffer.from('blob ' + bytes.length + '\0')).update(bytes).digest('hex'); }
-function measuredBlob(bytes, expected) {
-  if (blobHash(bytes) === expected) return expected;
-  // text=auto checkout CRLF is allowed, binary bytes never receive text folding.
-  if (!bytes.subarray(0,8000).includes(0)) { const normalized = Buffer.from(bytes.toString('utf8').replaceAll('\r\n','\n')); if (blobHash(normalized) === expected) return expected; }
-  fail('baseline blob identity drift');
+  return validateGateRMainRepositoryFiles(input);
 }
 export function validateGateRRepository() {
   if (gateRDigest(readGateRContainedFile(root, artifactPath('feature-selection-source-universe.json'))) !== SOURCE_UNIVERSE_SHA256) fail('source universe identity');
-  const catalog = readGateRCatalog(), snapshot = [];
-  for (const f of catalog.baseline.files) snapshot.push({path:f.path,mode:f.mode,blobSha:measuredBlob(readGateRContainedFile(root,f.path),f.blobSha)});
-  const known = new Set(snapshot.map(f => f.path));
-  function scan(repositoryPath) {
-    if (!existsSync(resolve(root, repositoryPath))) return;
-    for (const entry of readdirSync(resolve(root,repositoryPath), {withFileTypes:true})) {
-      const p = repositoryPath + '/' + entry.name;
-      if (entry.isSymbolicLink()) fail('source/test path alias');
-      if (entry.isDirectory()) scan(p);
-      else if (!known.has(p) && p !== allowedNewTest) fail('unexpected source/test path: ' + p);
-      else if (p === allowedNewTest) readGateRContainedFile(root,p);
-    }
-  }
-  for (const ext of ['workflow-register','bob-bazaar-review','bob-code-consistency-review']) for (const dir of ['src','test']) scan('extensions/' + ext + '/' + dir);
-  return validateGateRRepositoryFiles(snapshot);
+  readGateRCatalog();validateGateRMainRepository();return true;
 }
-export function gateRResult() {
+export function validateGateRTestObservation(family, input) {
+  const row = inputData(family,'test family'), value=inputData(input,'child observation');
+  if(!gateRActiveTestFamilies().some(f=>gateRCanonicalJson(f).equals(gateRCanonicalJson(row))))fail('unselected test family/path (recursive execution refused)');
+  exact(value,['stdout','stderr','exitCode','signal','timedOut','outputOverflow'],'child observation');
+  if(typeof value.stdout!=='string'||typeof value.stderr!=='string'||value.stderr!==''||value.exitCode!==0||value.signal!==null||value.timedOut!==false||value.outputOverflow!==false)fail('child unsuccessful/unsettled/timeout/output');
+  const lines=value.stdout.replaceAll('\r\n','\n').split('\n');
+  let diagnostic=false;
+  for(const line of lines){
+   if(line==='  ---'){if(diagnostic)fail('TAP duplicate diagnostics');diagnostic=true;continue;}
+   if(line==='  ...'){if(!diagnostic)fail('TAP unmatched diagnostics');diagnostic=false;continue;}
+   if(/^\s/.test(line)){if(!diagnostic)fail('TAP malformed diagnostics');continue;}
+   if(diagnostic)fail('TAP truncated diagnostics');
+   if(line!==''&&!/^(?:TAP version 13|#.*|1\.\.\d+|(?:not )?ok \d+ - .+|R1_(?:PROVENANCE_FIXTURE|PRODUCT_WIRING)_BASE64=[A-Za-z0-9+/=]+)$/.test(line))fail('TAP malformed output');
+  }
+  if(diagnostic)fail('TAP incomplete diagnostics');
+  if(lines.filter(l=>l==='TAP version 13').length!==1)fail('TAP version');
+  const plans=lines.filter(l=>/^1\.\./.test(l)),completions=lines.filter(l=>/^(?:not )?ok \d+ - /.test(l));
+  if(plans.length!==1||!/^1\.\.[1-9]\d*$/.test(plans[0]))fail('TAP incomplete/duplicate plan');
+  const count=Number(plans[0].slice(3));if(completions.length!==count||lines.indexOf(plans[0])<lines.lastIndexOf(completions.at(-1)))fail('TAP completed plan coverage');
+  const names=[];
+  for(const [i,line] of completions.entries()){
+    const match=/^ok (\d+) - (.+)$/.exec(line);
+    if(!match||Number(match[1])!==i+1||/\s+#\s*(?:skip|todo)\b/i.test(match[2]))fail('TAP failed/skipped/todo case');names.push(match[2]);
+  }
+  if(new Set(names).size!==names.length||row.requiredCaseNames.some(n=>names.filter(x=>x===n).length!==1))fail('required case missing/duplicate');
+  const summary={};for(const key of ['tests','suites','pass','fail','cancelled','skipped','todo','duration_ms']){
+   const matches=lines.filter(l=>l.startsWith('# '+key+' '));if(matches.length!==1||!(key==='duration_ms'?/^\d+(?:\.\d+)?$/:/^\d+$/).test(matches[0].slice(key.length+3)))fail('TAP malformed/duplicate summary');summary[key]=Number(matches[0].slice(key.length+3));
+  }
+  if(summary.tests!==count||summary.pass!==summary.tests||summary.suites!==0||['fail','cancelled','skipped','todo'].some(k=>summary[k]!==0))fail('TAP failure/cancel/skip/todo summary');
+  return Object.freeze({state:'PASSED'});
+}
+export function validateGateRProductWiringObservation(input) {
+  const value=inputData(input,'product wiring');
+  const counters=['v2ProductLeaseAcquisitions','providerDispatches','bobDispatches','v2ProductRunDirectoryCreations','v2ProductArtifactStages'];
+  exact(value,['schemaVersion','counterScope','observedProductSurfaces',...counters],'product wiring');
+  if(value.schemaVersion!=='workflow-r1-product-wiring/v1'||value.counterScope!=='contract_v2_product_paths'||JSON.stringify(value.observedProductSurfaces)!==JSON.stringify(['validation','registration','operation_hub','authoring','legacy_v1'])||counters.some(k=>value[k]!==0))fail('product wiring surfaces/counters');
+  return Object.freeze({...Object.fromEntries(counters.map(k=>[k,value[k]])),counterScope:value.counterScope,wiringObservationSha256:gateRDigest(Buffer.from(canonicalJson(value)))});
+}
+function wiringFromOutput(stdout){
+ const markers=stdout.replaceAll('\r\n','\n').split('\n').filter(l=>/^(?:# )?R1_PRODUCT_WIRING_BASE64=/.test(l));if(markers.length!==1)fail('product wiring marker missing/duplicate');
+ const encoded=markers[0].replace(/^(?:# )?R1_PRODUCT_WIRING_BASE64=/,'');if(!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded))fail('wiring base64');
+ const bytes=Buffer.from(encoded,'base64');if(bytes.toString('base64')!==encoded)fail('wiring base64 identity');let value;try{value=JSON.parse(bytes);}catch{fail('wiring JSON');}
+ if(Buffer.from(canonicalJson(value)).compare(bytes)!==0)fail('wiring noncanonical bytes');return validateGateRProductWiringObservation(value);
+}
+function executeFixedFamily(family,deadline,outputBudget){return new Promise((resolveChild,reject)=>{
+ const remaining=deadline-performance.now();if(remaining<=0){reject(new TypeError('Gate R: total timeout'));return;}
+ // Family paths come only from the closed manifest; no caller-supplied command/root.
+ // node:test's parent IPC context otherwise silently changes direct-child TAP
+ // into its binary reporter. Each selected file is its own direct Node process.
+ const environment={...process.env};delete environment.NODE_TEST_CONTEXT;
+ const child=spawn(process.execPath,[family.testPath.slice('extensions/workflow-register/'.length)],{cwd:resolve(root,'extensions/workflow-register'),env:environment,shell:false,windowsHide:true,stdio:['ignore','pipe','pipe']});
+ let stdout='',stderr='',timedOut=false,outputOverflow=false,spawnError;
+ const timer=setTimeout(()=>{timedOut=true;child.kill();},remaining);
+ function collect(channel,bytes){outputBudget.bytes+=bytes.length;if(outputBudget.bytes>1048576){outputOverflow=true;child.kill();return;}if(channel==='stdout')stdout+=bytes.toString('utf8');else stderr+=bytes.toString('utf8');}
+ child.stdout.on('data',b=>collect('stdout',b));child.stderr.on('data',b=>collect('stderr',b));child.on('error',e=>{spawnError=e;});
+ child.on('close',(exitCode,signal)=>{clearTimeout(timer);if(spawnError){reject(spawnError);return;}resolveChild({stdout,stderr,exitCode,signal,timedOut,outputOverflow});});
+});}
+export async function gateRResult() {
+  const deadline=performance.now()+120000,outputBudget={bytes:0};
   validateGateRInventory(readArtifact('gate-r-archive-inventory.json'));
   const active = readArtifact('gate-r-active-suite.json');
   validateGateRActiveSuite(active); validateGateRRepository();
-  return Object.freeze({schemaVersion:'workflow-gate-r-result/v1',state:'INVENTORY_ONLY',inventoryValidation:'PASSED',runtimeSuiteState:'NOT_RUN_EMPTY',runtimeSuitesExecuted:0,archiveTestsExecuted:0,runtimeActivation:false,providerDispatches:0,bobDispatches:0,catalogSha256:GATE_R_CATALOG_SHA256,activeManifestSha256:gateRDigest(active)});
+  let wiring;
+  for(const family of gateRActiveTestFamilies()){
+    const observation=await executeFixedFamily(family,deadline,outputBudget);
+    try{validateGateRTestObservation(family,observation);}catch(error){throw new TypeError(error.message+' ('+family.testPath+', exit='+observation.exitCode+', stderr='+observation.stderr.slice(0,300)+')');}
+    if(family.sourceItemId==='source-75c07aaa99be8455bdc3285f')wiring=wiringFromOutput(observation.stdout);
+    else if(/R1_PRODUCT_WIRING_BASE64=/.test(observation.stdout))fail('unexpected wiring marker');
+  }
+  if(!wiring||performance.now()>deadline)fail('missing wiring/total timeout');
+  return Object.freeze({schemaVersion:'workflow-gate-r-result/v2',state:'ACTIVE_TEST_SUITES_PASSED',inventoryValidation:'PASSED',runtimeSuiteState:'PASSED',runtimeSuitesExecuted:8,activeCapabilityIds:['WF2-R1-PROVENANCE'],archiveTestsExecuted:0,runtimeActivation:false,catalogSha256:GATE_R_CATALOG_SHA256,activeManifestSha256:gateRDigest(active),...wiring});
 }

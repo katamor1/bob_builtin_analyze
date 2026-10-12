@@ -35,3 +35,7 @@ docs/release-evidence/schemas/workflow-gate-r-active-suite.schema.json text eol=
 
 # Gate R composite completion is a closed canonical LF recovery input.
 docs/release-evidence/wf2-gate-r-completion-2026-10-12.json text eol=lf
+
+# R1 reviewed candidate admission uses exact canonical LF bytes.
+tools/main-consolidation/gate-r-main-admission.json text eol=lf
+docs/release-evidence/schemas/workflow-gate-r-main-admission.schema.json text eol=lf
