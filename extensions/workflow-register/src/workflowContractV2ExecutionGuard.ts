@@ -1,4 +1,5 @@
 import { types as utilTypes } from "node:util"
+import { requireActiveWorkflowPlanLease } from "./core/contractV2/planLease"
 import type { CompiledWorkflowPlanHandle, WorkflowPlanLease } from "./core/contractV2"
 import type { WorkflowContractV2Diagnostic } from "./core/contractV2/diagnostics"
 import type { CoreWorkflowDefinition } from "./core/model"
@@ -63,7 +64,10 @@ export async function acquireWorkflowContractV2RunLease(input: {
   if (!current) return undefined
   const result = await input.acquireCurrent({ slot: current.slot, consumer: "run-creation" })
   if (!result.ok) throw new WorkflowContractV2BoundaryError("Contract v2 current package is invalid or unavailable.", result.diagnostics)
-  const lease = result.lease
+  let lease: WorkflowPlanLease
+  try { lease = requireActiveWorkflowPlanLease(result.lease) } catch {
+    throw new WorkflowContractV2BoundaryError("Unauthenticated Contract v2 lease.")
+  }
   try {
     if (!matches(current, lease.handle, result.rawPackage)) throw new WorkflowContractV2BoundaryError("Contract v2 view changed; refresh the catalog.")
     return lease

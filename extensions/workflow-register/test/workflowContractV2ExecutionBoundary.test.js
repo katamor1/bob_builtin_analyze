@@ -89,3 +89,35 @@ test('guarded persisted-run loading denies V2 before journal recovery and direct
     assert.deepEqual(fs.readdirSync(dir).sort().map(file => [file, fs.readFileSync(path.join(dir, file)).toString('hex')]), before)
   }
 })
+
+
+test('R1_marker_only_records_reject_before_recovery_and_save',async t=>{
+ const {root}=await setup(t),{FileRunStateStore}=require('../out/core/runStateStore'),{ContractV2GuardedRunStateStore}=require('../out/workflowContractV2RunStateStore');
+ const legacy=require('../out/core/workflowCompiler').compileWorkflowDocument({sourceId:'test',filePath:'.bob/workflows/legacy/WORKFLOW.md',text:['---','name: legacy','description: Legacy.','---','Prompt.'].join('\n')}).workflow;
+ for(const marker of [{workflowSchemaVersion:'workflow-register/v2'},{planProvenance:null},{planProvenance:{malformed:true}}]){
+  const original=new FileRunStateStore({workspaceRoot:root}),run=await original.createRun(legacy,{});await original.saveRun(run);
+  const interrupted=new FileRunStateStore({workspaceRoot:root,durabilityFault:stage=>{if(stage==='afterJournal')throw Error('interrupt');}});
+  await assert.rejects(interrupted.saveRun(run),/interrupt/);
+  const dir=path.join(root,'.bob/workflows/runs',run.runId),journalPath=path.join(dir,'run-state.journal.json'),journal=JSON.parse(fs.readFileSync(journalPath,'utf8'));
+  journal.nextRun.workflowId='unregistered-v2';delete journal.nextRun.workflowFile;Object.assign(journal.nextRun,marker);fs.writeFileSync(journalPath,JSON.stringify(journal));
+  const snapshot=()=>fs.readdirSync(dir).sort().map(file=>[file,fs.readFileSync(path.join(dir,file)).toString('hex')]);const before=snapshot();
+  const guarded=new ContractV2GuardedRunStateStore({workspaceRoot:root});
+  await assert.rejects(guarded.loadRun(run.runId),error=>error.name==='WorkflowContractV2BoundaryError');assert.deepEqual(snapshot(),before);
+  // An incoming legacy snapshot must not recover an already marked journal.
+  const clean={...run};delete clean.planProvenance;clean.workflowSchemaVersion='legacy';
+  await assert.rejects(guarded.saveRun(clean),error=>error.name==='WorkflowContractV2BoundaryError');assert.deepEqual(snapshot(),before);
+ }
+});
+
+test('R1_marker_only_commands_reject_without_registered_workflow',async t=>{
+ const {root}=await setup(t),effects={save:0,engine:0,gate:0,coordinate:0},vscode=runtime(counters());
+ const {WorkflowRunCommandService}=requireWithVscode('../out/workflowRunCommands.js',vscode);
+ let run={runId:'marker-only',workflowId:'unknown',status:'completed',inputs:{},state:{},steps:[],createdAt:'now',updatedAt:'now',planProvenance:null};
+ const store={loadRun:async()=>structuredClone(run),listRuns:async()=>[structuredClone(run)],saveRun:async()=>{effects.save++;}};
+ const commands=new WorkflowRunCommandService({coreWorkflows:new Map(),runtimeFactory:{createRunStore:()=>store,createEngine:()=>{effects.engine++;throw Error('engine touched');}},ensureWorkflowsLoaded:async()=>{},workflowRootCandidates:async()=>[{root}],activeSteps:()=>[],gateRegistry:{pendingForRun:()=>{effects.gate++;}},coordinateGateDecision:async()=>{effects.coordinate++;}});
+ for(const marker of [{planProvenance:null},{planProvenance:{bad:true}},{workflowSchemaVersion:'workflow-register/v2'}]){
+  run={...run,...marker};for(const invoke of [()=>commands.runNextStep('marker-only'),()=>commands.resumeRun('marker-only'),()=>commands.resumeOrRetryRunOnce('resume',root,'marker-only')]){
+   await assert.rejects(invoke(),error=>error.name==='WorkflowContractV2BoundaryError');assert.deepEqual(effects,{save:0,engine:0,gate:0,coordinate:0});
+  }
+ }
+});

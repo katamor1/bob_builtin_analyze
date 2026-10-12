@@ -24,3 +24,26 @@ test('isolated runtime fixture leases the exact handle and releases drifted or u
  await assert.rejects(subject().acquireWorkflowContractV2RunLease({workflow:b.coreWorkflow,acquireCurrent:async()=>replacement}),e=>e.name==='WorkflowContractV2BoundaryError');assert.equal(replacement.lease.released,true);
  const same=await f.entrypoint.acquireCurrent({slot:f.slot,consumer:'run-creation'});await assert.rejects(subject().acquireWorkflowContractV2RunLease({workflow:b.coreWorkflow,acquireCurrent:async()=>({...same,rawPackage:{...same.rawPackage,publication:'authoring'}})}));assert.equal(same.lease.released,true);
 });
+
+
+test('R1_authentic_lease_rejects_before_read',async t=>{
+ const f=fixture(),b=await bound(f),result=await f.entrypoint.acquireCurrent({slot:f.slot,consumer:'run-creation'});
+ assert.equal(result.ok,true);const handle=result.lease.handle;t.after(()=>result.lease.release());
+ let reads=0,releases=0;
+ const fake={get handle(){reads++;return handle;},release(){releases++;}};
+ const plain={handle,release(){releases++;}};
+ const proxy=new Proxy(plain,{get(){reads++;throw Error('trap');},getOwnPropertyDescriptor(){reads++;throw Error('trap');}});
+ for(const lease of [fake,plain,proxy])await assert.rejects(subject().acquireWorkflowContractV2RunLease({workflow:b.coreWorkflow,acquireCurrent:async()=>({...result,lease})}),error=>error.name==='WorkflowContractV2BoundaryError');
+ assert.equal(reads,0);assert.equal(releases,0);assert.equal(result.lease.released,false);
+});
+
+test('R1_P5_owner_rejects_released_and_nonruntime_leases',async t=>{
+ const {createWorkflowPlanLease,requireActiveWorkflowPlanLease}=require('../out/core/contractV2/planLease');
+ for(const purpose of ['evidence','authoring-validation']){
+  const f=fixture(purpose),b=await bound(f);let releases=0;
+  const lease=createWorkflowPlanLease({handle:b.result.handle,onRelease(){releases++;}});t.after(()=>lease.release());
+  assert.throws(()=>requireActiveWorkflowPlanLease(lease),TypeError);assert.equal(releases,0);
+ }
+ const f=fixture(),result=await f.entrypoint.acquireCurrent({slot:f.slot,consumer:'run-creation'});const lease=result.lease;
+ assert.strictEqual(requireActiveWorkflowPlanLease(lease),lease);lease.release();assert.throws(()=>requireActiveWorkflowPlanLease(lease),TypeError);
+});

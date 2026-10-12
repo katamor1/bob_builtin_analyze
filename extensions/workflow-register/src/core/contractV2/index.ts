@@ -24,6 +24,7 @@ export type {
   GetOrCompileWorkflowPlanInput
 } from "./planStore"
 export type { WorkflowPlanLease } from "./planLease"
+export type { WorkflowContractV2RunPlanProvenance } from "./runPlanProvenance"
 
 export {
   COMPILED_WORKFLOW_PLAN_MANIFEST_SCHEMA_VERSION,

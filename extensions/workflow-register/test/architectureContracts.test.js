@@ -186,6 +186,13 @@ test('V2 consumer architecture freezes legacy exceptions and rejects private com
  assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2View.ts':sources['src/workflowContractV2View.ts']+'\nimport { compileWorkflowDocument } from "./core/workflowCompiler"'},allowlist),/private import/)
  assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2View.ts':sources['src/workflowContractV2View.ts']+'\nimport yaml from "js-yaml"'},allowlist),/private import/)
  assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2View.ts':sources['src/workflowContractV2View.ts']+'\nimport { compile } from "./core/contractV2/compiler"'},allowlist),/private import/)
+ for(const forbidden of ['createWorkflowPlanLease','requireActiveWorkflowPlanLease as uncheckedLease','* as leases']) {
+  const clause=forbidden.startsWith('*')?forbidden:'{ '+forbidden+' }'
+  assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2ExecutionGuard.ts':sources['src/workflowContractV2ExecutionGuard.ts']+'\nimport '+clause+' from "./core/contractV2/planLease"'},allowlist),/private import/)
+ }
+ assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2Product.ts':sources['src/workflowContractV2Product.ts']+'\nimport { requireActiveWorkflowPlanLease } from "./core/contractV2/planLease"'},allowlist),/private import/)
+ assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2ExecutionGuard.ts':sources['src/workflowContractV2ExecutionGuard.ts']+'\nexport { requireActiveWorkflowPlanLease } from "./core/contractV2/planLease"'},allowlist),/private import/)
+ assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2ExecutionGuard.ts':sources['src/workflowContractV2ExecutionGuard.ts']+'\nconst unsafe = require("./core/contractV2/planLease")'},allowlist),/private import/)
  assert.throws(()=>assertConsumerImports(sources,[...allowlist,{path:'src/workflowContractV2View.ts',import:'./core/workflowCompiler',reason:'new exception'}]),/frozen/)
  assert.throws(()=>assertConsumerImports(sources,allowlist.map((x,i)=>i?x:{...x,reason:'broader reason'})),/frozen/)
 })
@@ -196,19 +203,24 @@ function assertConsumerImports(sources,allowlist) {
  const productAuthority=new Set(['./core/contractV2/packageLoader','./core/contractV2/packageFileSystemNode','./core/contractV2/packageRoot','./core/contractV2/bobProfile'])
  for(const [file,source] of Object.entries(sources)) {
   const tree=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true)
-  const check=(name)=>{
+  const check=(name,node)=>{
+   const clause=ts.isImportDeclaration(node)?node.importClause:undefined
+   const elements=clause?.namedBindings&&ts.isNamedImports(clause.namedBindings)?clause.namedBindings.elements:undefined
+   const exactLeaseAssertion=file==='src/workflowContractV2ExecutionGuard.ts'&&name==='./core/contractV2/planLease'
+    &&clause&&!clause.name&&elements?.length===1&&!elements[0].propertyName&&elements[0].name.text==='requireActiveWorkflowPlanLease'
    const allowed=/core\/contractV2\/diagnostics$/.test(name)||allowlist.some(x=>x.path===file&&x.import===name)
     || (file==='src/workflowContractV2Product.ts'&&productAuthority.has(name))
     || (file==='src/workflowBobTaskBinding.ts'&&name==='./core/contractV2/bobProfile')
+    || exactLeaseAssertion
    if((privateImports.test(name)||/(?:^|\/)(?:js-yaml|yaml|ajv)(?:$|\/)/.test(name)||name==='./workflowAdapter'||/core\/contractV2\//.test(name))&&!allowed) throw Error('private import '+file+': '+name)
   }
   const visit=node=>{
    if((ts.isImportDeclaration(node)||ts.isExportDeclaration(node))&&node.moduleSpecifier&&ts.isStringLiteral(node.moduleSpecifier)){
     const clause=node.importClause
     const typeOnly=node.isTypeOnly||clause?.isTypeOnly||(clause&&!clause.name&&clause.namedBindings&&ts.isNamedImports(clause.namedBindings)&&clause.namedBindings.elements.every(e=>e.isTypeOnly))
-    if(!typeOnly)check(node.moduleSpecifier.text)
+    if(!typeOnly)check(node.moduleSpecifier.text,node)
    }
-   if(ts.isCallExpression(node)&&node.arguments.length&&ts.isStringLiteral(node.arguments[0])&&(node.expression.kind===ts.SyntaxKind.ImportKeyword||(ts.isIdentifier(node.expression)&&node.expression.text==='require')))check(node.arguments[0].text)
+   if(ts.isCallExpression(node)&&node.arguments.length&&ts.isStringLiteral(node.arguments[0])&&(node.expression.kind===ts.SyntaxKind.ImportKeyword||(ts.isIdentifier(node.expression)&&node.expression.text==='require')))check(node.arguments[0].text,node)
    ts.forEachChild(node,visit)
   }
   visit(tree)

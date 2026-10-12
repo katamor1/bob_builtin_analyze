@@ -91,6 +91,16 @@ function requireLeaseState(lease: unknown): WorkflowPlanLeaseState {
   return state
 }
 
+export function requireActiveWorkflowPlanLease(lease: unknown): WorkflowPlanLease {
+  const state = requireLeaseState(lease)
+  if (state.released) throw new TypeError("Workflow plan lease has been released.")
+  const compiled = requireCompiledWorkflowPlanState(state.handle)
+  if (compiled.purpose !== "runtime" || compiled.publication !== "published" || !compiled.leaseable) {
+    throw new TypeError("Workflow plan lease is not a published runtime lease.")
+  }
+  return lease as WorkflowPlanLease
+}
+
 function requireActiveLeaseState(lease: WorkflowPlanLease): WorkflowPlanLeaseState {
   const state = requireLeaseState(lease)
   if (state.released) throw new TypeError("Workflow plan lease has been released.")
