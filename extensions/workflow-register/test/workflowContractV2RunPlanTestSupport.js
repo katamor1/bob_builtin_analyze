@@ -58,4 +58,16 @@ function runForProvenance(provenance) {
     workflowSchemaVersion: 'workflow-register/v2', workflowDefinitionHash: provenance.planDigest, planProvenance: provenance,
     inputs: {}, state: {}, steps: [], status: 'running', createdAt: '2026-10-12', updatedAt: '2026-10-12' }
 }
-module.exports = { fixtureR1, provenanceFromFixture, runForProvenance }
+function privateModule(relative) {
+  try { return require('../out/' + relative) } catch (error) {
+    if (error.code === 'MODULE_NOT_FOUND' && error.message.startsWith("Cannot find module '../out/" + relative + "'")) return {}
+    throw error
+  }
+}
+function tempWorkspace(t) {
+  const fs = require('node:fs'), os = require('node:os'), base = path.resolve(os.tmpdir())
+  const root = fs.mkdtempSync(path.join(base, 'r1-private-'))
+  t.after(() => { privateModule('core/contractV2/runPlanLeaseContext').releaseAllWorkflowContractV2RunPlanLeases?.(); assert.equal(path.dirname(path.resolve(root)), base); fs.rmSync(root, { recursive: true, force: true }) })
+  return root
+}
+module.exports = { fixtureR1, provenanceFromFixture, runForProvenance, privateModule, tempWorkspace }
