@@ -76,3 +76,22 @@ test('R1_future_journal_is_read_only_before_recovery_with_live_lease',async t=>{
   await assert.rejects(store.saveRun(run));assert.deepEqual(snapshot(root,run.runId),before);
  });
 });
+
+for(const state of ['created','created-copy','retained','loaded'])test('R1_I1_rejects_'+state+'_shell_downgrade_before_durable_write',async t=>{
+ const c=context(),root=tempWorkspace(t),f=await fixtureR1(root),lease=await f.acquire(),store=new(Store())({workspaceRoot:root});
+ await c.runWithWorkflowContractV2PlanLease(lease,async()=>{
+  let run=await store.createRunFromPlanLease(f.coreWorkflow,lease,{});
+  if(!state.startsWith('created'))await store.saveRun(run);if(state==='loaded')run=await store.loadRun(run.runId);if(state==='created-copy')run={...run};
+  const runDir=path.join(root,'.bob/workflows/runs',run.runId),before=fs.existsSync(runDir)?snapshot(root,run.runId):undefined;
+  delete run.planProvenance;run.workflowSchemaVersion='legacy';run.workflowId='workflow-register.legacy';run.workflowFile='.bob/workflows/legacy/WORKFLOW.md';run.workflowDefinitionHash='sha256:'+'0'.repeat(64);
+  await assert.rejects(store.saveRun(run),/lease|provenance|Contract v2|downgrade/i);
+  if(before)assert.deepEqual(snapshot(root,run.runId),before);else assert.equal(fs.existsSync(runDir),false);
+ });
+});
+
+test('R1_I1_private_store_keeps_normal_v1_creation_and_saves',async t=>{
+ const root=tempWorkspace(t),store=new(Store())({workspaceRoot:root});
+ const compiled=require('../out/core/workflowCompiler').compileWorkflowDocument({sourceId:'test',filePath:'.bob/workflows/legacy/WORKFLOW.md',text:'---\nname: legacy\ndescription: Legacy.\n---\nPrompt.'});assert.equal(compiled.ok,true);
+ const run=await store.createRun(compiled.workflow,{});await store.saveRun(run);run.state.next='normal';await store.saveRun(run);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(root,'.bob/workflows/runs',run.runId,'run.json'))).state.next,'normal');
+});

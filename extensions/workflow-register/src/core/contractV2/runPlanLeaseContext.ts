@@ -87,6 +87,17 @@ export function prepareWorkflowContractV2RunPlanLeaseForWrite(workspaceRoot: str
   leaseKeys.set(lease, key)
 }
 
+// Refusal-only bookkeeping query: it cannot grant lease or write authority.
+// A tracked V2 shell, retained slot, or the active scope's new slot cannot be
+// reclassified as legacy by deleting its public discriminator/evidence.
+export function assertWorkflowContractV2LegacyRunUnbound(workspaceRoot: string, run: WorkflowRunState): void {
+  const scope = scopes.getStore()
+  if (runBindings.has(run) || retained.has(runKey(workspaceRoot, run.runId))
+    || (scope?.open && boundRunIds.get(scope.lease) === run.runId)) {
+    throw new TypeError("Contract v2 run provenance cannot be removed or downgraded.")
+  }
+}
+
 export function adoptWorkflowContractV2RunPlanLease(workspaceRoot: string, run: WorkflowRunState): void {
   prepareWorkflowContractV2RunPlanLeaseForWrite(workspaceRoot, run)
   retained.set(runKey(workspaceRoot, runEvidence(run).runId), requireBoundLease(run))

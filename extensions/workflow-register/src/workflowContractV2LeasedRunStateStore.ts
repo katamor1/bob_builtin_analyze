@@ -11,7 +11,8 @@ import { createWorkflowContractV2RunState } from "./core/contractV2/runPlanState
 import {
   adoptWorkflowContractV2RunPlanLease, currentWorkflowContractV2PlanLease,
   prepareWorkflowContractV2RunPlanLeaseForWrite, releaseWorkflowContractV2RunPlanLease,
-  requireWorkflowContractV2RunPlanLease, requireWorkflowContractV2RunPlanLeaseForExecution
+  requireWorkflowContractV2RunPlanLease, requireWorkflowContractV2RunPlanLeaseForExecution,
+  assertWorkflowContractV2LegacyRunUnbound
 } from "./core/contractV2/runPlanLeaseContext"
 import { assertWorkflowContractV2Shadow } from "./workflowContractV2ExecutionGuard"
 import { workflowContractV2CoreBinding } from "./workflowContractV2View"
@@ -37,7 +38,16 @@ export class ContractV2LeasedRunStateStore extends FileRunStateStore {
     return createWorkflowContractV2RunState({ shell, workflow, lease })
   }
   override async saveRun(run: WorkflowRunState): Promise<void> {
-    if (!marked(run)) { await this.assertStoredRun(run.runId, true); return super.saveRun(run) }
+    if (isProxy(run)) throw new TypeError("Workflow run must be ordinary data.")
+    if (!marked(run)) {
+      assertWorkflowContractV2LegacyRunUnbound(this.workspaceRoot, run)
+      await this.assertStoredRun(run.runId, true, true)
+      return super.withRunLock(run.runId, async () => {
+        assertWorkflowContractV2LegacyRunUnbound(this.workspaceRoot, run)
+        await this.assertStoredRun(run.runId, true, true)
+        await super.saveRun(run)
+      })
+    }
     prepareWorkflowContractV2RunPlanLeaseForWrite(this.workspaceRoot, run)
     try {
       await this.assertStoredRun(run.runId, true)
@@ -58,14 +68,15 @@ export class ContractV2LeasedRunStateStore extends FileRunStateStore {
     await this.assertStoredRun(runId, false)
     return super.withRunLock(runId, async () => { await this.assertStoredRun(runId, false); return operation() }, options)
   }
-  private async assertStoredRun(runId: string, execution: boolean): Promise<void> {
+  private async assertStoredRun(runId: string, execution: boolean, legacyOnly = false): Promise<void> {
     const raw = await optional(() => readContainedRunFile(this.workspaceRoot, runId))
-    if (raw) this.assertRecord(JSON.parse(raw.bytes.toString("utf8")), runId, execution)
+    if (raw) this.assertRecord(JSON.parse(raw.bytes.toString("utf8")), runId, execution, false, legacyOnly)
     const journal = await optional(() => readRunDurabilityFile(this.workspaceRoot, runId, "run-state.journal.json"))
-    if (journal) this.assertRecord((JSON.parse(journal.bytes.toString("utf8")) as { nextRun?: unknown }).nextRun, runId, execution, true)
+    if (journal) this.assertRecord((JSON.parse(journal.bytes.toString("utf8")) as { nextRun?: unknown }).nextRun, runId, execution, true, legacyOnly)
   }
-  private assertRecord(value: unknown, runId: string, execution: boolean, pendingRecovery = false): void {
+  private assertRecord(value: unknown, runId: string, execution: boolean, pendingRecovery = false, legacyOnly = false): void {
     if (!marked(value)) return
+    if (legacyOnly) throw new TypeError("Contract v2 stored run provenance cannot be downgraded.")
     const run = decodeWorkflowRunState(value, runId).run
     if (pendingRecovery) assertWorkflowRunStateWritable(run)
     if (execution) requireWorkflowContractV2RunPlanLeaseForExecution(this.workspaceRoot, run)
@@ -75,7 +86,7 @@ export class ContractV2LeasedRunStateStore extends FileRunStateStore {
 
 function marked(value: unknown): boolean {
   return !!value && typeof value === "object"
-    && ((value as Partial<WorkflowRunState>).workflowSchemaVersion === "workflow-register/v2" || Object.hasOwn(value, "planProvenance"))
+    && (Object.hasOwn(value, "planProvenance") || Object.getOwnPropertyDescriptor(value, "workflowSchemaVersion")?.value === "workflow-register/v2")
 }
 async function optional<T>(read: () => Promise<T>): Promise<T | undefined> {
   try { return await read() } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error }
