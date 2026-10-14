@@ -153,7 +153,8 @@ test('R1_public_paths_have_zero_runtime_effects', async t => {
  wrap(ActionRegistry.prototype,'execute',()=>{if(phase==='v2')measured.providerDispatches++;});
  for(const name of ['write','writeFileTransaction'])wrap(ResultSinkRegistry.prototype,name,()=>{if(phase==='v2')measured.v2ProductArtifactStages++;});
  const runRoot=path.join(root,'.bob/workflows/runs');
- wrap(fsp,'mkdir',target=>{const p=path.resolve(String(target));if(p===runRoot||p.startsWith(runRoot+path.sep)){if(phase==='v2')measured.v2ProductRunDirectoryCreations++;else normalDirectories++;}});
+ const observedPath=value=>{const resolved=path.resolve(String(value));return process.platform==='win32'?resolved.toLowerCase():resolved;},observedRunRoot=observedPath(runRoot);
+ wrap(fsp,'mkdir',target=>{const p=observedPath(target);if(p===observedRunRoot||p.startsWith(observedRunRoot+path.sep)){if(phase==='v2')measured.v2ProductRunDirectoryCreations++;else normalDirectories++;}});
  try {
   const store=new WorkflowPlanStore(),registry=new ActionRegistry();
   const gateway=require('../out/workflowContractV2Product').createWorkflowContractV2ProductEntrypoint({actionRegistry:registry,planStore:store});

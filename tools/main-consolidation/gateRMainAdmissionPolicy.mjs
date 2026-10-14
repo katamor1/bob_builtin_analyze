@@ -6,7 +6,7 @@ import { gateRCanonicalJson, gateRDigest, gateRInputData, gateRPathRows, readGat
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const fail = reason => { throw new TypeError('Gate R main admission: ' + reason); };
-export const GATE_R_MAIN_ADMISSION_SHA256 = 'bd9ae0a48500bf1d51a4851535be9df87a50313ee919338e93424125d5ea6c30';
+export const GATE_R_MAIN_ADMISSION_SHA256 = '5242a927cd7088fea36e6c24387786bc67cbf46d2efe9aa0352e712d0078917c';
 // ADMITTED_DELTAS_START
 const admittedDeltas = [
   {
