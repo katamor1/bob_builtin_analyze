@@ -14,7 +14,8 @@ const COMPACT_MODULES = new Set([
   "extension/out/core/contractV2/runLeaseExecutionCoordinator.js",
   "extension/out/workflowContractV2LeasedRunStateStore.js",
   "extension/out/core/contractV2/runPlanProvenance.js",
-  "extension/out/core/contractV2/runPlanState.js"
+  "extension/out/core/contractV2/runPlanState.js",
+  "extension/out/core/runtime/runStateStore.js"
 ])
 const MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024

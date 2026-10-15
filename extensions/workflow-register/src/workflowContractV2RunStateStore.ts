@@ -47,7 +47,8 @@ export class ContractV2GuardedRunStateStore extends FileRunStateStore {
   override async saveRun(run: WorkflowRunState): Promise<void> {
     this.assertRun(run)
     await this.assertStoredRun(run.runId)
-    return super.saveRun(run)
+    this.assertRun(run)
+    return super.saveRun(run, snapshot => this.assertRun(snapshot))
   }
   override async createRun(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>): Promise<WorkflowRunState> {
     assertWorkflowContractV2Shadow(workflow)

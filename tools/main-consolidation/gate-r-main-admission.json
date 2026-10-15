@@ -5648,7 +5648,7 @@
       "path": "extensions/workflow-register/scripts/check-vsix-policy.js"
     },
     {
-      "afterBlobSha": "a6680688fd45dd2fa5883a725db8ebc152fd00d4",
+      "afterBlobSha": "262c09aa26b59785436a00f88122da2eb5378b46",
       "beforeBlobSha": "841e179df989061574d0dd185136015ecdda80fc",
       "familyIds": [
         "source-75c07aaa99be8455bdc3285f"
@@ -5743,6 +5743,16 @@
       "path": "extensions/workflow-register/src/core/runtime/runStateCodec.ts"
     },
     {
+      "afterBlobSha": "19bcf32d95157df18874c4cb7e34f872f73d1d44",
+      "beforeBlobSha": "1f80ae949c884116aaa5019cd11c76576c208ad6",
+      "familyIds": [
+        "source-75c07aaa99be8455bdc3285f",
+        "source-fde858a48c84d66184d3513a"
+      ],
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/core/runtime/runStateStore.ts"
+    },
+    {
       "afterBlobSha": "45a6644f19e9bf0046c324a2055299f7373e16ce",
       "beforeBlobSha": "2b6dd32e6e67e36d2831f0da6617b2e7b1a19229",
       "familyIds": [
@@ -5752,7 +5762,7 @@
       "path": "extensions/workflow-register/src/workflowContractV2ExecutionGuard.ts"
     },
     {
-      "afterBlobSha": "b1a96800736285b7cc1f9d9087895926c3589afc",
+      "afterBlobSha": "5a73daa6b60706d4ac20c1cd4efe831950a2c5f1",
       "beforeBlobSha": null,
       "familyIds": [
         "source-04042ee1d12b54981a558cd1",
@@ -5762,7 +5772,7 @@
       "path": "extensions/workflow-register/src/workflowContractV2LeasedRunStateStore.ts"
     },
     {
-      "afterBlobSha": "1e71ef622423aef57e5b8651d8cbf3cbfbb02116",
+      "afterBlobSha": "a1163a3dad08a112f5fc9fadc6e6974b6fc1f745",
       "beforeBlobSha": "820beb77bd74b3f650aaa5366378fa9c383f0359",
       "familyIds": [
         "source-75c07aaa99be8455bdc3285f"
@@ -5861,7 +5871,7 @@
       "path": "extensions/workflow-register/test/workflowContractV2RunPlanTestSupport.js"
     },
     {
-      "afterBlobSha": "68b27bc5ddfc2f4472013f3584d784d9fb22fb0e",
+      "afterBlobSha": "b23d54aa0089dc00ee5e286d67599d4d70d508aa",
       "beforeBlobSha": null,
       "familyIds": [
         "source-fde858a48c84d66184d3513a"

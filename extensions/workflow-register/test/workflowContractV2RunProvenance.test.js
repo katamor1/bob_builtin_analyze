@@ -5,6 +5,45 @@ const context = () => privateModule('core/contractV2/runPlanLeaseContext')
 const Store = () => privateModule('workflowContractV2LeasedRunStateStore').ContractV2LeasedRunStateStore
 const snapshot = (root, runId) => { const dir = path.join(root, '.bob/workflows/runs', runId); return fs.readdirSync(dir).sort().map(file => [file, fs.readFileSync(path.join(dir, file)).toString('hex')]) }
 
+for (const timing of ['entry', 'locked']) for (const mode of ['generation', 'strip', 'public']) {
+  test('R1_review_' + mode + '_mutation_after_' + timing + '_rejects_before_durable_write', async t => {
+    const support = require('./workflowContractV2RunPlanTestSupport'), c = context(), root = tempWorkspace(t), f = await fixtureR1(root)
+    const isPublic = mode === 'public', lease = isPublic ? undefined : await f.acquire()
+    const Cls = isPublic ? require('../out/workflowContractV2RunStateStore').ContractV2GuardedRunStateStore : Store()
+    const store = new Cls({ workspaceRoot: root })
+    const exercise = async () => {
+      let run
+      if (isPublic) {
+        const compiled = require('../out/core/workflowCompiler').compileWorkflowDocument({ sourceId: 'review', filePath: '.bob/workflows/legacy/WORKFLOW.md', text: '---\nname: legacy\ndescription: Legacy.\n---\nPrompt.' })
+        assert.equal(compiled.ok, true); run = await store.createRun(compiled.workflow, {})
+      } else run = await store.createRunFromPlanLease(f.coreWorkflow, lease, {})
+      const runId = run.runId
+      let ready, release
+      if (timing === 'locked') {
+        let signalEntered
+        ready = new Promise(resolve => { signalEntered = resolve })
+        const barrier = new Promise(resolve => { release = resolve }), original = store.withRunLock.bind(store)
+        let held = false
+        store.withRunLock = (id, operation, options) => original(id, async () => {
+          if (!held) { held = true; signalEntered(); await barrier }
+          return operation()
+        }, options)
+      }
+      const pending = store.saveRun(run)
+      if (timing === 'locked') await ready
+      if (mode === 'generation') run.planProvenance = { ...run.planProvenance, generation: 'sha256:' + '0'.repeat(64) }
+      else if (mode === 'strip') {
+        delete run.planProvenance; run.workflowSchemaVersion = 'legacy'; run.workflowId = 'workflow-register.legacy'; run.workflowFile = '.bob/workflows/legacy/WORKFLOW.md'; run.workflowDefinitionHash = 'sha256:' + '0'.repeat(64)
+      } else Object.assign(run, { workflowId: 'minimal', workflowSchemaVersion: 'workflow-register/v2', planProvenance: support.provenanceFromFixture(f), workflowDefinitionHash: f.result.handle.planDigest })
+      release?.()
+      await assert.rejects(pending, isPublic ? error => error.name === 'WorkflowContractV2BoundaryError' : /lease|provenance|ordinary|context/i)
+      for (const name of ['run.json', 'events.ndjson', 'run-state.journal.json']) assert.equal(fs.existsSync(path.join(root, '.bob/workflows/runs', runId, name)), false, name + ' must not be written')
+      assert.equal(f.counters.dispatch, 0); assert.equal(f.counters.generation, 0)
+    }
+    if (isPublic) await exercise(); else await c.runWithWorkflowContractV2PlanLease(lease, exercise)
+  })
+}
+
 test('R1_exact_provenance_and_stale_write_checks', async t => {
   const c = context(), Cls = Store(); assert.equal(typeof Cls, 'function')
   const root = tempWorkspace(t), f = await fixtureR1(root), lease = await f.acquire(), store = new Cls({ workspaceRoot: root })

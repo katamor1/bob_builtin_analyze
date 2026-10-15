@@ -9,7 +9,7 @@ import { cloneAndFreezeJsonValue } from "./core/contractV2/jsonValue"
 import { requireActiveWorkflowPlanLease, type WorkflowPlanLease } from "./core/contractV2/planLease"
 import { createWorkflowContractV2RunState } from "./core/contractV2/runPlanState"
 import {
-  adoptWorkflowContractV2RunPlanLease, currentWorkflowContractV2PlanLease,
+  adoptWorkflowContractV2RunPlanLease, bindWorkflowContractV2RunPlanLease, currentWorkflowContractV2PlanLease,
   prepareWorkflowContractV2RunPlanLeaseForWrite, releaseWorkflowContractV2RunPlanLease,
   requireWorkflowContractV2RunPlanLease, requireWorkflowContractV2RunPlanLeaseForExecution,
   assertWorkflowContractV2LegacyRunUnbound
@@ -45,16 +45,26 @@ export class ContractV2LeasedRunStateStore extends FileRunStateStore {
       return super.withRunLock(run.runId, async () => {
         assertWorkflowContractV2LegacyRunUnbound(this.workspaceRoot, run)
         await this.assertStoredRun(run.runId, true, true)
-        await super.saveRun(run)
+        await super.saveRun(run, snapshot => {
+          if (marked(snapshot)) throw new TypeError("Contract v2 writes require an authentic leased snapshot.")
+          assertWorkflowContractV2LegacyRunUnbound(this.workspaceRoot, snapshot)
+        })
       })
     }
     prepareWorkflowContractV2RunPlanLeaseForWrite(this.workspaceRoot, run)
+    const lease = requireActiveWorkflowPlanLease(currentWorkflowContractV2PlanLease()), runId = run.runId
+    let committed: WorkflowRunState | undefined
     try {
-      await this.assertStoredRun(run.runId, true)
-      await super.saveRun(run)
-      adoptWorkflowContractV2RunPlanLease(this.workspaceRoot, run)
+      await this.assertStoredRun(runId, true)
+      prepareWorkflowContractV2RunPlanLeaseForWrite(this.workspaceRoot, run)
+      await super.saveRun(run, snapshot => {
+        bindWorkflowContractV2RunPlanLease(snapshot, lease)
+        prepareWorkflowContractV2RunPlanLeaseForWrite(this.workspaceRoot, snapshot)
+        committed = snapshot
+      })
+      adoptWorkflowContractV2RunPlanLease(this.workspaceRoot, committed!)
     } catch (error) {
-      try { releaseWorkflowContractV2RunPlanLease(this.workspaceRoot, run.runId) } catch {}
+      try { releaseWorkflowContractV2RunPlanLease(this.workspaceRoot, runId) } catch {}
       throw error
     }
   }

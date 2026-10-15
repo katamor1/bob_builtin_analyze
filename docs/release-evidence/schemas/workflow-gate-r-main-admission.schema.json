@@ -1284,6 +1284,7 @@
               "extensions/workflow-register/src/core/modelRuntime.ts",
               "extensions/workflow-register/src/core/runProvenance.ts",
               "extensions/workflow-register/src/core/runtime/runStateCodec.ts",
+              "extensions/workflow-register/src/core/runtime/runStateStore.ts",
               "extensions/workflow-register/src/workflowContractV2ExecutionGuard.ts",
               "extensions/workflow-register/src/workflowContractV2LeasedRunStateStore.ts",
               "extensions/workflow-register/src/workflowContractV2RunStateStore.ts",
@@ -1313,8 +1314,8 @@
         ],
         "type": "object"
       },
-      "maxItems": 30,
-      "minItems": 30,
+      "maxItems": 31,
+      "minItems": 31,
       "type": "array"
     },
     "schemaVersion": {
