@@ -5808,7 +5808,7 @@
       "path": "extensions/workflow-register/test/architectureContracts.test.js"
     },
     {
-      "afterBlobSha": "203754962b6d3503e917546930e69feda35ee86f",
+      "afterBlobSha": "2027f815aa02b4abd101d0dd679f3376b5f903a0",
       "beforeBlobSha": "208c6a2bf45f62f538a51cfef57139dc1ac7c087",
       "familyIds": [
         "source-1125e24c264c3e7ff427c8ae",
