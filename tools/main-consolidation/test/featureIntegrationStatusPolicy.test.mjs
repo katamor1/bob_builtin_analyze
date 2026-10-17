@@ -476,3 +476,177 @@ test('rejects_premature_runtime_and_unregistered_generic_scope_projection',()=>{
  const c=throughGateR(),original=projectIntegrationStatus(c);for(const id of ['WF2-R1-PROVENANCE','WF2-R2-INVOKE','WF2-R3-ARTIFACT-TX','WF2-R6-ARCHIVED']){const p=structuredClone(original);p.capabilities.find(r=>r.id===id).executionState='VERIFIED';assert.throws(()=>deriveNextSlice({programIndex:c.programIndex,statusProjection:p}));}
  const p=structuredClone(original);p.completionReferences[7].boundaryId='GATE-R-RUNNER';assert.throws(()=>deriveNextSlice({programIndex:c.programIndex,statusProjection:p}));
 });
+
+// R1 is one historical single-ID source-main observation. Private test suites
+// confer no public product activation or generic capability ownership.
+const r1Completion=()=>json('../../../docs/release-evidence/wf2-r1-completion-2026-10-17.json')
+const r1Expected={"acceptedMainSha":"bd3347814284daadebefaa0ab6ab2187690ff348","acceptedTreeSha":"09a2c59f46f4ca03769be1dddf17a6b96af86ae3","sourceHeadSha":"fa15b85e07deff3b71fcdbebab7991bb398076db","mergeParents":["5fc1cd30c39102b946f9300a0d77afd306eaaa03","fa15b85e07deff3b71fcdbebab7991bb398076db"],"pullRequestNumber":190,"observedAt":"2026-10-17T13:57:34.764Z","recordSha256":"e1583bebaea4bcc2909bfd0db320cc6c633d136176d767c0958802db22eaf5fd","evidenceSha256":"22d29779b8cfa73466206495014e89dbd4e4657453bfda96d1b6e8cb4c630583"}
+const throughR1=()=>({...throughGateR(),completionObservations:[...throughGateR().completionObservations,r1Completion()]})
+const r1HashTamper=value=>(value[0]==='0'?'1':'0')+value.slice(1)
+test('accepts_exact_r1_single_id_source_main_observation',()=>{
+ const r=r1Completion(),programIndex=buildProgramIndex()
+ validateCompletionObservation(r,{programIndex,evidenceDigests:digests(r)})
+ assert.equal(r.schemaVersion,'bob-builtin-analyze/feature-integration-completion-observation/v1')
+ assert.equal(r.classification,'repository_non_mutating_completion_recovery_observation')
+ assert.equal(r.repository,'katamor1/bob_builtin_analyze');assert.equal(r.boundaryId,'WF2-R1-PROVENANCE');assert.equal(r.sliceId,r.boundaryId)
+ assert.equal(r.state,'VERIFIED');assert.equal(Object.hasOwn(r,'composite'),false)
+ assert.equal(r.acceptedMainSha,r1Expected.acceptedMainSha);assert.equal(r.acceptedTreeSha,r1Expected.acceptedTreeSha)
+ assert.equal(r.sourceHeadSha,r1Expected.sourceHeadSha);assert.deepEqual(r.mergeParents,r1Expected.mergeParents)
+ assert.equal(r.pullRequestNumber,r1Expected.pullRequestNumber);assert.equal(r.observedAt,r1Expected.observedAt)
+ assert.equal(digest(r),r1Expected.recordSha256);assert.equal(digest(digests(r)),r1Expected.evidenceSha256)
+ assert.equal(r.ci.candidate.head,r.sourceHeadSha);assert.equal(r.ci.actualMain.head,r.acceptedMainSha)
+ assert.equal(r.acceptanceBasis,'local_verification_with_explicit_user_ci_waiver')
+ assert.equal(r.ci.mode,'explicit_user_ci_waiver');assert.equal(r.ci.allRequiredGatesSucceeded,false);assert.equal(r.ci.noRerunOrRedispatch,false)
+ assert.equal(r.ci.authorization.userInstruction,'現状では解決できないので一旦CIは成功として次に進む')
+ assert.equal(r.ci.authorization.sourceHead,r.sourceHeadSha);assert.equal(r.ci.authorization.sourceTree,r.acceptedTreeSha)
+ assert.equal(r.ci.authorizationReceipt.sha256,'52d80f6223bc61ab16980b837943140c84cf5bed6239e2af0d375b9bd5a5cb2f')
+ for(const key of ['candidateRawHeads','actualMainRawHeads','manualNonceProofsEachPhase'])assert.equal(Object.hasOwn(r.ci,key),false)
+ assert.equal(r.ci.hostedRawHeadProofs,'not_collected');assert.equal(r.ci.hostedNonceProofs,'not_collected');assert.equal(r.ci.hostedCrossHostEquality,'not_verified')
+ for(const ci of [r.ci.candidate,r.ci.actualMain]){assert.equal(ci.allRequiredGatesSucceeded,false);assert.equal(ci.manual.state,'not_run');assert.equal(ci.manual.workflowsDispatched,0);assert.ok(ci.automatic.every(run=>run.conclusion==='failure'));assert.ok(ci.automatic.flatMap(run=>run.jobs).every(job=>job.conclusion==='skipped'?job.name==='Extension source metrics'&&job.runner_id===null&&job.steps.length===0:job.conclusion==='failure'&&job.runner_id===0&&job.steps.length===0))}
+ assert.equal(r.localValidation.fullRegression.concurrency,'DEFAULT');assert.equal(r.localValidation.fullRegression.files,203)
+ assert.deepEqual(r.localValidation.fullRegression.counts,{tests:2131,pass:2130,fail:0,cancelled:0,skipped:1,todo:0})
+ assert.equal(r.localValidation.gates.checks.length,16)
+ const g=r.activeRuntime.gateRResult
+ assert.equal(g.schemaVersion,'workflow-gate-r-result/v2');assert.equal(g.state,'ACTIVE_TEST_SUITES_PASSED');assert.equal(g.runtimeSuiteState,'PASSED')
+ assert.deepEqual(g.activeCapabilityIds,['WF2-R1-PROVENANCE']);assert.equal(g.runtimeSuitesExecuted,8);assert.equal(g.archiveTestsExecuted,0)
+ assert.equal(g.runtimeActivation,false);assert.equal(g.counterScope,'contract_v2_product_paths')
+ assert.equal(r.activeRuntime.productWiring.counterScope,'contract_v2_product_paths')
+ for(const key of ['providerDispatches','bobDispatches','v2ProductLeaseAcquisitions','v2ProductRunDirectoryCreations','v2ProductArtifactStages']){
+  assert.equal(g[key],0);assert.equal(r.activeRuntime.productWiring[key],0)
+ }
+ assert.equal(r.activeRuntime.productWiringBytes.bytes,324);assert.equal(r.activeRuntime.productWiringBytes.sha256,'d6afaad73eebe27e1fa6664f8f2e6f51155882dff2fa4ccf769aa230f56f1fbf')
+ const p=r.packages.workflowRegister
+ assert.equal(p.frozen.bytes,1199583);assert.equal(p.frozen.sha256,'1267b5d9bbf012631890f0eb4a9762660dc9eedce991e2adcb12782b84885717')
+ assert.equal(p.installed.sha256,'d1ee7ce15ba5fa6dc7def1ff7eaa0a0f0571f412cd32d9e9861b1924c7e32d79')
+ assert.equal(p.payloadEntries,899);assert.equal(p.allPayloadsByteEqual,true);assert.deepEqual(p.changedPayloads,[]);assert.equal(p.rawZipEqualityClaimed,false)
+ const u=r.installedUat,ids=Array.from({length:12},(_,i)=>'R1-UAT-'+String(i+1).padStart(2,'0'))
+ assert.equal(u.state,'ALL_REQUIRED_INSTALLED_UAT_GATES_PASSED');assert.deepEqual(u.requiredCaseIds,ids);assert.deepEqual(u.requiredCases.map(row=>row.id),ids)
+ assert.ok(u.requiredCases.every(row=>row.status==='pass'));assert.equal(u.actualNewHostRun,false);assert.equal(u.binding.actualNewHostRun,false)
+ assert.deepEqual(u.binding.executedSubject,u.acceptance.subject);assert.equal(u.currentSourceMainAccepted,true)
+ assert.ok(u.requiredCases.slice(2,6).every(row=>row.evidenceKind==='actual-installed-private-module-fixture'))
+ assert.ok(u.requiredCases.slice(6).every(row=>row.evidenceKind==='actual-installed-save-boundary-race'))
+ assert.equal(u.provenance.bytes,1771);assert.equal(u.provenance.sha256,'d56746dfd8741be09decadf86a8cfffefca33bbce750d8b4a4b308368988a9b2')
+ assert.equal(u.p7ManifestReference.bytes,693);assert.equal(u.p7ManifestReference.sha256,'e2dd7b63d64b8392d0c1b4441fb31c4c35445ee1a7aaa4ed98b9bd335b194a90')
+ assert.match(u.p7ManifestReference.referenceKind,/expected bytes proven equal to actual installed codec Buffer/)
+ assert.deepEqual(r.review.originalWholeReviewAdmission.originalCounts,{Critical:0,Important:2,Minor:1})
+ assert.deepEqual(r.review.originalWholeReviewAdmission.remainingCounts,{Critical:0,Important:0,Minor:1})
+ assert.deepEqual(r.review.originalWholeReviewAdmission.closedFindings,['I1','I2'])
+ assert.equal(r.review.sourceAdmission.scopedCritical,0);assert.equal(r.review.sourceAdmission.scopedImportant,0);assert.equal(r.review.sourceAdmission.scopedMinor,0)
+ assert.equal(r.review.sourceAdmission.unchangedSecondWholeReview,false);assert.match(r.review.deferredMinor,/M1/)
+ assert.equal(r.preservation.allHashesVerified,true);assert.equal(r.preservation.cleanupPerformed,false);assert.equal(r.preservation.copyMode,'exclusive')
+ assert.equal(r.externalEvidence.length,r.preservation.files+1);assert.equal(new Set(r.externalEvidence.map(e=>e.id)).size,r.externalEvidence.length)
+ assert.equal(r.externalEvidence.filter(e=>e.id==='r1:preservation-manifest').length,1)
+ assert.equal(r.runtimeActivation,false);assert.equal(r.productRuntimeActivation,'inactive');assert.equal(r.observedMaxActivation,'inactive')
+ assert.deepEqual(r.activeSliceIds,[]);assert.equal(r.automaticCleanup,false);assert.equal(r.mutationAuthority,false);assert.equal(r.finalProgramUat,'not_run')
+})
+
+test('one_verified_r1_slice_admits_only_existing_r2',()=>{
+ const c=throughR1(),p=projectIntegrationStatus(c),prefix=projectIntegrationStatus(throughGateR())
+ assert.equal(p.completionReferences.length,9);assert.deepEqual(p.completionReferences.slice(0,8),prefix.completionReferences)
+ assert.deepEqual(p.completionReferences[8],{boundaryId:'WF2-R1-PROVENANCE',sha256:r1Expected.recordSha256,state:'VERIFIED',acceptedMainSha:r1Expected.acceptedMainSha})
+ assert.equal(p.acceptedMainSha,r1Expected.acceptedMainSha);assert.equal(p.slices.length,20)
+ const identities=rows=>rows.map(({sliceId,ordinal,boundaryId,immediatePredecessor})=>({sliceId,ordinal,boundaryId,immediatePredecessor}))
+ assert.deepEqual(identities(p.slices),identities(prefix.slices))
+ assert.deepEqual(p.slices.filter(s=>s.state!==prefix.slices.find(old=>old.sliceId===s.sliceId).state).map(s=>s.sliceId),['WF2-R1-PROVENANCE'])
+ assert.equal(p.slices.find(s=>s.sliceId==='WF2-R1-PROVENANCE').state,'VERIFIED')
+ assert.equal(p.slices.find(s=>s.sliceId==='WF2-R2-INVOKE').state,'planned');assert.equal(p.nextSliceId,'WF2-R2-INVOKE')
+ const next=deriveNextSlice({programIndex:c.programIndex,statusProjection:p})
+ assert.deepEqual(next,c.programIndex.programAtomicSlices[7]);assert.equal(next.ordinal,8);assert.equal(next.sliceId,'WF2-R2-INVOKE')
+ assert.deepEqual(p.boundaries,prefix.boundaries);assert.equal(p.boundaries.find(b=>b.id==='WORKFLOW-C-SAFE-PREFIX').state,'planned')
+ assert.equal(p.boundaries.find(b=>b.id==='WORKFLOW-B-GATE-P').state,'VERIFIED')
+ for(const id of ['WF2-P7-MANIFEST','GATE-R-ARCHIVE-INVENTORY'])assert.equal(p.slices.find(s=>s.sliceId===id).state,'VERIFIED')
+ const future=['WF2-R3-WINDOWS-ADAPTER','WF2-R3-ARTIFACT-TX','WF2-R4-EXECUTOR','WF2-R5-BOB']
+ for(const id of future){const row=p.capabilities.find(cap=>cap.id===id);assert.equal(row.disposition,'conditional');assert.equal(row.executionState,'planned');assert.equal(row.observedActivationStatus,'inactive')}
+ assert.equal(p.capabilities.find(cap=>cap.id==='WF2-R6-ARCHIVED').executionState,'not_applicable')
+ assert.equal(p.slices.some(s=>s.sliceId==='WF2-R6-ARCHIVED'),false)
+ assert.ok(p.slices.every(s=>s.observedActivationStatus==='inactive'));assert.ok(p.capabilities.every(s=>s.observedActivationStatus==='inactive'))
+ assert.deepEqual(p.activeSliceIds,[]);assert.equal(p.automaticCleanup,false);assert.equal(p.mutationAuthority,false)
+})
+
+test('r1_absent_prefix_still_admits_r1',()=>{
+ const c=throughGateR(),p=projectIntegrationStatus(c)
+ assert.equal(p.completionReferences.length,8)
+ for(const id of ['WF2-R1-PROVENANCE','WF2-R2-INVOKE'])assert.equal(p.slices.find(s=>s.sliceId===id).state,'planned')
+ assert.equal(deriveNextSlice({programIndex:c.programIndex,statusProjection:p}).sliceId,'WF2-R1-PROVENANCE')
+})
+
+test('rejects_r1_nonprefix_reversed_duplicate_and_sparse_collections',()=>{
+ const prefix=throughGateR().completionObservations,r=r1Completion(),full=[...prefix,r]
+ const swapped=full.slice();[swapped[0],swapped[1]]=[swapped[1],swapped[0]]
+ const sparse=full.slice();delete sparse[7]
+ for(const records of [[r],[...prefix.slice(0,-1),r],swapped,[...full,r],[...prefix.slice(0,-1),r,prefix.at(-1)],sparse]){
+  assert.throws(()=>projectIntegrationStatus({...context(),completionObservations:records}))
+ }
+})
+
+test('rejects_r1_source_ci_and_external_evidence_tamper',()=>{
+ const original=r1Completion(),mutations=[
+  r=>r.acceptedMainSha=r1HashTamper(r.acceptedMainSha),r=>r.acceptedTreeSha=r1HashTamper(r.acceptedTreeSha),r=>r.sourceHeadSha=r1HashTamper(r.sourceHeadSha),
+  r=>r.mergeParents[0]=r1HashTamper(r.mergeParents[0]),r=>r.pullRequestNumber++,r=>r.ci.allRequiredGatesSucceeded=true,
+  r=>r.ci.mode='verified',r=>r.ci.authorization.userInstruction='',r=>r.ci.authorization.sourceHead='0'.repeat(40),
+  r=>r.ci.authorizationReceipt.sha256='0'.repeat(64),r=>r.ci.candidate.allRequiredGatesSucceeded=true,
+  r=>r.ci.actualMain.head=r.sourceHeadSha,r=>r.ci.candidate.automatic[0].conclusion='success',
+  r=>r.ci.candidate.automatic[0].attempt++,r=>r.ci.candidate.manual.workflowsDispatched=4,r=>r.ci.hostedRawHeadProofs=20,
+  r=>r.activeRuntime.gateRResult.runtimeSuitesExecuted=0,r=>r.externalEvidence[0].bytes++,
+  r=>r.externalEvidence[0].sha256=r1HashTamper(r.externalEvidence[0].sha256),r=>r.externalEvidence[0].path+='.forged',
+  r=>r.externalEvidence[0].id+=':forged',r=>r.externalEvidence.push(structuredClone(r.externalEvidence[0])),r=>r.externalEvidence.pop(),
+  r=>r.preservation.manifest.sha256=r1HashTamper(r.preservation.manifest.sha256),r=>r.preservation.allHashesVerified=false
+ ]
+ for(const mutate of mutations){const r=structuredClone(original);mutate(r);assert.notEqual(digest(r),digest(original));assert.throws(()=>validateCompletionObservation(r,{programIndex:buildProgramIndex(),evidenceDigests:digests(r)}))}
+ for(const key of ['bytes','sha256']){const actual=digests(original),id=original.externalEvidence[0].id;if(key==='bytes')actual[id].bytes++;else actual[id].sha256=r1HashTamper(actual[id].sha256);assert.throws(()=>validateCompletionObservation(original,{programIndex:buildProgramIndex(),evidenceDigests:actual}))}
+})
+
+test('rejects_r1_runtime_authority_counter_and_uat_tamper',()=>{
+ const original=r1Completion(),mutations=[
+  r=>r.runtimeActivation=true,r=>r.productRuntimeActivation='active',r=>r.observedMaxActivation='active',r=>r.activeSliceIds.push('WF2-R1-PROVENANCE'),
+  r=>r.mutationAuthority=true,r=>r.automaticCleanup=true,r=>r.activeRuntime.runtimeActivation=true,r=>r.activeRuntime.gateRResult.archiveTestsExecuted=1,
+  r=>r.installedUat.state='FAILED',r=>r.installedUat.requiredCases[0].status='skip',r=>r.installedUat.requiredCases.pop(),r=>r.installedUat.requiredCaseIds.pop(),
+  r=>r.installedUat.provenance.bytes++,r=>r.installedUat.provenance.sha256=r1HashTamper(r.installedUat.provenance.sha256),
+  r=>r.installedUat.requiredCases[1].observed.p7Manifest.sha256='0'.repeat(64),r=>r.installedUat.actualNewHostRun=true,
+  r=>r.installedUat.p7ManifestReference.referenceKind='independent actual host output',r=>r.installedUat.requiredCases[2].evidenceKind='actual-provider-runtime',
+  r=>r.packages.workflowRegister.allPayloadsByteEqual=false,r=>r.installedUat.binding.allPayloadsByteEqual=false,r=>r.finalProgramUat='passed'
+ ]
+ for(const key of ['providerDispatches','bobDispatches','v2ProductLeaseAcquisitions','v2ProductRunDirectoryCreations','v2ProductArtifactStages']) {
+  mutations.push(r=>r.activeRuntime.gateRResult[key]=1,r=>r.activeRuntime.productWiring[key]=1)
+ }
+ for(const mutate of mutations){const r=structuredClone(original);mutate(r);assert.notEqual(digest(r),digest(original));assert.throws(()=>validateCompletionObservation(r,{programIndex:buildProgramIndex(),evidenceDigests:digests(r)}))}
+})
+
+test('rejects_r1_as_premature_r2_conditional_or_generic_scope_authority',()=>{
+ const c=throughR1(),original=projectIntegrationStatus(c)
+ for(const id of ['WF2-R2-INVOKE','WF2-R3-WINDOWS-ADAPTER','WF2-R3-ARTIFACT-TX','WF2-R4-EXECUTOR','WF2-R5-BOB','WF2-R6-ARCHIVED']){
+  const p=structuredClone(original);p.capabilities.find(r=>r.id===id).executionState='VERIFIED';assert.throws(()=>deriveNextSlice({programIndex:c.programIndex,statusProjection:p}))
+ }
+ const mutations=[
+  p=>p.slices.find(r=>r.sliceId==='WF2-R2-INVOKE').state='VERIFIED',p=>p.nextSliceId='WF2-R3-ARTIFACT-TX',
+  p=>p.boundaries.find(r=>r.id==='WORKFLOW-C-SAFE-PREFIX').state='VERIFIED',p=>p.activeSliceIds.push('WF2-R1-PROVENANCE'),
+  p=>p.mutationAuthority=true,p=>p.automaticCleanup=true,p=>p.completionReferences[8].boundaryId='WF2-R2-INVOKE',
+  p=>p.completionReferences[8].boundaryId='unregistered',p=>p.completionReferences[8]=structuredClone(p.completionReferences[7])
+ ]
+ for(const mutate of mutations){const p=structuredClone(original);mutate(p);assert.throws(()=>deriveNextSlice({programIndex:c.programIndex,statusProjection:p}))}
+})
+
+test('generator_consumes_r1_once_and_rejects_r1_byte_drift',async()=>{
+ const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/wf2-r1-completion-2026-10-17.json',import.meta.url))
+ let reads=0,output
+ await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}})
+ assert.equal(reads,1,'generator must read accepted R1 completion once')
+ assert.equal(output.completionReferences.length,9);assert.equal(output.slices.find(r=>r.sliceId==='WF2-R1-PROVENANCE').state,'VERIFIED');assert.equal(output.nextSliceId,'WF2-R2-INVOKE')
+ for(const suffix of [Buffer.from('\n'),Buffer.from('\r\n'),Buffer.from(' ')]){
+  await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?Buffer.concat([readFileSync(p),suffix]):readFileSync(p),writeStdout:()=>assert.fail('R1 byte drift must never emit projection')}))
+ }
+ await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),readFileSync(p)]):readFileSync(p),writeStdout:()=>assert.fail('BOM must never emit projection')}))
+ let arbitraryReads=0,emitted=false
+ await assert.rejects(()=>runGenerator(['--print','--output','outside'],{readFile:async()=>{arbitraryReads++;return Buffer.from('{}')},writeStdout:()=>{emitted=true}}))
+ assert.equal(arbitraryReads,0);assert.equal(emitted,false)
+})
+
+test('keeps_r1_exact_lf_bytes_after_autocrlf_index_checkout',async t=>{
+ const {mkdtempSync,rmSync}=await import('node:fs'),{tmpdir}=await import('node:os'),{join,resolve,sep,basename}=await import('node:path'),{execFileSync}=await import('node:child_process'),{runGenerator}=await import('../create-feature-integration-status.mjs')
+ const root=fileURLToPath(new URL('../../../',import.meta.url)),temp=mkdtempSync(join(tmpdir(),'r1-completion-lf-')),relative='docs/release-evidence/wf2-r1-completion-2026-10-17.json'
+ t.after(()=>{assert.ok(resolve(temp).startsWith(resolve(tmpdir())+sep));assert.ok(basename(temp).startsWith('r1-completion-lf-'));rmSync(temp,{recursive:true,force:true})})
+ execFileSync('git',['-c','core.autocrlf=true','checkout-index','--prefix='+temp.replaceAll('\\','/')+'/','--',relative],{cwd:root,windowsHide:true})
+ const checked=readFileSync(join(temp,relative)),indexed=execFileSync('git',['show',':'+relative],{cwd:root,windowsHide:true,maxBuffer:32*1024*1024})
+ assert.ok(checked.equals(indexed));assert.equal(checked.at(-1),10);assert.equal(checked.includes(13),false);assert.equal(checked.subarray(0,3).equals(Buffer.from([0xef,0xbb,0xbf])),false)
+ await runGenerator(['--check'],{readFile:async p=>p.endsWith('/'+relative.replaceAll('\\','/'))||p.endsWith('\\'+relative.replaceAll('/','\\'))?checked:readFileSync(p),writeStdout:()=>assert.fail('check mode must never emit')})
+})
