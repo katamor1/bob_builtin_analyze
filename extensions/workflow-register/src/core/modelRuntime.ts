@@ -1,4 +1,7 @@
 import type { WorkflowSchemaVersion, WorkflowStepExecutionMode, WorkflowStepType } from "./modelSchema"
+import type { WorkflowContractV2RunPlanProvenance } from "./contractV2/runPlanProvenance"
+
+export type WorkflowRunSchemaVersion = WorkflowSchemaVersion | "workflow-register/v2"
 
 export type RunStatus = "running" | "paused" | "checkpoint" | "reviewing" | "held" | "completed" | "failed"
 export type StepRunStatus = "pending" | "running" | "reviewing" | "held" | "completed" | "failed"
@@ -117,7 +120,8 @@ export interface WorkflowRunState {
   runId: string
   workflowId: string
   workflowName: string
-  workflowSchemaVersion?: WorkflowSchemaVersion
+  workflowSchemaVersion?: WorkflowRunSchemaVersion
+  planProvenance?: WorkflowContractV2RunPlanProvenance
   workflowDefinitionHash?: string
   workflowFile?: string
   engineVersion?: string
@@ -138,7 +142,8 @@ export interface WorkflowRunStateV2 {
   runId: string
   workflowId: string
   workflowName: string
-  workflowSchemaVersion?: WorkflowSchemaVersion
+  workflowSchemaVersion?: WorkflowRunSchemaVersion
+  planProvenance?: WorkflowContractV2RunPlanProvenance
   workflowDefinitionHash?: string
   engineVersion?: string
   status: RunStatus

@@ -1,0 +1,61 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
+let policy;
+try { policy = await import('../gateRMainAdmissionPolicy.mjs'); } catch (error) {
+  if (error.code !== 'ERR_MODULE_NOT_FOUND' || error.url !== new URL('../gateRMainAdmissionPolicy.mjs', import.meta.url).href) throw error;
+  policy = {};
+}
+function admission() {
+  assert.equal(typeof policy.validateGateRMainAdmission, 'function', 'closed reviewed-candidate source admission is required');
+  return JSON.parse(readFileSync(new URL('../gate-r-main-admission.json', import.meta.url)));
+}
+test('R1 closed current-source admission precedes future VERIFIED metadata', () => {
+  assert.deepEqual(policy.validateGateRMainAdmission?.(admission()), { state: 'VALID_R1_CANDIDATE' });
+});
+for (const [name, mutate] of [
+  ['base main', a => a.baseMainSha = '0'.repeat(40)],
+  ['base tree', a => a.baseTreeSha = '0'.repeat(40)],
+  ['catalog', a => a.archiveCatalogSha256 = '0'.repeat(64)],
+  ['authority', a => a.authority = 'runtime_activation'],
+  ['future capability', a => a.capabilityId = 'WF2-R2-INVOKE'],
+  ['missing base row', a => a.baseFiles.pop()],
+  ['base blob', a => a.baseFiles[0].blobSha = '0'.repeat(40)],
+  ['base mode', a => a.baseFiles[0].mode = '120000'],
+  ['duplicate base row', a => a.baseFiles.push({ ...a.baseFiles[0] })],
+  ['base order', a => a.baseFiles.reverse()],
+  ['case alias', a => a.baseFiles[0].path = a.baseFiles[0].path.toUpperCase()],
+  ['missing delta', a => a.deltas.pop()],
+  ['wrong before', a => a.deltas[0].beforeBlobSha = '0'.repeat(40)],
+  ['wrong after', a => a.deltas[0].afterBlobSha = '0'.repeat(40)],
+  ['arbitrary delta path', a => a.deltas[0].path = 'extensions/workflow-register/src/arbitrary.ts'],
+  ['conditional delta', a => a.deltas[0].path = 'extensions/workflow-register/src/core/contractV2/providerInvocation.ts'],
+  ['wrong family', a => a.deltas[0].familyIds = ['source-000000000000000000000000']],
+  ['duplicate family', a => a.deltas[0].familyIds.push(a.deltas[0].familyIds[0])],
+  ['missing active family', a => a.activeTestFamilies.pop()],
+  ['wrong required case', a => a.activeTestFamilies[0].requiredCaseNames = ['unrelated']],
+  ['nested hosted recursion', a => a.activeTestFamilies[0].testPath = 'extensions/workflow-register/test/workflowContractV2GateR.test.js'],
+  ['full-suite recursion', a => a.activeTestFamilies[0].testPath = 'npm test'],
+  ['arbitrary execution authority', a => a.module = '../archive/runtime.js'],
+  ['future VERIFIED prerequisite', a => a.verifiedMainSha = '0'.repeat(40)]
+]) test('R1 admission rejects ' + name, () => { const a = admission(); mutate(a); assert.throws(() => policy.validateGateRMainAdmission(a), /Gate R|admission|source|base|canonical|path|family/i); });
+test('R1 admission rejects getters/proxies without invoking them', () => {
+  const a = admission(); let reads = 0;
+  const getter = { ...a }; Object.defineProperty(getter, 'baseFiles', { enumerable: true, get() { reads++; throw Error('getter') } });
+  assert.throws(() => policy.validateGateRMainAdmission(getter), TypeError); assert.equal(reads, 0);
+  const proxy = new Proxy(a, { getPrototypeOf() { reads++; throw TypeError('proxy trap') } });
+  assert.throws(() => policy.validateGateRMainAdmission(proxy), TypeError); assert.equal(reads, 0);
+});
+
+for(const [name,change]of [['extra newline',b=>Buffer.concat([b,Buffer.from('\n')])],['BOM',b=>Buffer.concat([Buffer.from([239,187,191]),b])],['CRLF',b=>Buffer.from(b.toString().replaceAll('\n','\r\n'))],['duplicate JSON key',b=>Buffer.from(b.toString().replace('{','{"authority":"reviewed_candidate_source",'))]])test('R1 admission rejects noncanonical '+name,()=>{
+ const bytes=readFileSync(new URL('../gate-r-main-admission.json',import.meta.url));assert.throws(()=>policy.validateGateRMainAdmission(change(bytes)),TypeError);
+});
+import {createRequire}from'node:module';
+const require=createRequire(new URL('../../../extensions/workflow-register/package.json',import.meta.url));
+test('R1 admission and active schemas validate the actual candidate and reject future execution authority',()=>{
+ const Ajv=require('ajv/dist/2020');const ajv=new Ajv({strict:true,allErrors:true});
+ for(const [artifact,schema]of [['gate-r-main-admission.json','workflow-gate-r-main-admission.schema.json'],['gate-r-active-suite.json','workflow-gate-r-active-suite.schema.json']]){
+  const value=JSON.parse(readFileSync(new URL('../'+artifact,import.meta.url))),validate=ajv.compile(JSON.parse(readFileSync(new URL('../../../docs/release-evidence/schemas/'+schema,import.meta.url))));
+  assert.equal(validate(value),true,JSON.stringify(validate.errors));value.command='node archive/runtime.js';assert.equal(validate(value),false);
+ }
+});

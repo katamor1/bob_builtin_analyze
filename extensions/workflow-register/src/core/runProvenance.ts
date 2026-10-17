@@ -9,6 +9,7 @@ import {
 } from "./artifacts/taskSnapshotImport"
 import { HELD_RECOVERY_STATE_KEY } from "./heldRunRecovery"
 import type { RunStepState, WorkflowRunState } from "./model"
+import { decodeWorkflowContractV2RunPlanProvenance, type WorkflowContractV2RunPlanProvenance } from "./contractV2/runPlanProvenance"
 
 export type WorkflowStepCompletionSource = "normal" | "reused" | "not-completed"
 
@@ -35,6 +36,7 @@ export interface WorkflowHeldRecoveryProjection {
 }
 
 export interface WorkflowRunProvenanceProjection {
+  planProvenance?: WorkflowContractV2RunPlanProvenance
   sourceRunId?: string
   startStepId?: string
   reusedStepIds: string[]
@@ -89,6 +91,8 @@ export function projectWorkflowRunProvenance(run: WorkflowRunState): WorkflowRun
   const sourceRunId = reuse?.sourceRunId ?? hydration?.sourceRunId
 
   return {
+    ...(run.workflowSchemaVersion === "workflow-register/v2"
+      ? { planProvenance: decodeWorkflowContractV2RunPlanProvenance(run.planProvenance) } : {}),
     sourceRunId,
     startStepId: reuse?.startStepId,
     reusedStepIds,
@@ -138,6 +142,12 @@ export function workflowRunProvenanceControlLines(
     .filter((step) => step.artifactVerified)
     .flatMap((step) => step.artifactIds))
   const lines = [
+    ...(provenance.planProvenance ? [
+      `Contract v2 plan: ${safeControlToken(provenance.planProvenance.planDigest)}`,
+      `Contract v2 generation: ${safeControlToken(provenance.planProvenance.generation)}`,
+      boundedControlList("Contract v2 providers", provenance.planProvenance.providerExactBindings.map(binding => `${binding.id}@${binding.exactVersion}`), limit),
+      `Contract v2 Bob: ${safeControlToken(provenance.planProvenance.bobProfileBinding.profile)} ${safeControlToken(provenance.planProvenance.bobProfileBinding.profileDigest)}`
+    ] : []),
     provenance.sourceRunId ? `再利用元の実行: ${safeControlToken(provenance.sourceRunId)}` : undefined,
     provenance.startStepId ? `再利用開始ステップ: ${safeControlToken(provenance.startStepId)}` : undefined,
     boundedControlList("再利用したステップ", provenance.reusedStepIds, limit),

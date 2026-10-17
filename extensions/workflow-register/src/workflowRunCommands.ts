@@ -1,4 +1,4 @@
-import { assertWorkflowContractV2Shadow } from "./workflowContractV2ExecutionGuard"
+import { assertWorkflowContractV2Shadow, WorkflowContractV2BoundaryError } from "./workflowContractV2ExecutionGuard"
 import * as fs from "fs/promises"
 import * as path from "path"
 import * as vscode from "vscode"
@@ -910,6 +910,9 @@ export class WorkflowRunCommandService {
   }
 
   private assertPersistedWorkflow(run: WorkflowRunState): void {
+    if (run.workflowSchemaVersion === "workflow-register/v2" || Object.hasOwn(run, "planProvenance")) {
+      throw new WorkflowContractV2BoundaryError("Contract v2は検証のみ・実行不可です。")
+    }
     const workflow = this.options.coreWorkflows.get(run.workflowId)
     if (workflow) assertWorkflowContractV2Shadow(workflow)
   }

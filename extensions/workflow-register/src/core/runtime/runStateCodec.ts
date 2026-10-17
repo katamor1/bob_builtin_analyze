@@ -5,6 +5,7 @@ import type {
   WorkflowRunState,
   WorkflowStepType
 } from "../model"
+import { decodeWorkflowContractV2RunPlanProvenance } from "../contractV2/runPlanProvenance"
 
 export const CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION = "workflow-register/run-state/v1" as const
 
@@ -107,7 +108,8 @@ export function assertWorkflowRunStateWritable(run: WorkflowRunState): void {
 
 export function prepareWorkflowRunStateForWrite(run: WorkflowRunState): WorkflowRunState {
   assertWorkflowRunStateWritable(run)
-  return { ...run, schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
+  const evidence = validatedPlanEvidence(run as unknown as Record<string, unknown>)
+  return { ...run, ...evidence, schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
 }
 
 export function isCurrentWorkflowRunState(run: WorkflowRunState): boolean {
@@ -150,8 +152,11 @@ function validateStableRun(record: Record<string, unknown>, expectedRunId?: stri
   requiredString(record, "createdAt")
   requiredString(record, "updatedAt")
 
+  const evidence = validatedPlanEvidence(record)
+
   return {
     ...record,
+    ...evidence,
     runId,
     workflowId,
     workflowName,
@@ -160,6 +165,27 @@ function validateStableRun(record: Record<string, unknown>, expectedRunId?: stri
     state: state as Record<string, string>,
     steps
   } as WorkflowRunState
+}
+
+function validatedPlanEvidence(record: Record<string, unknown>): Pick<WorkflowRunState, "planProvenance"> {
+  const property = Object.getOwnPropertyDescriptor(record, "planProvenance")
+  const marked = property !== undefined
+  if (record.workflowSchemaVersion !== "workflow-register/v2") {
+    if (marked) throw new TypeError("Workflow run plan provenance is only valid for Contract v2 runs.")
+    return {}
+  }
+  if (!marked) throw new TypeError("Workflow run plan provenance is required for Contract v2 runs.")
+  if (!Object.hasOwn(property, "value") || Object.hasOwn(property, "get") || Object.hasOwn(property, "set")) {
+    throw new TypeError("Workflow run plan provenance must be an ordinary data property.")
+  }
+  let provenance: ReturnType<typeof decodeWorkflowContractV2RunPlanProvenance>
+  try { provenance = decodeWorkflowContractV2RunPlanProvenance(property.value) } catch {
+    throw new TypeError("Workflow run plan provenance is invalid.")
+  }
+  if (record.workflowId !== provenance.workflowId || record.workflowDefinitionHash !== provenance.planDigest) {
+    throw new TypeError("Workflow run plan provenance does not match its workflow identity and definition hash.")
+  }
+  return { planProvenance: provenance }
 }
 
 function validateRunSteps(value: unknown): RunStepState[] {

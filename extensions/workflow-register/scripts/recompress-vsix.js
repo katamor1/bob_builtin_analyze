@@ -9,7 +9,13 @@ const COMPACT_MODULES = new Set([
   "extension/out/core/contractV2/compiledPlanManifest.js",
   "extension/out/core/contractV2/index.js",
   "extension/out/core/actionRegistry.js",
-  "extension/out/core/contractV2/compilerEnvironment.js"
+  "extension/out/core/contractV2/compilerEnvironment.js",
+  "extension/out/core/contractV2/runPlanLeaseContext.js",
+  "extension/out/core/contractV2/runLeaseExecutionCoordinator.js",
+  "extension/out/workflowContractV2LeasedRunStateStore.js",
+  "extension/out/core/contractV2/runPlanProvenance.js",
+  "extension/out/core/contractV2/runPlanState.js",
+  "extension/out/core/runtime/runStateStore.js"
 ])
 const MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024
@@ -123,6 +129,6 @@ function main() {
     requireZip(fs.readFileSync(target).equals(before))
     fs.renameSync(temporary, target)
   } finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary) }
-  console.log("VSIX compression: " + before.length + " -> " + after.length + " bytes; P7 module ASTs and all other entry contents preserved")
+  console.log("VSIX compression: " + before.length + " -> " + after.length + " bytes; declared P7/R1 module ASTs and all other entry contents preserved")
 }
 try { main() } catch (error) { console.error(error.message); process.exitCode = 1 }

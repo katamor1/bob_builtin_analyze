@@ -51,3 +51,11 @@ scripts/lib/workflow-contract-v2-environment.js
 
 # P7 build-only AST compactor uses the existing TypeScript dev dependency.
 scripts/lib/compact-manifest-module.js
+
+# R1 build/CI tools have no installed runtime importers.
+scripts/run-unused-checks.js
+scripts/recompress-vsix.js
+scripts/check-vsix-policy.js
+scripts/check-import-cycles.js
+scripts/check-export-star-policy.js
+scripts/check-contract-v2-runtime-reachability.js

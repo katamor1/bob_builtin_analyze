@@ -1,6 +1,68 @@
 {
   "authority": "integrated_runtime_only",
-  "capabilities": [],
+  "capabilities": [
+    {
+      "capabilityId": "WF2-R1-PROVENANCE",
+      "testFamilies": [
+        {
+          "requiredCaseNames": [
+            "R1_authentic_lease_rejects_before_read"
+          ],
+          "sourceItemId": "source-3266621c45ba21fc5873f61d",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ExecutionGuard.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R1_plan_projection_contains_no_bodies"
+          ],
+          "sourceItemId": "source-34c61efc427121c81952998a",
+          "testPath": "extensions/workflow-register/test/workflowContractV2RunProvenanceProjection.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R1_all_private_retained_leases_release_once"
+          ],
+          "sourceItemId": "source-41c31bf3997087539134b1c2",
+          "testPath": "extensions/workflow-register/test/workflowContractV2RunLeaseDisposal.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R1_run_only_discriminator_preserves_public_schema"
+          ],
+          "sourceItemId": "source-718be8379c70ab754a9d7484",
+          "testPath": "extensions/workflow-register/test/workflowContractV2RunSchemaType.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R1_public_paths_have_zero_runtime_effects"
+          ],
+          "sourceItemId": "source-75c07aaa99be8455bdc3285f",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ExecutionBoundary.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R1_terminal_release_follows_durable_hooks"
+          ],
+          "sourceItemId": "source-a5eabe004258ac7de4b9ebdb",
+          "testPath": "extensions/workflow-register/test/workflowContractV2TerminalLeaseRelease.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R1_closed_scope_blocks_detached_work"
+          ],
+          "sourceItemId": "source-ba56f810f0c338c02ff4e864",
+          "testPath": "extensions/workflow-register/test/workflowContractV2RuntimeLeaseScope.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R1_exact_provenance_and_stale_write_checks"
+          ],
+          "sourceItemId": "source-fde858a48c84d66184d3513a",
+          "testPath": "extensions/workflow-register/test/workflowContractV2RunProvenance.test.js"
+        }
+      ]
+    }
+  ],
   "catalogSha256": "dc215522dfcae4c114740b2411e63a90ded87d2f803a8e946bed47be352881f2",
   "schemaVersion": "workflow-gate-r-active-suite/v1"
 }

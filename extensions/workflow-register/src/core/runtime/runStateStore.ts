@@ -146,7 +146,7 @@ export class FileRunStateStore implements RunStateStore {
     return run
   }
 
-  async saveRun(run: WorkflowRunState): Promise<void> {
+  async saveRun(run: WorkflowRunState, beforeCommit?: (snapshot: WorkflowRunState) => void): Promise<void> {
     assertWorkflowRunStateWritable(run)
     try {
       await this.withRunLock(run.runId, async () => {
@@ -164,7 +164,7 @@ export class FileRunStateStore implements RunStateStore {
         const next = prepareWorkflowRunStateForWrite(structuredClone(run))
         next.updatedAt = this.now()
         const kind: WorkflowRunEventKind = currentBytes ? "run.updated" : "run.created"
-        const committedHash = await this.commitSnapshotOwned(run.runId, next, currentBytes, kind, next.updatedAt)
+        const committedHash = await this.commitSnapshotOwned(run.runId, next, currentBytes, kind, next.updatedAt, beforeCommit)
         run.schemaVersion = CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION
         run.updatedAt = next.updatedAt
         runRevisionByObject.set(run, committedHash)
@@ -345,13 +345,15 @@ export class FileRunStateStore implements RunStateStore {
     nextRun: WorkflowRunState,
     previousBytes: Buffer | undefined,
     kind: WorkflowRunEventKind,
-    occurredAt: string
+    occurredAt: string,
+    beforeCommit?: (snapshot: WorkflowRunState) => void
   ): Promise<string> {
     const previousRunHash = previousBytes ? hashWorkflowRunBytes(previousBytes) : undefined
     const eventState = await readWorkflowRunEventLog(this.workspaceRoot, runId)
     if (eventState.head && eventState.head.runHash !== previousRunHash) {
       throw new Error(`Workflow run '${runId}' event log head does not match the materialized run revision.`)
     }
+    beforeCommit?.(nextRun)
     const nextEvent = buildWorkflowRunEvent({
       run: nextRun,
       kind,
