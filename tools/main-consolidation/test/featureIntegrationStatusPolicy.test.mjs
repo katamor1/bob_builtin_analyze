@@ -654,7 +654,7 @@ test('keeps_r1_exact_lf_bytes_after_autocrlf_index_checkout',async t=>{
 // R2 completion is an additive exact-byte import of the accepted source M1.
 const r2Completion=()=>json('../../../docs/release-evidence/wf2-r2-completion-2026-10-18.json')
 const throughR2=()=>{const c=throughR1();c.completionObservations.push(r2Completion());return c}
-const r2Expected={"recordSha256":"2f9d916c11dddf0e80e8b427ee0bc54564a2b5d575ec02c471a86f15ac20a6d7","evidenceSha256":"240a1b5d036396c71226e1757168506a19eab253f2204d5b3f67e1b63b3661d0","sourceHead":"3c8e4be63a1d51a9479ffb394eb28617e291c304","sourceMain":"a58d5c74be087917093921c26d57c603a3d1c0d5","sourceTree":"661f4a80ddbb7232fe162f8b4e12e1b80378d372","mergeParents":["abdedeb23fe133c2b541c8cc2fa7d35f2e8b5688","3c8e4be63a1d51a9479ffb394eb28617e291c304"]}
+const r2Expected={"recordSha256":"6782c1e797fcf7d76090e39a1afd735f3449efe59a9d521c375d4c360e0de04c","evidenceSha256":"0a5920718eb49bf26fa09e5180320006ba1c97abbb808af07f940b4abf0ea129","sourceHead":"3c8e4be63a1d51a9479ffb394eb28617e291c304","sourceMain":"a58d5c74be087917093921c26d57c603a3d1c0d5","sourceTree":"661f4a80ddbb7232fe162f8b4e12e1b80378d372","mergeParents":["abdedeb23fe133c2b541c8cc2fa7d35f2e8b5688","3c8e4be63a1d51a9479ffb394eb28617e291c304"]}
 
 test('accepts_only_fixed_r2_source_m1_and_honest_ci_waiver',()=>{
  const record=r2Completion();validateCompletionObservation(record,{programIndex:buildProgramIndex(),evidenceDigests:digests(record)})
@@ -711,4 +711,20 @@ test('r2_completion_lf_bytes_survive_actual_autocrlf_index_checkout',async()=>{
  const {mkdtempSync}=await import('node:fs'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),{execFileSync}=await import('node:child_process');const root=fileURLToPath(new URL('../../../',import.meta.url)),temp=mkdtempSync(join(tmpdir(),'r2-completion-lf-')),relative='docs/release-evidence/wf2-r2-completion-2026-10-18.json'
  execFileSync('git',['-c','core.autocrlf=true','checkout-index','--prefix='+temp.replaceAll('\\','/')+'/','--',relative],{cwd:root,windowsHide:true,maxBuffer:32*1024*1024});const checked=readFileSync(join(temp,relative)),indexed=execFileSync('git',['show',':'+relative],{cwd:root,windowsHide:true,maxBuffer:32*1024*1024});assert.ok(checked.equals(indexed));assert.equal(checked.at(-1),10);assert.equal(checked.includes(13),false);assert.equal(checked.subarray(0,3).equals(Buffer.from([239,187,191])),false)
  // Retain this owned temp evidence; final Program cleanup is a separate task.
+})
+
+function retainedR2Binding(record,binding){
+ const same=(a,b)=>a.path===b.path&&a.bytes===b.bytes&&a.sha256===b.sha256
+ const direct=record.externalEvidence.find(row=>same(row,binding));if(direct){assert.equal(digest(readFileSync(direct.path)),binding.sha256);return true}
+ const manifest=JSON.parse(readFileSync(record.preservation.manifest.path)),entry=manifest.entries.find(row=>same(row.original,binding))
+ if(!entry)return false
+ assert.ok(record.externalEvidence.some(row=>same(row,entry.retained)));const bytes=readFileSync(entry.retained.path);assert.equal(bytes.length,binding.bytes);assert.equal(digest(bytes),binding.sha256);return true
+}
+
+test('r2_retained_subject_candidate_closure',()=>{const record=r2Completion();assert.equal(retainedR2Binding(record,record.installedUat.candidate),true,'installed candidate subject requires a recoverable retained copy')})
+test('r2_retained_prior_shipping_closure',()=>{const record=r2Completion();assert.equal(retainedR2Binding(record,record.packages.workflowRegister.priorShipping),true,'prior shipping proof requires a recoverable retained copy')})
+test('r2_every_absolute_binding_has_retained_closure',()=>{
+ const record=r2Completion(),seen=new Set(),missing=[]
+ function visit(value){if(!value||typeof value!=='object')return;if(typeof value.path==='string'&&/^(?:[A-Za-z]:[\\/]|\/)/.test(value.path)&&Number.isSafeInteger(value.bytes)&&/^[a-f0-9]{64}$/.test(value.sha256??'')){const key=JSON.stringify([value.path,value.bytes,value.sha256]);if(!seen.has(key)){seen.add(key);if(!retainedR2Binding(record,value))missing.push(value.path)}}for(const child of Object.values(value))visit(child)}
+ visit(record);assert.ok(seen.size>1900);assert.deepEqual(missing,[],'every absolute byte binding must resolve; relative ZIP members resolve through their retained archive')
 })
