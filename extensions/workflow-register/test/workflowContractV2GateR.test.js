@@ -3,19 +3,20 @@ const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 const { test } = require('node:test');
 const repository = path.resolve(__dirname, '../../..');
-test('Gate R hosted R1 suites pass with measured inactive product wiring', () => {
+test('Gate R hosted R1 and R2 suites pass with measured inactive product wiring', () => {
   const result = spawnSync(process.execPath, ['tools/main-consolidation/run-gate-r.mjs', '--check'], { cwd:repository, encoding:'utf8', timeout:125000, maxBuffer:1048576 });
   assert.equal(result.status,0,result.stderr);
   const observation=JSON.parse(result.stdout);
+  assert.equal(observation.schemaVersion,'workflow-gate-r-result/v3');
   assert.equal(observation.state,'ACTIVE_TEST_SUITES_PASSED');
   assert.equal(observation.runtimeSuiteState,'PASSED');
-  assert.equal(observation.runtimeSuitesExecuted,8);
-  assert.deepEqual(observation.activeCapabilityIds,['WF2-R1-PROVENANCE']);
+  assert.equal(observation.runtimeSuitesExecuted,15);
+  assert.deepEqual(observation.activeCapabilityIds,['WF2-R1-PROVENANCE','WF2-R2-INVOKE']);
   for(const key of ['archiveTestsExecuted','v2ProductLeaseAcquisitions','providerDispatches','bobDispatches','v2ProductRunDirectoryCreations','v2ProductArtifactStages']) assert.equal(observation[key],0);
   assert.equal(observation.counterScope,'contract_v2_product_paths');
   assert.match(observation.wiringObservationSha256,/^[a-f0-9]{64}$/);
   assert.equal(observation.runtimeActivation,false);
-  console.log('GATE_R_ACTIVE_R1_BASE64=' + Buffer.from(result.stdout).toString('base64'));
+  console.log('GATE_R_ACTIVE_R2_BASE64=' + Buffer.from(result.stdout).toString('base64'));
 });
 test('Gate R hosted inventory and active-manifest tamper checks reject invalid admission', async () => {
   const { readFileSync } = require('node:fs');

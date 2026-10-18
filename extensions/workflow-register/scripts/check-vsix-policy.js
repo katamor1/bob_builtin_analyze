@@ -125,7 +125,8 @@ function main() {
     "workflowContractV2LeasedRunStateStore", "workflowContractV2RuntimeBoundary", "workflowContractV2RunStateStore",
     "workflowRunCommands", "workflowContractV2Product", "workflowContractV2Entrypoint", "workflowContractV2ProviderLifecycle"
   ].map(name => `extension/out/${name}.js`)
-  for (const requiredEntry of ["extension/package.json", mainEntry, ...r1RuntimeEntries]) {
+  const r2RuntimeEntries = ["providerEnvelopeSnapshot", "providerAttemptStaging", "providerInvocation"].map(name => `extension/out/core/contractV2/${name}.js`)
+  for (const requiredEntry of ["extension/package.json", mainEntry, ...r1RuntimeEntries, ...r2RuntimeEntries]) {
     if (!entryNames.has(requiredEntry)) {
       errors.push(`Missing required VSIX entry: ${requiredEntry}`)
     }

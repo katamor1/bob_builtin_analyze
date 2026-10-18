@@ -11,14 +11,14 @@ function admission() {
   return JSON.parse(readFileSync(new URL('../gate-r-main-admission.json', import.meta.url)));
 }
 test('R1 closed current-source admission precedes future VERIFIED metadata', () => {
-  assert.deepEqual(policy.validateGateRMainAdmission?.(admission()), { state: 'VALID_R1_CANDIDATE' });
+  assert.deepEqual(policy.validateGateRMainAdmission?.(admission()), { state: 'VALID_R2_CANDIDATE' });
 });
 for (const [name, mutate] of [
   ['base main', a => a.baseMainSha = '0'.repeat(40)],
   ['base tree', a => a.baseTreeSha = '0'.repeat(40)],
   ['catalog', a => a.archiveCatalogSha256 = '0'.repeat(64)],
   ['authority', a => a.authority = 'runtime_activation'],
-  ['future capability', a => a.capabilityId = 'WF2-R2-INVOKE'],
+  ['future capability', a => a.capabilityId = 'WF2-R3-ARTIFACT-TX'],
   ['missing base row', a => a.baseFiles.pop()],
   ['base blob', a => a.baseFiles[0].blobSha = '0'.repeat(40)],
   ['base mode', a => a.baseFiles[0].mode = '120000'],
@@ -29,7 +29,7 @@ for (const [name, mutate] of [
   ['wrong before', a => a.deltas[0].beforeBlobSha = '0'.repeat(40)],
   ['wrong after', a => a.deltas[0].afterBlobSha = '0'.repeat(40)],
   ['arbitrary delta path', a => a.deltas[0].path = 'extensions/workflow-register/src/arbitrary.ts'],
-  ['conditional delta', a => a.deltas[0].path = 'extensions/workflow-register/src/core/contractV2/providerInvocation.ts'],
+  ['conditional delta', a => a.deltas[0].path = 'extensions/workflow-register/src/core/contractV2/artifactTransaction.ts'],
   ['wrong family', a => a.deltas[0].familyIds = ['source-000000000000000000000000']],
   ['duplicate family', a => a.deltas[0].familyIds.push(a.deltas[0].familyIds[0])],
   ['missing active family', a => a.activeTestFamilies.pop()],
@@ -59,3 +59,5 @@ test('R1 admission and active schemas validate the actual candidate and reject f
   assert.equal(validate(value),true,JSON.stringify(validate.errors));value.command='node archive/runtime.js';assert.equal(validate(value),false);
  }
 });
+
+test('R2 admission seals the entire 1126-file current-main shipping baseline and all fifteen families',()=>{const a=admission();assert.equal(a.schemaVersion,'workflow-gate-r-main-admission/v2');assert.equal(a.baseMainSha,'abdedeb23fe133c2b541c8cc2fa7d35f2e8b5688');assert.equal(a.baseFiles.length,1126);assert.equal(a.activeTestFamilies.length,15);assert.equal(a.capabilityId,'WF2-R2-INVOKE');});

@@ -3,9 +3,10 @@ const assert = require('node:assert/strict')
 const { test } = require('node:test')
 const { fixtureR2, invoke, requireR2, validation, privateModule } = require('./workflowContractV2ProviderInvocationTestSupport')
 
+// Scenario: 'captured bridge preserves this, synchronous return and promise identity'
 test('R2_compiled_input_output_error_contract', async t => {
   requireR2()
-  await t.test('captured bridge preserves this, synchronous return and promise identity', async t => {
+
     const bridge = privateModule('core/contractV2/providerRegistry').invokeBoundWorkflowProviderDispatch
     assert.equal(typeof bridge, 'function')
     for (const result of [{ answer: 42 }, Promise.resolve({ answer: 42 })]) {
@@ -18,7 +19,11 @@ test('R2_compiled_input_output_error_contract', async t => {
       assert.throws(() => bridge({}, input), TypeError); assert.equal(f.counters.dispatch, 1)
     }
   })
-  await t.test('input snapshot and validated output never modify persisted run data', async t => {
+
+// Scenario: 'input snapshot and validated output never modify persisted run data'
+test('input snapshot and validated output never modify persisted run data', async t => {
+  requireR2()
+
     let seen; const source = { nested: { n: 1 } }, output = { answer: 42 }
     const f = await fixtureR2(t, { dispatch(input) { seen = input.value; return output } }), before = f.snapshotRunFiles()
     await f.withScope(async () => {
@@ -30,11 +35,19 @@ test('R2_compiled_input_output_error_contract', async t => {
     })
     assert.deepEqual(f.snapshotRunFiles(), before); assert.equal(f.run.status, 'running'); assert.equal(f.counters.dispatch, 1)
   })
-  await t.test('schema-invalid input never dispatches and terminal validation blocks reuse', async t => {
+
+// Scenario: 'schema-invalid input never dispatches and terminal validation blocks reuse'
+test('schema-invalid input never dispatches and terminal validation blocks reuse', async t => {
+  requireR2()
+
     const f = await fixtureR2(t, { inputSchema: { type: 'object', required: ['n'], properties: { n: { type: 'integer' } }, additionalProperties: false } })
     await f.withScope(async () => { const attempt = f.createAttempt(); validation(await invoke(f, attempt), 'WF2_PROVIDER_INPUT_INVALID'); await assert.rejects(invoke(f, attempt, { value: { n: 1 } }), TypeError); assert.equal(f.counters.dispatch, 0) })
   })
-  await t.test('unit accepts exactly undefined and value uses the compiled schema and byte cap', async t => {
+
+// Scenario: 'unit accepts exactly undefined and value uses the compiled schema and byte cap'
+test('unit accepts exactly undefined and value uses the compiled schema and byte cap', async t => {
+  requireR2()
+
     for (const value of [undefined, null, true, 0, '', [], {}]) {
       const f = await fixtureR2(t, { outputKind: 'unit', dispatch: () => value })
       await f.withScope(async () => { const r = await invoke(f, f.createAttempt()); if (value === undefined) assert.deepEqual(r.output, { kind: 'unit' }); else validation(r, 'WF2_PROVIDER_OUTPUT_INVALID') })
@@ -44,11 +57,14 @@ test('R2_compiled_input_output_error_contract', async t => {
       await f.withScope(async () => { const attempt = f.createAttempt(), r = await invoke(f, attempt); if (valid) assert.equal(r.ok, true); else validation(r, 'WF2_PROVIDER_OUTPUT_INVALID'); await assert.rejects(invoke(f, attempt), TypeError) })
     }
   })
-  await t.test('raw thrown or rejected JSON is typed; exotic errors are redacted', async t => {
+
+// Scenario: 'raw thrown or rejected JSON is typed; exotic errors are redacted'
+test('raw thrown or rejected JSON is typed; exotic errors are redacted', async t => {
+  requireR2()
+
     for (const rejected of [false, true]) for (const error of [{ reason: 'allowed' }, new Error('secret C:/private/token'), { secret: 'bad', toJSON() { throw Error('must never execute') } }]) {
       const f = await fixtureR2(t, { errorSchema: { type: 'object', required: ['reason'], properties: { reason: { type: 'string' } }, additionalProperties: false }, dispatch() { if (rejected) return Promise.reject(error); throw error } })
       await f.withScope(async () => { const r = await invoke(f, f.createAttempt()); if (error.reason) { assert.equal(r.failure, 'provider-error'); assert.notStrictEqual(r.error, error); assert.equal(r.error.reason, 'allowed'); assert.equal(Object.isFrozen(r.error), true) } else { validation(r, 'WF2_PROVIDER_ERROR_INVALID'); assert.doesNotMatch(JSON.stringify(r), /secret|private|token|stack|must never/); assert.equal(r.diagnostics[0].location.path, 'workflow.yaml') } })
       assert.equal(f.counters.dispatch, 1)
     }
   })
-})

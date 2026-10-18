@@ -3,9 +3,10 @@ const assert = require('node:assert/strict')
 const { test } = require('node:test')
 const { fixtureR2, invoke, requireR2, staging, deferred, privateModule } = require('./workflowContractV2ProviderInvocationTestSupport')
 
+// Scenario: 'detached pending work cannot accept after the R1 scope closes'
 test('R2_closed_scope_and_concurrent_attempt_refusal', async t => {
   requireR2()
-  await t.test('detached pending work cannot accept after the R1 scope closes', async t => {
+
     const gate = deferred(); let pending, attempt, writer
     const f = await fixtureR2(t, { sideEffect: 'workspace-write', dispatch({ effect }) { writer = effect.artifacts; return gate.promise } }), before = f.snapshotRunFiles()
     await f.withScope(() => { attempt = f.createAttempt(); pending = invoke(f, attempt); pending.catch(() => {}) })
@@ -15,7 +16,11 @@ test('R2_closed_scope_and_concurrent_attempt_refusal', async t => {
     await f.withScope(async () => { await assert.rejects(invoke(f, attempt), TypeError) })
     assert.deepEqual(f.snapshotRunFiles(), before)
   })
-  await t.test('release, abort and changed run identity during await prohibit acceptance', async t => {
+
+// Scenario: 'release, abort and changed run identity during await prohibit acceptance'
+test('release, abort and changed run identity during await prohibit acceptance', async t => {
+  requireR2()
+
     for (const kind of ['release', 'abort', 'run-id', 'provenance']) {
       const gate = deferred(), controller = new AbortController()
       const f = await fixtureR2(t, { dispatch: () => gate.promise }), before = f.snapshotRunFiles()
@@ -31,7 +36,11 @@ test('R2_closed_scope_and_concurrent_attempt_refusal', async t => {
       assert.equal(f.counters.dispatch, 1); assert.deepEqual(f.snapshotRunFiles(), before)
     }
   })
-  await t.test('concurrent and reentrant invocations never duplicate dispatch or corrupt the first result', async t => {
+
+// Scenario: 'concurrent and reentrant invocations never duplicate dispatch or corrupt the first result'
+test('concurrent and reentrant invocations never duplicate dispatch or corrupt the first result', async t => {
+  requireR2()
+
     const gate = deferred(), f = await fixtureR2(t, { dispatch: () => gate.promise })
     await f.withScope(async () => {
       const attempt = f.createAttempt(), pending = invoke(f, attempt)
@@ -42,4 +51,3 @@ test('R2_closed_scope_and_concurrent_attempt_refusal', async t => {
     g = await fixtureR2(t, { dispatch() { reentrant = invoke(g, attempt); reentrant.catch(() => {}); return {} } })
     await g.withScope(async () => { attempt = g.createAttempt(); assert.equal((await invoke(g, attempt)).ok, true); await assert.rejects(reentrant, TypeError); assert.equal(g.counters.dispatch, 1) })
   })
-})

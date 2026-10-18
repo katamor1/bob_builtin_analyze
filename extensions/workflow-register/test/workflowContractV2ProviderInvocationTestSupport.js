@@ -68,7 +68,7 @@ async function fixtureR2(t, options = {}) {
   await context.runWithWorkflowContractV2PlanLease(lease, async () => { run = await store.createRunFromPlanLease(view.coreWorkflow, lease, {}); await store.saveRun(run) })
   assert.equal(lease.released, false)
   const signal = new AbortController().signal, stepId = 'execute', attemptId = 'attempt1'
-  return { workspaceRoot, run, lease, stepId, attemptId, signal, counters, registry, registration, catalog, environment, planStore,
+  return { packageFiles: files, workspaceRoot, run, lease, stepId, attemptId, signal, counters, registry, registration, catalog, environment, planStore,
     withScope: fn => context.runWithWorkflowContractV2PlanLease(lease, fn),
     createAttempt: (overrides = {}) => staging().createWorkflowAttemptStaging({ workspaceRoot, run, stepId, attemptId, ...overrides }),
     snapshotRunFiles() {

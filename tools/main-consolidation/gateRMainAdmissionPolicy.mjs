@@ -6,227 +6,256 @@ import { gateRCanonicalJson, gateRDigest, gateRInputData, gateRPathRows, readGat
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const fail = reason => { throw new TypeError('Gate R main admission: ' + reason); };
-export const GATE_R_MAIN_ADMISSION_SHA256 = 'dbb07818af16734f2140c5ea66623acacfb4938aeb38f523374c1a8de1b6fd51';
+export const GATE_R_MAIN_ADMISSION_SHA256 = 'e40f1c8d8866f78e0b0f76b0904cbb492f00bc57b0f68b9408d3abe3491d08b3';
 // ADMITTED_DELTAS_START
 const admittedDeltas = [
   {
-    "path": "extensions/workflow-register/.vscodeignore",
-    "familyIds": [
-      "source-75c07aaa99be8455bdc3285f"
-    ]
-  },
-  {
     "path": "extensions/workflow-register/scripts/check-contract-v2-runtime-reachability.js",
     "familyIds": [
-      "source-75c07aaa99be8455bdc3285f"
+      "source-5ec92ed8eb7c664752c179f6",
+      "source-9c06a4751ee2e5cb236ffade"
     ]
   },
   {
     "path": "extensions/workflow-register/scripts/check-vsix-policy.js",
     "familyIds": [
-      "source-75c07aaa99be8455bdc3285f"
+      "source-14cfd7d06e0a3ff1d07dbd07",
+      "source-5ec92ed8eb7c664752c179f6",
+      "source-7fac6492e3e471002b40d219",
+      "source-9c06a4751ee2e5cb236ffade",
+      "source-e6276ab81d5965f9ef86745d",
+      "source-f3f7f4b0b7abd506c0c8f506",
+      "source-fecb7999677bed9e8fe3ce13"
     ]
   },
   {
     "path": "extensions/workflow-register/scripts/recompress-vsix.js",
     "familyIds": [
-      "source-75c07aaa99be8455bdc3285f"
+      "source-14cfd7d06e0a3ff1d07dbd07",
+      "source-5ec92ed8eb7c664752c179f6",
+      "source-7fac6492e3e471002b40d219",
+      "source-9c06a4751ee2e5cb236ffade",
+      "source-e6276ab81d5965f9ef86745d",
+      "source-f3f7f4b0b7abd506c0c8f506",
+      "source-fecb7999677bed9e8fe3ce13"
     ]
   },
   {
-    "path": "extensions/workflow-register/src/core/contractV2/index.ts",
+    "path": "extensions/workflow-register/src/core/contractV2/providerAttemptStaging.ts",
     "familyIds": [
-      "source-5878428770ba85ec6765b380"
+      "source-7fac6492e3e471002b40d219",
+      "source-fecb7999677bed9e8fe3ce13"
     ]
   },
   {
-    "path": "extensions/workflow-register/src/core/contractV2/planLease.ts",
+    "path": "extensions/workflow-register/src/core/contractV2/providerEnvelopeSnapshot.ts",
     "familyIds": [
-      "source-9aad994c88d618f45c216249"
+      "source-e6276ab81d5965f9ef86745d"
     ]
   },
   {
-    "path": "extensions/workflow-register/src/core/contractV2/runLeaseExecutionCoordinator.ts",
+    "path": "extensions/workflow-register/src/core/contractV2/providerInvocation.ts",
     "familyIds": [
-      "source-04042ee1d12b54981a558cd1",
-      "source-b06ff4b70ad3a69d34490e7e"
+      "source-14cfd7d06e0a3ff1d07dbd07",
+      "source-7fac6492e3e471002b40d219",
+      "source-f3f7f4b0b7abd506c0c8f506"
     ]
   },
   {
-    "path": "extensions/workflow-register/src/core/contractV2/runPlanLeaseContext.ts",
+    "path": "extensions/workflow-register/src/core/contractV2/providerRegistry.ts",
     "familyIds": [
-      "source-299b38c2a6c3696dbc79dd52",
-      "source-9aad994c88d618f45c216249",
-      "source-ba622294349bb562549c5825"
-    ]
-  },
-  {
-    "path": "extensions/workflow-register/src/core/contractV2/runPlanProvenance.ts",
-    "familyIds": [
-      "source-7ae51bbef33180664889fba4",
-      "source-9aad994c88d618f45c216249"
-    ]
-  },
-  {
-    "path": "extensions/workflow-register/src/core/contractV2/runPlanState.ts",
-    "familyIds": [
-      "source-a7f21730f621e090b2aed5e9"
-    ]
-  },
-  {
-    "path": "extensions/workflow-register/src/core/modelRuntime.ts",
-    "familyIds": [
-      "source-50f29b856d5d39f3e342ca85",
-      "source-5206f6fdf1c711d1bb161d62"
-    ]
-  },
-  {
-    "path": "extensions/workflow-register/src/core/runProvenance.ts",
-    "familyIds": [
-      "source-0ee8bd8c0cf158480af89527"
-    ]
-  },
-  {
-    "path": "extensions/workflow-register/src/core/runtime/runStateCodec.ts",
-    "familyIds": [
-      "source-7ae51bbef33180664889fba4"
-    ]
-  },
-  {
-    "path": "extensions/workflow-register/src/core/runtime/runStateStore.ts",
-    "familyIds": [
-      "source-75c07aaa99be8455bdc3285f",
-      "source-fde858a48c84d66184d3513a"
-    ]
-  },
-  {
-    "path": "extensions/workflow-register/src/workflowContractV2ExecutionGuard.ts",
-    "familyIds": [
-      "source-9aad994c88d618f45c216249"
-    ]
-  },
-  {
-    "path": "extensions/workflow-register/src/workflowContractV2LeasedRunStateStore.ts",
-    "familyIds": [
-      "source-04042ee1d12b54981a558cd1",
-      "source-5ca2654642f10f69b53d3f8b"
-    ]
-  },
-  {
-    "path": "extensions/workflow-register/src/workflowContractV2RunStateStore.ts",
-    "familyIds": [
-      "source-75c07aaa99be8455bdc3285f"
-    ]
-  },
-  {
-    "path": "extensions/workflow-register/src/workflowContractV2RuntimeBoundary.ts",
-    "familyIds": [
-      "source-01ca179efcbe182b733f7a89"
-    ]
-  },
-  {
-    "path": "extensions/workflow-register/src/workflowRunCommands.ts",
-    "familyIds": [
-      "source-75c07aaa99be8455bdc3285f"
+      "source-9c06a4751ee2e5cb236ffade"
     ]
   },
   {
     "path": "extensions/workflow-register/test/architectureContracts.test.js",
     "familyIds": [
-      "source-3266621c45ba21fc5873f61d"
+      "source-5ec92ed8eb7c664752c179f6",
+      "source-9c06a4751ee2e5cb236ffade"
     ]
   },
   {
-    "path": "extensions/workflow-register/test/workflowContractV2ExecutionBoundary.test.js",
+    "path": "extensions/workflow-register/test/vsixCompression.test.js",
     "familyIds": [
-      "source-1125e24c264c3e7ff427c8ae",
-      "source-75c07aaa99be8455bdc3285f"
-    ]
-  },
-  {
-    "path": "extensions/workflow-register/test/workflowContractV2ExecutionGuard.test.js",
-    "familyIds": [
-      "source-3266621c45ba21fc5873f61d"
+      "source-14cfd7d06e0a3ff1d07dbd07",
+      "source-5ec92ed8eb7c664752c179f6",
+      "source-7fac6492e3e471002b40d219",
+      "source-9c06a4751ee2e5cb236ffade",
+      "source-e6276ab81d5965f9ef86745d",
+      "source-f3f7f4b0b7abd506c0c8f506",
+      "source-fecb7999677bed9e8fe3ce13"
     ]
   },
   {
     "path": "extensions/workflow-register/test/workflowContractV2GateR.test.js",
     "familyIds": [
-      "source-3266621c45ba21fc5873f61d",
-      "source-34c61efc427121c81952998a",
-      "source-41c31bf3997087539134b1c2",
-      "source-718be8379c70ab754a9d7484",
-      "source-75c07aaa99be8455bdc3285f",
-      "source-a5eabe004258ac7de4b9ebdb",
-      "source-ba56f810f0c338c02ff4e864",
-      "source-fde858a48c84d66184d3513a"
+      "source-42e52f0142bc1480cba3f8bb",
+      "source-5ec92ed8eb7c664752c179f6",
+      "source-67e4c888b7aa389e2ebf5135",
+      "source-917527dedba80f811bb34bac",
+      "source-aa64e1c64d51e4da51fd72c7",
+      "source-e9053c4efd76a31cfe133bdb",
+      "source-e98cec4ab341f9224f6e2ee0"
     ]
   },
   {
-    "path": "extensions/workflow-register/test/workflowContractV2ReachabilityPolicy.test.js",
+    "path": "extensions/workflow-register/test/workflowContractV2ManifestPackaging.test.js",
     "familyIds": [
-      "source-75c07aaa99be8455bdc3285f"
+      "source-14cfd7d06e0a3ff1d07dbd07",
+      "source-5ec92ed8eb7c664752c179f6",
+      "source-7fac6492e3e471002b40d219",
+      "source-9c06a4751ee2e5cb236ffade",
+      "source-e6276ab81d5965f9ef86745d",
+      "source-f3f7f4b0b7abd506c0c8f506",
+      "source-fecb7999677bed9e8fe3ce13"
     ]
   },
   {
-    "path": "extensions/workflow-register/test/workflowContractV2RunLeaseDisposal.test.js",
+    "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocation.test.js",
     "familyIds": [
-      "source-299b38c2a6c3696dbc79dd52",
-      "source-41c31bf3997087539134b1c2"
+      "source-e9053c4efd76a31cfe133bdb"
     ]
   },
   {
-    "path": "extensions/workflow-register/test/workflowContractV2RunPlanTestSupport.js",
+    "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocationArchitecture.test.js",
     "familyIds": [
-      "source-fde858a48c84d66184d3513a"
+      "source-5ec92ed8eb7c664752c179f6"
     ]
   },
   {
-    "path": "extensions/workflow-register/test/workflowContractV2RunProvenance.test.js",
+    "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocationFailurePrecedence.test.js",
     "familyIds": [
-      "source-fde858a48c84d66184d3513a"
+      "source-917527dedba80f811bb34bac"
     ]
   },
   {
-    "path": "extensions/workflow-register/test/workflowContractV2RunProvenanceProjection.test.js",
+    "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocationFollowup.test.js",
     "familyIds": [
-      "source-34c61efc427121c81952998a"
+      "source-67e4c888b7aa389e2ebf5135"
     ]
   },
   {
-    "path": "extensions/workflow-register/test/workflowContractV2RunSchemaType.test.js",
+    "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocationFoundation.test.js",
     "familyIds": [
-      "source-718be8379c70ab754a9d7484"
+      "source-aa64e1c64d51e4da51fd72c7"
     ]
   },
   {
-    "path": "extensions/workflow-register/test/workflowContractV2RuntimeLeaseScope.test.js",
+    "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocationHardening.test.js",
     "familyIds": [
-      "source-ba56f810f0c338c02ff4e864"
+      "source-e98cec4ab341f9224f6e2ee0"
     ]
   },
   {
-    "path": "extensions/workflow-register/test/workflowContractV2TerminalLeaseRelease.test.js",
+    "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocationReviewCases.test.js",
     "familyIds": [
-      "source-a5eabe004258ac7de4b9ebdb"
+      "source-42e52f0142bc1480cba3f8bb"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocationTestSupport.js",
+    "familyIds": [
+      "source-aa64e1c64d51e4da51fd72c7"
     ]
   }
 ];
 // ADMITTED_DELTAS_END
-const baseFilesSha256 = '02abefbe1b6c3c59c764c1660de5833a4edec79911b921ef1e18c7710b3b78e4';
+const baseFilesSha256 = '2308ff9dc7a82f6eeab3a68e396085fe489ce24b1f70e3d107d6b606f7e0d494';
 const catalogSha256 = 'dc215522dfcae4c114740b2411e63a90ded87d2f803a8e946bed47be352881f2';
 const familyRows = [
- ['source-3266621c45ba21fc5873f61d','workflowContractV2ExecutionGuard.test.js','R1_authentic_lease_rejects_before_read'],
- ['source-34c61efc427121c81952998a','workflowContractV2RunProvenanceProjection.test.js','R1_plan_projection_contains_no_bodies'],
- ['source-41c31bf3997087539134b1c2','workflowContractV2RunLeaseDisposal.test.js','R1_all_private_retained_leases_release_once'],
- ['source-718be8379c70ab754a9d7484','workflowContractV2RunSchemaType.test.js','R1_run_only_discriminator_preserves_public_schema'],
- ['source-75c07aaa99be8455bdc3285f','workflowContractV2ExecutionBoundary.test.js','R1_public_paths_have_zero_runtime_effects'],
- ['source-a5eabe004258ac7de4b9ebdb','workflowContractV2TerminalLeaseRelease.test.js','R1_terminal_release_follows_durable_hooks'],
- ['source-ba56f810f0c338c02ff4e864','workflowContractV2RuntimeLeaseScope.test.js','R1_closed_scope_blocks_detached_work'],
- ['source-fde858a48c84d66184d3513a','workflowContractV2RunProvenance.test.js','R1_exact_provenance_and_stale_write_checks']
+  [
+    "source-3266621c45ba21fc5873f61d",
+    "workflowContractV2ExecutionGuard.test.js",
+    "R1_authentic_lease_rejects_before_read",
+    "WF2-R1-PROVENANCE"
+  ],
+  [
+    "source-34c61efc427121c81952998a",
+    "workflowContractV2RunProvenanceProjection.test.js",
+    "R1_plan_projection_contains_no_bodies",
+    "WF2-R1-PROVENANCE"
+  ],
+  [
+    "source-41c31bf3997087539134b1c2",
+    "workflowContractV2RunLeaseDisposal.test.js",
+    "R1_all_private_retained_leases_release_once",
+    "WF2-R1-PROVENANCE"
+  ],
+  [
+    "source-42e52f0142bc1480cba3f8bb",
+    "workflowContractV2ProviderInvocationReviewCases.test.js",
+    "R2_closed_scope_and_concurrent_attempt_refusal",
+    "WF2-R2-INVOKE"
+  ],
+  [
+    "source-5ec92ed8eb7c664752c179f6",
+    "workflowContractV2ProviderInvocationArchitecture.test.js",
+    "R2_product_paths_remain_unreachable",
+    "WF2-R2-INVOKE"
+  ],
+  [
+    "source-67e4c888b7aa389e2ebf5135",
+    "workflowContractV2ProviderInvocationFollowup.test.js",
+    "R2_snapshot_dispatch_and_retry_identity",
+    "WF2-R2-INVOKE"
+  ],
+  [
+    "source-718be8379c70ab754a9d7484",
+    "workflowContractV2RunSchemaType.test.js",
+    "R1_run_only_discriminator_preserves_public_schema",
+    "WF2-R1-PROVENANCE"
+  ],
+  [
+    "source-75c07aaa99be8455bdc3285f",
+    "workflowContractV2ExecutionBoundary.test.js",
+    "R1_public_paths_have_zero_runtime_effects",
+    "WF2-R1-PROVENANCE"
+  ],
+  [
+    "source-917527dedba80f811bb34bac",
+    "workflowContractV2ProviderInvocationFailurePrecedence.test.js",
+    "R2_staging_failure_and_settlement_precedence",
+    "WF2-R2-INVOKE"
+  ],
+  [
+    "source-a5eabe004258ac7de4b9ebdb",
+    "workflowContractV2TerminalLeaseRelease.test.js",
+    "R1_terminal_release_follows_durable_hooks",
+    "WF2-R1-PROVENANCE"
+  ],
+  [
+    "source-aa64e1c64d51e4da51fd72c7",
+    "workflowContractV2ProviderInvocationFoundation.test.js",
+    "R2_authentic_retained_run_and_attempt_foundation",
+    "WF2-R2-INVOKE"
+  ],
+  [
+    "source-ba56f810f0c338c02ff4e864",
+    "workflowContractV2RuntimeLeaseScope.test.js",
+    "R1_closed_scope_blocks_detached_work",
+    "WF2-R1-PROVENANCE"
+  ],
+  [
+    "source-e9053c4efd76a31cfe133bdb",
+    "workflowContractV2ProviderInvocation.test.js",
+    "R2_compiled_input_output_error_contract",
+    "WF2-R2-INVOKE"
+  ],
+  [
+    "source-e98cec4ab341f9224f6e2ee0",
+    "workflowContractV2ProviderInvocationHardening.test.js",
+    "R2_bounded_hostile_values_and_write_sessions",
+    "WF2-R2-INVOKE"
+  ],
+  [
+    "source-fde858a48c84d66184d3513a",
+    "workflowContractV2RunProvenance.test.js",
+    "R1_exact_provenance_and_stale_write_checks",
+    "WF2-R1-PROVENANCE"
+  ]
 ];
-export function gateRActiveTestFamilies() {
- return familyRows.map(([sourceItemId,name,required]) => ({sourceItemId,testPath:'extensions/workflow-register/test/'+name,requiredCaseNames:[required]}));
+export function gateRActiveTestFamilies(capabilityId) {
+ return familyRows.filter(row=>capabilityId===undefined||row[3]===capabilityId).map(([sourceItemId,name,required])=>({sourceItemId,testPath:'extensions/workflow-register/test/'+name,requiredCaseNames:[required]}));
 }
 const exact = (value, keys, label) => {
  if (!value || Array.isArray(value) || typeof value !== 'object' || Object.keys(value).length !== keys.length || keys.some(k=>!Object.hasOwn(value,k))) fail(label+' exact keys');
@@ -234,8 +263,8 @@ const exact = (value, keys, label) => {
 export function validateGateRMainAdmission(input) {
  const value = gateRInputData(input,'main admission');
  exact(value,['schemaVersion','authority','baseMainSha','baseTreeSha','archiveCatalogSha256','capabilityId','baseFiles','deltas','activeTestFamilies'],'root');
- if(value.schemaVersion!=='workflow-gate-r-main-admission/v1'||value.authority!=='reviewed_candidate_source'||value.baseMainSha!=='5fc1cd30c39102b946f9300a0d77afd306eaaa03'||value.baseTreeSha!=='aaa6f2d8bbfb82b81d11b0e34f536d8c43475253'||value.archiveCatalogSha256!==catalogSha256||value.capabilityId!=='WF2-R1-PROVENANCE')fail('base/catalog/capability authority');
- if(!Array.isArray(value.baseFiles)||value.baseFiles.length!==1111||!Array.isArray(value.deltas)||!value.deltas.length)fail('base/delta coverage');
+ if(value.schemaVersion!=='workflow-gate-r-main-admission/v2'||value.authority!=='reviewed_candidate_source'||value.baseMainSha!=='abdedeb23fe133c2b541c8cc2fa7d35f2e8b5688'||value.baseTreeSha!=='db566dab17c1a17c5d66804fe1f0b84a415a3b3d'||value.archiveCatalogSha256!==catalogSha256||value.capabilityId!=='WF2-R2-INVOKE')fail('base/catalog/capability authority');
+ if(!Array.isArray(value.baseFiles)||value.baseFiles.length!==1126||!Array.isArray(value.deltas)||!value.deltas.length)fail('base/delta coverage');
  gateRPathRows(value.baseFiles,'base files');gateRPathRows(value.deltas,'deltas');
  for(const row of value.baseFiles){exact(row,['path','mode','blobSha'],'base row');if(row.mode!=='100644'||!/^[a-f0-9]{40}$/.test(row.blobSha))fail('base blob/mode');}
  if(gateRDigest(gateRCanonicalJson(value.baseFiles))!==baseFilesSha256)fail('base snapshot identity');
@@ -245,12 +274,12 @@ export function validateGateRMainAdmission(input) {
   if(row.mode!=='100644'||row.beforeBlobSha!==(before.get(row.path)??null)||!/^[a-f0-9]{40}$/.test(row.afterBlobSha)||row.afterBlobSha===row.beforeBlobSha)fail('delta before/after/mode');
   if(!Array.isArray(row.familyIds)||!row.familyIds.length||row.familyIds.some((id,i)=>typeof id!=='string'||!/^source-[a-f0-9]{24}$/.test(id)||(i&&row.familyIds[i-1]>=id)))fail('family identity/order');
  }
- if(!gateRCanonicalJson(value.deltas.map(({path,familyIds})=>({path,familyIds}))).equals(gateRCanonicalJson(admittedDeltas)))fail('literal R1 path/family allowlist');
+ if(!gateRCanonicalJson(value.deltas.map(({path,familyIds})=>({path,familyIds}))).equals(gateRCanonicalJson(admittedDeltas)))fail('literal R2 path/family allowlist');
  if(!gateRCanonicalJson(value.activeTestFamilies).equals(gateRCanonicalJson(gateRActiveTestFamilies())))fail('active family/path/required case contract');
  // The independently measured final artifact seals every literal path, blob and family.
  // It is a candidate admission, so future completion metadata cannot confer authority.
  if(gateRDigest(gateRCanonicalJson(value))!==GATE_R_MAIN_ADMISSION_SHA256)fail('sealed candidate source identity');
- return Object.freeze({state:'VALID_R1_CANDIDATE'});
+ return Object.freeze({state:'VALID_R2_CANDIDATE'});
 }
 export function readGateRMainAdmission() {
  const bytes=readGateRContainedFile(root,'tools/main-consolidation/gate-r-main-admission.json');

@@ -15,9 +15,11 @@ const frozenOwners = Object.freeze({
 const roots = Object.freeze(['src/extension.ts', 'src/extensionWithAuthoring.ts', 'src/workflowRuntimeFactory.ts',
   'src/workflowRegisterService.ts', 'src/commands/validateWorkflow.ts', 'src/gui/operationHubProvider.ts', 'src/core/contractV2/index.ts'])
 const privateNames = new Set(['runPlanLeaseContext', 'runPlanState', 'runLeaseExecutionCoordinator',
-  'workflowContractV2LeasedRunStateStore', 'workflowContractV2RuntimeBoundary', 'providerInvocation', 'artifactTransaction', 'workflowContractV2Executor', 'workflowContractV2BobRuntime'])
+  'workflowContractV2LeasedRunStateStore', 'workflowContractV2RuntimeBoundary', 'providerEnvelopeSnapshot', 'providerAttemptStaging', 'providerInvocation', 'artifactTransaction', 'workflowContractV2Executor', 'workflowContractV2BobRuntime'])
 const forbiddenSymbols = new Set(['acquireWorkflowContractV2RunLease', 'executeWorkflowContractV2RuntimeBoundary',
-  'coordinateWorkflowContractV2LeasedRunExecution', 'createRunFromPlanLease', 'createWorkflowPlanLease'])
+  'coordinateWorkflowContractV2LeasedRunExecution', 'createRunFromPlanLease', 'createWorkflowPlanLease',
+  'invokeBoundWorkflowProviderDispatch', 'invokeCompiledWorkflowProvider', 'createWorkflowAttemptStaging', 'beginWorkflowAttemptInvocation',
+  'assertWorkflowAttemptStagingAuthority', 'readWorkflowAttemptStagedArtifacts', 'rejectWorkflowAttemptBeforeDispatch', 'snapshotBoundedWorkflowProviderEnvelope'])
 const acquisitionMembers = new Set(['acquire', 'acquireCurrent', 'acquireCurrentWorkflowPackage', 'acquireWorkflowPlan'])
 const fail = message => { throw new TypeError('Contract v2 reachability: ' + message) }
 function dataArray(value) {
@@ -52,6 +54,54 @@ function guardFixtureCall(file, node, name) {
     && enclosingFunction(node) === 'acquireWorkflowContractV2RunLease'
     && ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'input'
 }
+// The new bridge has one value-import owner. Normal named F6 APIs stay public.
+function assertR2BridgeOwnership(rows) {
+  const bridge = 'invokeBoundWorkflowProviderDispatch'
+  for (const row of rows) {
+    const tree = ts.createSourceFile(row.path, row.text, ts.ScriptTarget.Latest, true)
+    if (tree.parseDiagnostics.length) fail('source syntax is invalid: ' + row.path)
+    function inspect(node) {
+      let moduleName, typeOnly = false, selected
+      if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+        moduleName = node.moduleSpecifier.text
+        const clause = node.importClause
+        typeOnly = node.isTypeOnly || clause?.isTypeOnly
+        const binding = ts.isImportDeclaration(node) ? clause?.namedBindings : node.exportClause
+        if (binding && (ts.isNamedImports(binding) || ts.isNamedExports(binding))) selected = binding.elements.filter(e => !e.isTypeOnly).map(e => (e.propertyName ?? e.name).text)
+        if (clause?.name || (clause?.namedBindings && ts.isNamespaceImport(clause.namedBindings))) selected = undefined
+        // A side-effect-only import does not hand out a module namespace.
+        if (ts.isImportDeclaration(node) && !clause) selected = []
+      } else if (ts.isImportEqualsDeclaration(node)) {
+        typeOnly = node.isTypeOnly
+        const reference = node.moduleReference
+        if (ts.isExternalModuleReference(reference) && reference.expression && ts.isStringLiteral(reference.expression)) moduleName = reference.expression.text
+      } else if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === 'require')) && node.arguments.length === 1 && ts.isStringLiteral(node.arguments[0])) {
+        moduleName = node.arguments[0].text
+        const declaration = node.parent
+        if (ts.isIdentifier(node.expression) && ts.isVariableDeclaration(declaration) && ts.isObjectBindingPattern(declaration.name)) {
+          selected = []
+          for (const element of declaration.name.elements) {
+            if (element.dotDotDotToken || element.initializer || !ts.isIdentifier(element.name)) { selected = undefined; break }
+            const key = element.propertyName ?? element.name
+            if (ts.isIdentifier(key) || ts.isStringLiteral(key)) selected.push(key.text)
+            else if (ts.isComputedPropertyName(key) && ts.isStringLiteral(key.expression)) selected.push(key.expression.text)
+            else { selected = undefined; break }
+          }
+        }
+      }
+      if (moduleName?.startsWith('.') && !typeOnly) {
+        const target = path.posix.normalize(path.posix.join(path.posix.dirname(row.path), moduleName)).replace(/\.(?:ts|js)$/, '')
+        if (target === 'src/core/contractV2/providerRegistry') {
+          if (!selected) fail('private bridge namespace authority: ' + row.path)
+          if (selected.includes(bridge) && !(row.path === 'src/core/contractV2/providerInvocation.ts' && ts.isImportDeclaration(node))) fail('private bridge value owner: ' + row.path)
+        }
+      }
+      ts.forEachChild(node, inspect)
+    }
+    inspect(tree)
+  }
+}
+
 function validateContractV2ProductReachability(sources, rootPaths) {
   const rows = dataArray(sources).map(rowData), requested = dataArray(rootPaths).map(sourcePath), all = new Map(), folded = new Set()
   for (const row of rows) {
@@ -59,6 +109,7 @@ function validateContractV2ProductReachability(sources, rootPaths) {
     folded.add(row.path.toLowerCase()); all.set(row.path, row)
     if (frozenOwners[row.path] && crypto.createHash('sha256').update(row.text.replaceAll('\r\n', '\n')).digest('hex') !== frozenOwners[row.path]) fail('frozen P6/P5 owner changed: ' + row.path)
   }
+  assertR2BridgeOwnership(rows)
   if (new Set(requested).size !== requested.length) fail('duplicate product root')
   const visited = new Set()
   function visit(file) {

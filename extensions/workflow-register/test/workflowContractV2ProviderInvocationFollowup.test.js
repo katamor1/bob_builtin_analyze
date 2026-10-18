@@ -4,9 +4,10 @@ const { test } = require('node:test')
 const { fixtureR2, invoke, requireR2, validation } = require('./workflowContractV2ProviderInvocationTestSupport')
 const retry = { mode: 'restart-step', maxAttempts: 2, retainCommittedOutputs: false, allowArtifactReuse: false }
 
+// Scenario: 'all nine bound effect and idempotency combinations have closed frozen ABI'
 test('R2_snapshot_dispatch_and_retry_identity', async t => {
   requireR2()
-  await t.test('all nine bound effect and idempotency combinations have closed frozen ABI', async t => {
+
     for (const sideEffect of ['none', 'workspace-write', 'external']) for (const idempotency of ['idempotent', 'key-required', 'non-idempotent']) {
       let seen; const f = await fixtureR2(t, { sideEffect, idempotency, dispatch(input) { seen = input; return {} } })
       await f.withScope(async () => { assert.equal((await invoke(f, f.createAttempt())).ok, true) })
@@ -19,7 +20,11 @@ test('R2_snapshot_dispatch_and_retry_identity', async t => {
       else assert.deepEqual(Object.keys(seen.idempotency), ['mode'])
     }
   })
-  await t.test('dispose and re-register cannot replace captured dispatch', async t => {
+
+// Scenario: 'dispose and re-register cannot replace captured dispatch'
+test('dispose and re-register cannot replace captured dispatch', async t => {
+  requireR2()
+
     let old = 0, replacement = 0
     const f = await fixtureR2(t, { dispatch() { old++; return {} } })
     f.registration.dispose()
@@ -28,7 +33,11 @@ test('R2_snapshot_dispatch_and_retry_identity', async t => {
     await f.withScope(async () => { assert.equal((await invoke(f, f.createAttempt())).ok, true) })
     assert.equal(old, 1); assert.equal(replacement, 0); assert.equal(f.counters.dispatch, 1)
   })
-  await t.test('manual retry preserves input digest and runtime key and stops at policy limit', async t => {
+
+// Scenario: 'manual retry preserves input digest and runtime key and stops at policy limit'
+test('manual retry preserves input digest and runtime key and stops at policy limit', async t => {
+  requireR2()
+
     for (const idempotency of ['idempotent', 'key-required']) {
       const inputs = [], f = await fixtureR2(t, { idempotency, resumePolicy: retry, dispatch(input) { inputs.push(input); throw { reason: 'retry' } } })
       await f.withScope(async () => { const attempt = f.createAttempt(); for (let i = 0; i < 2; i++) assert.equal((await invoke(f, attempt, { value: { a: 1 } })).failure, 'provider-error'); await assert.rejects(invoke(f, attempt, { value: { a: 1 } }), TypeError) })
@@ -37,10 +46,13 @@ test('R2_snapshot_dispatch_and_retry_identity', async t => {
     const f = await fixtureR2(t, { idempotency: 'key-required', resumePolicy: retry, dispatch() { throw {} } })
     await f.withScope(async () => { const attempt = f.createAttempt(); await invoke(f, attempt); await assert.rejects(invoke(f, attempt, { value: { changed: true } }), TypeError); assert.equal(f.counters.dispatch, 1) })
   })
-  await t.test('non-idempotent, fail-closed, accepted and invalid error outcomes are terminal', async t => {
+
+// Scenario: 'non-idempotent, fail-closed, accepted and invalid error outcomes are terminal'
+test('non-idempotent, fail-closed, accepted and invalid error outcomes are terminal', async t => {
+  requireR2()
+
     for (const options of [{ idempotency: 'non-idempotent', resumePolicy: retry, dispatch() { throw {} } }, { dispatch() { throw {} } }, { resumePolicy: retry }, { resumePolicy: retry, dispatch() { throw Error('ambiguous') } }]) {
       const f = await fixtureR2(t, options)
       await f.withScope(async () => { const attempt = f.createAttempt(), r = await invoke(f, attempt); if (options.dispatch && !options.idempotency && options.resumePolicy) validation(r, 'WF2_PROVIDER_ERROR_INVALID'); await assert.rejects(invoke(f, attempt), TypeError); assert.equal(f.counters.dispatch, 1) })
     }
   })
-})
