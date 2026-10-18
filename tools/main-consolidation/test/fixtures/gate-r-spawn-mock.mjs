@@ -2,6 +2,7 @@
 import cp from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 import { EventEmitter } from 'node:events';
+import { performance } from 'node:perf_hooks';
 import { PassThrough } from 'node:stream';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +10,14 @@ const config=JSON.parse(readFileSync(process.env.WF2_GATE_R_MOCK_CONFIG));
 const nativeSpawn=cp.spawn;
 const state={kind:'unit-test-process-double',started:[],closed:[],killed:[],active:0,maximumActive:0,scheduledAfterFailure:0,failureSeen:false};
 const save=()=>writeFileSync(config.record,JSON.stringify(state));
+let virtualMs=0,queued=false;const pending=[];
+if(config.mode==='weighted')Object.defineProperty(performance,'now',{configurable:true,value:()=>virtualMs});
+function scheduleVirtual(complete,family){
+ const duration=family.testPath.endsWith('/workflowContractV2RunProvenance.test.js')?105000:family.testPath.endsWith('/workflowContractV2ProviderInvocationHardening.test.js')?40000:3000;
+ pending.push({at:virtualMs+duration,complete});
+ const flush=()=>{queued=false;if(!pending.length)return;pending.sort((a,b)=>a.at-b.at);const task=pending.shift();virtualMs=task.at;state.virtualMs=virtualMs;task.complete();if(pending.length&&!queued){queued=true;setImmediate(flush);}};
+ if(!queued){queued=true;setImmediate(flush);}
+}
 const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
 function tap(family){
  const name=family.requiredCaseNames[0];let marker='';
@@ -33,6 +42,7 @@ cp.spawn=function(executable,args,options){
  const close=(code,signal)=>{if(settled)return;settled=true;clearTimeout(timer);state.active--;state.closed.push(family.sourceItemId);child.stdout.end();child.stderr.end();save();queueMicrotask(()=>child.emit('close',code,signal));};
  child.kill=()=>{if(!settled)state.killed.push(family.sourceItemId);close(null,'SIGTERM');return true;};
  const complete=()=>{
+  if(config.mode==='tree-failure'&&index>1){timer=setTimeout(complete,10);return;}
   if(index===0&&config.mode==='tree-failure'){
    if(!existsSync(config.tree)){timer=setTimeout(complete,10);return;}
    state.failureSeen=true;save();close(1,null);return;
@@ -40,7 +50,7 @@ cp.spawn=function(executable,args,options){
   if(index===0&&config.mode==='failure'){state.failureSeen=true;save();close(1,null);return;}
   if(index===0&&config.mode==='overflow'){state.failureSeen=true;save();child.stdout.write(Buffer.alloc(1048577,88));return;}
   child.stdout.write(tap(family));close(0,null);
- };timer=setTimeout(complete,index===0&&config.mode!=='success'?1:30);
+ };if(config.mode==='weighted')scheduleVirtual(complete,family);else timer=setTimeout(complete,index===0&&config.mode!=='success'?1:30);
  return child;
 };
 syncBuiltinESMExports();

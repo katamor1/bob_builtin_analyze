@@ -1,0 +1,61 @@
+{
+  "schema_version": "workflow-contributions/v1",
+  "owner": {
+    "id": "local.bob-bazaar-review",
+    "version": "0.3.0"
+  },
+  "registry_api": {
+    "min": "provider-registry/v1",
+    "max": "provider-registry/v1"
+  },
+  "action_providers": [
+    {
+      "id": "bobBazaar.openReviewGui",
+      "contract_version": "bobBazaar.openReviewGui/v1"
+    },
+    {
+      "id": "bobBazaar.collectReviewContext",
+      "contract_version": "bobBazaar.collectReviewContext/v1"
+    },
+    {
+      "id": "bobBazaar.loadReviewRules",
+      "contract_version": "bobBazaar.loadReviewRules/v1"
+    },
+    {
+      "id": "bobBazaar.captureReviewResult",
+      "contract_version": "bobBazaar.captureReviewResult/v1"
+    },
+    {
+      "id": "bobBazaar.openRuleAuthoringGui",
+      "contract_version": "bobBazaar.openRuleAuthoringGui/v1"
+    },
+    {
+      "id": "bobBazaar.loadRuleSourceIndex",
+      "contract_version": "bobBazaar.loadRuleSourceIndex/v1"
+    },
+    {
+      "id": "bobBazaar.captureRuleEvidenceSelection",
+      "contract_version": "bobBazaar.captureRuleEvidenceSelection/v1"
+    },
+    {
+      "id": "bobBazaar.loadSelectedRuleEvidence",
+      "contract_version": "bobBazaar.loadSelectedRuleEvidence/v1"
+    },
+    {
+      "id": "bobBazaar.captureRuleProposal",
+      "contract_version": "bobBazaar.captureRuleProposal/v1"
+    },
+    {
+      "id": "bobBazaar.openRuleProposalTriageGui",
+      "contract_version": "bobBazaar.openRuleProposalTriageGui/v1"
+    },
+    {
+      "id": "bobBazaar.verifyRuleAuthoringApply",
+      "contract_version": "bobBazaar.verifyRuleAuthoringApply/v1"
+    }
+  ],
+  "preflight_checks": [],
+  "result_sinks": [],
+  "workflow_templates": [],
+  "schemas": []
+}

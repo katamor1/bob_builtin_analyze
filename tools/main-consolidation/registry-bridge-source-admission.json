@@ -1,0 +1,93 @@
+{
+  "authority": "candidate_source_only",
+  "baseFilesSha256": "44557aa00c8d4e846afac1b4bf286851d66a7594fe0360b9b9858cc8226e1b46",
+  "baseMainSha": "88de3a67aedf5c8d1b3ee2ea3226a973703ebaf0",
+  "baseTreeSha": "a82b99376f24e21113a127921a07c6efd159865f",
+  "capabilityId": "REG-BRIDGE-OWNER-VERSION-LIFECYCLE",
+  "deltas": [
+    {
+      "afterBlobSha": "d77b923a82c58ea9712585861f7148223e6ebb10",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/contracts/workflow-contributions.json",
+      "sourceItemIds": [
+        "source-71443e2d19d7a40e05e396e8"
+      ]
+    },
+    {
+      "afterBlobSha": "75317079b583e027d2fbdde804d6ceee1d2b6dbb",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/contracts/workflow-contributions.json",
+      "sourceItemIds": [
+        "source-2cd5d697cee371e3948b8f33"
+      ]
+    },
+    {
+      "afterBlobSha": "d625d20db939e336975c078516424e6110daae10",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/contracts/workflow-contributions.json",
+      "sourceItemIds": [
+        "source-79bd38ef5563e7b3aec53fd6"
+      ]
+    },
+    {
+      "afterBlobSha": "aa70c9bf73116d8f6337496599547147cf8b0793",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/schema/workflow-contributions.v1.schema.json",
+      "sourceItemIds": [
+        "source-06c5f2cc5db5e4f92b0cf2cc"
+      ]
+    },
+    {
+      "afterBlobSha": "59853b7dea4d5284d959ee6447a1b9a112d27d93",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/core/contributionManifest.ts",
+      "sourceItemIds": [
+        "source-700d79ad28282566c4a56ca3"
+      ]
+    },
+    {
+      "afterBlobSha": "cb668014b59e3ff3a2eddf99b8f2f12407056e67",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/core/contributionRegistration.ts",
+      "sourceItemIds": [
+        "source-888302701c275d7a8c7fb34c"
+      ]
+    },
+    {
+      "afterBlobSha": "a1ff9ea3085544a5b27d6adce093ef6b0437e20c",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/contributionManifest.test.js",
+      "sourceItemIds": [
+        "source-fb04528e9e231cf695440dfb"
+      ]
+    },
+    {
+      "afterBlobSha": "967eb159f1350bb1e10e539a690660f7a7e2815a",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/contributionRegistration.test.js",
+      "sourceItemIds": [
+        "source-c357a71f441254a3b0893e6a"
+      ]
+    },
+    {
+      "afterBlobSha": "e2b4baa9bf4419042b79d7fa2d71369647344c29",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/contributionTestSupport.js",
+      "sourceItemIds": [
+        "source-a3fd41a350be7f1b0dea1bc7"
+      ]
+    }
+  ],
+  "gateRBaseAdmissionSha256": "156633d3e71cbf13ea8d081f4aa4e3bcf984208a7705ed2eaf83578896098bdc",
+  "runtimeActivation": false,
+  "schemaVersion": "workflow-registry-bridge-source-admission/v1"
+}

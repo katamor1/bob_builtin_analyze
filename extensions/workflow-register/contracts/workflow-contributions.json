@@ -1,0 +1,47 @@
+{
+  "schema_version": "workflow-contributions/v1",
+  "owner": {
+    "id": "local.workflow-register",
+    "version": "0.1.0"
+  },
+  "registry_api": {
+    "min": "provider-registry/v1",
+    "max": "provider-registry/v1"
+  },
+  "action_providers": [
+    {
+      "id": "workflowRegister.runMechanicalChecks",
+      "contract_version": "workflow-register.run-mechanical-checks/v1"
+    },
+    {
+      "id": "vscode.executeCommand",
+      "contract_version": "workflow-register.vscode-execute-command/v1"
+    }
+  ],
+  "preflight_checks": [
+    {
+      "id": "workspaceOpen",
+      "contract_version": "workflow-register.workspace-open/v1"
+    },
+    {
+      "id": "bobWorkspaceInitialized",
+      "contract_version": "workflow-register.bob-workspace-initialized/v1"
+    },
+    {
+      "id": "bazaarRepository",
+      "contract_version": "workflow-register.bazaar-repository/v1"
+    }
+  ],
+  "result_sinks": [
+    {
+      "type": "command",
+      "contract_version": "workflow-register.command-result-sink/v1"
+    },
+    {
+      "type": "file",
+      "contract_version": "workflow-register.file-result-sink/v1"
+    }
+  ],
+  "workflow_templates": [],
+  "schemas": []
+}
