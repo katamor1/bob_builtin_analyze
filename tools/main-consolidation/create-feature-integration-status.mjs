@@ -14,10 +14,11 @@ const P7_COMPLETION=fileURLToPath(new URL('../../docs/release-evidence/wf2-p7-co
 const GATE_P_COMPLETION=fileURLToPath(new URL('../../docs/release-evidence/wf2-gate-p-completion-2026-10-11.json',import.meta.url))
 const GATE_R_COMPLETION=fileURLToPath(new URL('../../docs/release-evidence/wf2-gate-r-completion-2026-10-12.json',import.meta.url))
 const R1_COMPLETION=fileURLToPath(new URL('../../docs/release-evidence/wf2-r1-completion-2026-10-17.json',import.meta.url))
+const R2_COMPLETION=fileURLToPath(new URL('../../docs/release-evidence/wf2-r2-completion-2026-10-18.json',import.meta.url))
 const OUTPUT=fileURLToPath(new URL('../../docs/release-evidence/feature-integration-status.json',import.meta.url))
 export async function runGenerator(argv,{readFile:readInput,writeStdout}) {
  const {mode}=parseArguments(argv)
- const inputs={programIndex:buildProgramIndex(),ledger:parseCanonicalArtifact(await readInput(LEDGER)),completionObservations:[parseCanonicalArtifact(await readInput(COMPLETION)),parseCanonicalArtifact(await readInput(WAVE0B_COMPLETION)),parseCanonicalArtifact(await readInput(P4_COMPLETION)),parseCanonicalArtifact(await readInput(P5_COMPLETION)),parseCanonicalArtifact(await readInput(P6_COMPLETION)),parseCanonicalArtifact(await readInput(P7_COMPLETION)),parseCanonicalArtifact(await readInput(GATE_P_COMPLETION)),parseCanonicalArtifact(await readInput(GATE_R_COMPLETION)),parseCanonicalArtifact(await readInput(R1_COMPLETION))]}
+ const inputs={programIndex:buildProgramIndex(),ledger:parseCanonicalArtifact(await readInput(LEDGER)),completionObservations:[parseCanonicalArtifact(await readInput(COMPLETION)),parseCanonicalArtifact(await readInput(WAVE0B_COMPLETION)),parseCanonicalArtifact(await readInput(P4_COMPLETION)),parseCanonicalArtifact(await readInput(P5_COMPLETION)),parseCanonicalArtifact(await readInput(P6_COMPLETION)),parseCanonicalArtifact(await readInput(P7_COMPLETION)),parseCanonicalArtifact(await readInput(GATE_P_COMPLETION)),parseCanonicalArtifact(await readInput(GATE_R_COMPLETION)),parseCanonicalArtifact(await readInput(R1_COMPLETION)),parseCanonicalArtifact(await readInput(R2_COMPLETION))]}
  const bytes=renderIntegrationStatus(inputs)
  if(mode==='print') return writeStdout(bytes)
  if(!Buffer.from(await readInput(OUTPUT)).equals(bytes)) throw new Error('integration status drift')

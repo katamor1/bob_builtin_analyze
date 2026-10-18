@@ -40,3 +40,6 @@ docs/release-evidence/wf2-gate-r-completion-2026-10-12.json text eol=lf
 tools/main-consolidation/gate-r-main-admission.json text eol=lf
 docs/release-evidence/schemas/workflow-gate-r-main-admission.schema.json text eol=lf
 docs/release-evidence/wf2-r1-completion-2026-10-17.json text eol=lf
+
+# R2 completion recovery uses exact canonical LF bytes.
+docs/release-evidence/wf2-r2-completion-2026-10-18.json text eol=lf
