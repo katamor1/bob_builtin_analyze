@@ -100,3 +100,11 @@ require('node:test').test('R2 direct dependency compaction retains independent A
  assert.notEqual(signature('const result=1;'),signature('const result=2;'));
  for(const name of ['providerRegistry','compiledPlan','jsonSchemaCatalog','jsonSchema','jsonValue','canonicalJson']){const original=fs.readFileSync(path.join(__dirname,'../out/core/contractV2',name+'.js'),'utf8'),compact=compactManifestModule(original);assert.equal(signature(compact),signature(original),name);}
 });
+
+require('node:test').test('approved R2 amendment retains fourteen independent AST signatures',()=>{
+ const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),ts=require('typescript');
+ const {compactManifestModule}=require('../scripts/lib/compact-manifest-module');
+ const signature=code=>{const source=ts.createSourceFile('subject.js',code,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);assert.equal(source.parseDiagnostics.length,0);const visit=node=>{const children=node.getChildren(source);return[node.kind,children.length?children.map(visit):node.getText(source)]};return JSON.stringify(visit(source))};
+ assert.notEqual(signature('const result=1;'),signature('const result=2;'));
+ for(const name of ["packageShape","predicate","diagnostics","bobProfile","compilerWorkflow","packageLoaderInput","jsonSchemaRole","yamlDocument","compiler","compilerFiles","packageLoaderSnapshot","packageFileSystemNode","packageLoaderIo","workflowLockSnapshotUtilities"]){const original=fs.readFileSync(path.join(__dirname,'../out/core/contractV2',name+'.js'),'utf8'),compact=compactManifestModule(original);assert.equal(signature(compact),signature(original),name);}
+});

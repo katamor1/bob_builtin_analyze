@@ -24,7 +24,21 @@ const COMPACT_MODULES = new Set([
   "extension/out/core/contractV2/jsonSchemaCatalog.js",
   "extension/out/core/contractV2/jsonSchema.js",
   "extension/out/core/contractV2/jsonValue.js",
-  "extension/out/core/contractV2/canonicalJson.js"
+  "extension/out/core/contractV2/canonicalJson.js",
+  "extension/out/core/contractV2/packageShape.js",
+  "extension/out/core/contractV2/predicate.js",
+  "extension/out/core/contractV2/diagnostics.js",
+  "extension/out/core/contractV2/bobProfile.js",
+  "extension/out/core/contractV2/compilerWorkflow.js",
+  "extension/out/core/contractV2/packageLoaderInput.js",
+  "extension/out/core/contractV2/jsonSchemaRole.js",
+  "extension/out/core/contractV2/yamlDocument.js",
+  "extension/out/core/contractV2/compiler.js",
+  "extension/out/core/contractV2/compilerFiles.js",
+  "extension/out/core/contractV2/packageLoaderSnapshot.js",
+  "extension/out/core/contractV2/packageFileSystemNode.js",
+  "extension/out/core/contractV2/packageLoaderIo.js",
+  "extension/out/core/contractV2/workflowLockSnapshotUtilities.js"
 ])
 const MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024

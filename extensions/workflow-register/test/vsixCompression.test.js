@@ -34,3 +34,14 @@ test('R2 compaction changes exactly nine literal modules and preserves lookalike
  for(const name of targets){const b=before.find(r=>r.name===name),a=after.find(r=>r.name===name);assert.notEqual(a.sha256,b.sha256,name+' must compact');assert.equal(a.sha256,expected,name);for(const key of ['mode','mtime','date'])assert.equal(a[key],b[key]);}
  for(const row of before.filter(r=>!targets.includes(r.name)))assert.deepEqual(after.find(r=>r.name===row.name),row);
 });
+
+test('approved R2 amendment compacts exactly fourteen additional literal modules and preserves lookalike payloads',async t=>{
+ const {compactManifestModule}=require('../scripts/lib/compact-manifest-module');
+ const targets=["packageShape","predicate","diagnostics","bobProfile","compilerWorkflow","packageLoaderInput","jsonSchemaRole","yamlDocument","compiler","compilerFiles","packageLoaderSnapshot","packageFileSystemNode","packageLoaderIo","workflowLockSnapshotUtilities"].map(n=>'extension/out/core/contractV2/'+n+'.js');
+ const root=setup(t),code=['// retained semantics','"use strict";','const identity = (value) => { return value + 1; };','module.exports = { identity };',''].join(String.fromCharCode(10));
+ const zip=new yazl.ZipFile();for(const name of [...targets,...targets.map(n=>n+'.backup')])zip.addBuffer(Buffer.from(code),name,{compressionLevel:1,mtime:new Date('2026-01-01'),mode:0o100644});zip.addBuffer(Buffer.from('{}'),'extension/package.json',{mtime:new Date('2026-01-01')});zip.end();
+ const parts=[];await new Promise((resolve,reject)=>zip.outputStream.on('data',b=>parts.push(b)).on('end',resolve).on('error',reject));const file=path.join(root,'test-extension-1.0.0.vsix');fs.writeFileSync(file,Buffer.concat(parts));
+ const before=await read(file);assert.equal(run(root).status,0);const after=await read(file),expected=hash(Buffer.from(compactManifestModule(code),'utf8'));
+ for(const name of targets){const b=before.find(r=>r.name===name),a=after.find(r=>r.name===name);assert.notEqual(a.sha256,b.sha256,name+' must compact');assert.equal(a.sha256,expected,name);for(const key of ['mode','mtime','date'])assert.equal(a[key],b[key]);}
+ for(const row of before.filter(r=>!targets.includes(r.name)))assert.deepEqual(after.find(r=>r.name===row.name),row);
+});
