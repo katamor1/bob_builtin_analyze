@@ -1,6 +1,6 @@
 import {gateRInputData,gateRCanonicalJson,gateRDigest,gateRPathRows} from './gateRData.mjs';
 const fail=reason=>{throw new TypeError('Registry bridge source admission: '+reason)};
-export const REGISTRY_BRIDGE_SOURCE_ADMISSION_SHA256='11d57bd1b3a1938439474cd2eb701173e4691b30addcf2271465f0ef12255b53';
+export const REGISTRY_BRIDGE_SOURCE_ADMISSION_SHA256='e96c50e67c9cab04d140e3b0d0290dccaa38e95fba0753be061748fc7157f940';
 const BASE_FILES_SHA256='44557aa00c8d4e846afac1b4bf286851d66a7594fe0360b9b9858cc8226e1b46';
 const admitted=[
   {
@@ -22,9 +22,39 @@ const admitted=[
     ]
   },
   {
+    "path": "extensions/workflow-register/package.json",
+    "sourceItemIds": [
+      "source-888302701c275d7a8c7fb34c"
+    ]
+  },
+  {
     "path": "extensions/workflow-register/schema/workflow-contributions.v1.schema.json",
     "sourceItemIds": [
       "source-06c5f2cc5db5e4f92b0cf2cc"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/scripts/recompress-vsix.js",
+    "sourceItemIds": [
+      "source-888302701c275d7a8c7fb34c"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/api/providerRegistryApi.ts",
+    "sourceItemIds": [
+      "source-05dcdabc25077b727fa3858a"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/core/actionRegistry.ts",
+    "sourceItemIds": [
+      "source-88604e6280fac57594af0b14"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/core/contractV2/providerRegistry.ts",
+    "sourceItemIds": [
+      "source-888302701c275d7a8c7fb34c"
     ]
   },
   {
@@ -52,9 +82,51 @@ const admitted=[
     ]
   },
   {
+    "path": "extensions/workflow-register/test/contributionRegistry.test.js",
+    "sourceItemIds": [
+      "source-c357a71f441254a3b0893e6a"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/contributionRegistryTestSupport.js",
+    "sourceItemIds": [
+      "source-c357a71f441254a3b0893e6a"
+    ]
+  },
+  {
     "path": "extensions/workflow-register/test/contributionTestSupport.js",
     "sourceItemIds": [
       "source-a3fd41a350be7f1b0dea1bc7"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/fixtures/provider-registry-api/consumer.ts",
+    "sourceItemIds": [
+      "source-68e935618e8909d8f47822a1"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/fixtures/provider-registry-api/tsconfig.json",
+    "sourceItemIds": [
+      "source-68e935618e8909d8f47822a1"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/providerRegistryApi.test.js",
+    "sourceItemIds": [
+      "source-68e935618e8909d8f47822a1"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/providerRegistryOwnership.test.js",
+    "sourceItemIds": [
+      "source-dcc9d121869659f63332ad3a"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/vsixCompression.test.js",
+    "sourceItemIds": [
+      "source-c357a71f441254a3b0893e6a"
     ]
   }
 ];

@@ -33,12 +33,57 @@
       ]
     },
     {
+      "afterBlobSha": "cd7dfc8d2da94afa3177f51f33393ffa8f99eb1d",
+      "beforeBlobSha": "7435ec3f1373cd386eba11524d228563e60dfc92",
+      "mode": "100644",
+      "path": "extensions/workflow-register/package.json",
+      "sourceItemIds": [
+        "source-888302701c275d7a8c7fb34c"
+      ]
+    },
+    {
       "afterBlobSha": "aa70c9bf73116d8f6337496599547147cf8b0793",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "extensions/workflow-register/schema/workflow-contributions.v1.schema.json",
       "sourceItemIds": [
         "source-06c5f2cc5db5e4f92b0cf2cc"
+      ]
+    },
+    {
+      "afterBlobSha": "b314f556d958f1911c78adcedde25d72544c8026",
+      "beforeBlobSha": "f4e2d1dada7cefbf1527285a5259c1c7751a58da",
+      "mode": "100644",
+      "path": "extensions/workflow-register/scripts/recompress-vsix.js",
+      "sourceItemIds": [
+        "source-888302701c275d7a8c7fb34c"
+      ]
+    },
+    {
+      "afterBlobSha": "6ebe21d4f8d553809db299479bcba423b52729c9",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/api/providerRegistryApi.ts",
+      "sourceItemIds": [
+        "source-05dcdabc25077b727fa3858a"
+      ]
+    },
+    {
+      "afterBlobSha": "b68626381793456044e9a773d0cb686a4acf59a5",
+      "beforeBlobSha": "2406ef7d0053e7723accd51f4cfbc2771abd5057",
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/core/actionRegistry.ts",
+      "sourceItemIds": [
+        "source-88604e6280fac57594af0b14"
+      ]
+    },
+    {
+      "afterBlobSha": "bf5e674d0c144f40494af032ff1f0dfe0fac3c90",
+      "beforeBlobSha": "19cc9f1c9af56c1697e9deb1dea9e10f877bd07e",
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/core/contractV2/providerRegistry.ts",
+      "sourceItemIds": [
+        "source-888302701c275d7a8c7fb34c"
       ]
     },
     {
@@ -78,12 +123,75 @@
       ]
     },
     {
+      "afterBlobSha": "6975eb5beaba22f5b34e05382c2b3528ac8be061",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/contributionRegistry.test.js",
+      "sourceItemIds": [
+        "source-c357a71f441254a3b0893e6a"
+      ]
+    },
+    {
+      "afterBlobSha": "4d65a77100e63b50ce0c30121fba120116e43455",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/contributionRegistryTestSupport.js",
+      "sourceItemIds": [
+        "source-c357a71f441254a3b0893e6a"
+      ]
+    },
+    {
       "afterBlobSha": "e2b4baa9bf4419042b79d7fa2d71369647344c29",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "extensions/workflow-register/test/contributionTestSupport.js",
       "sourceItemIds": [
         "source-a3fd41a350be7f1b0dea1bc7"
+      ]
+    },
+    {
+      "afterBlobSha": "7e1cf1b4edb93c5df2e1bd8361298a84963a46b1",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/fixtures/provider-registry-api/consumer.ts",
+      "sourceItemIds": [
+        "source-68e935618e8909d8f47822a1"
+      ]
+    },
+    {
+      "afterBlobSha": "6d1235d0ea1c0b98b05e3c840e85a39b9b35d50d",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/fixtures/provider-registry-api/tsconfig.json",
+      "sourceItemIds": [
+        "source-68e935618e8909d8f47822a1"
+      ]
+    },
+    {
+      "afterBlobSha": "99c04ccec15182a0f0b61a0087ffe3af8e455e78",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/providerRegistryApi.test.js",
+      "sourceItemIds": [
+        "source-68e935618e8909d8f47822a1"
+      ]
+    },
+    {
+      "afterBlobSha": "5df2b152cb773c1fcde222c3b4a25201675087f3",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/providerRegistryOwnership.test.js",
+      "sourceItemIds": [
+        "source-dcc9d121869659f63332ad3a"
+      ]
+    },
+    {
+      "afterBlobSha": "1b86f651026169c884424b5b837e2f401b477398",
+      "beforeBlobSha": "146bf1204aa63f0976b455df01a4e63aea7df2f7",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/vsixCompression.test.js",
+      "sourceItemIds": [
+        "source-c357a71f441254a3b0893e6a"
       ]
     }
   ],

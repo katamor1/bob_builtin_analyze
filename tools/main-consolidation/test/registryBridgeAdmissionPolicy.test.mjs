@@ -6,9 +6,11 @@ let policy={};
 try { policy=await import('../registryBridgeAdmissionPolicy.mjs'); } catch(error) { if(error.code!=='ERR_MODULE_NOT_FOUND')throw error; }
 function admission(){assert.equal(typeof policy.applyRegistryBridgeSourceAdmission,'function','closed bridge candidate admission is required');return JSON.parse(readFileSync(new URL('../registry-bridge-source-admission.json',import.meta.url)));}
 const base=()=>gateRExpectedMainFiles();
-test('bridge admission adds only the exact nine Task1 source and shipping files',()=>{
- const b=base(),out=policy.applyRegistryBridgeSourceAdmission?.(admission(),b);assert.equal(out.length,b.length+9);
- for(const row of b)assert.deepEqual(out.find(x=>x.path===row.path),row);
+test('bridge admission adds only the exact Task1 and Task2 source delta without other baseline drift',()=>{
+ const b=base(),out=policy.applyRegistryBridgeSourceAdmission?.(admission(),b);assert.equal(out.length,b.length+16);
+ const deltas=new Map(admission().deltas.map(row=>[row.path,row]));assert.equal(deltas.size,21);
+ for(const row of b){const change=deltas.get(row.path);assert.deepEqual(out.find(x=>x.path===row.path),change?{path:row.path,mode:row.mode,blobSha:change.afterBlobSha}:row);}
+ assert.deepEqual(admission().deltas.filter(row=>row.beforeBlobSha!==null).map(row=>row.path),['extensions/workflow-register/package.json','extensions/workflow-register/scripts/recompress-vsix.js','extensions/workflow-register/src/core/actionRegistry.ts','extensions/workflow-register/src/core/contractV2/providerRegistry.ts','extensions/workflow-register/test/vsixCompression.test.js']);
  assert.equal(readGateRMainAdmission().capabilityId,'WF2-R2-INVOKE');
  assert.equal(admission().runtimeActivation,false);assert.equal(admission().authority,'candidate_source_only');
 });
@@ -26,3 +28,5 @@ test('bridge admission rejects getters and proxies without invoking their behavi
  assert.throws(()=>policy.applyRegistryBridgeSourceAdmission(a,base()),TypeError);
  assert.throws(()=>policy.applyRegistryBridgeSourceAdmission(new Proxy({}, {ownKeys(){calls++;throw Error('SECRET')}}),base()),TypeError);assert.equal(calls,0);
 });
+
+test('bridge admission reads actual on-disk canonical bytes',()=>{const bytes=readFileSync(new URL('../registry-bridge-source-admission.json',import.meta.url));assert.equal(policy.applyRegistryBridgeSourceAdmission(bytes,base()).length,base().length+16);});

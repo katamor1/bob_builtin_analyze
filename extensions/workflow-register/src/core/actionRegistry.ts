@@ -2,21 +2,19 @@ import { ActionExecutionInput, ActionExecutionResult } from "./model"
 import { requireWorkspaceTrust, type WorkspaceTrustCheck } from "./workspaceTrust"
 import { createMechanicalChecksActionProvider } from "./mechanicalChecks/actionProvider"
 import type { ActionProvider, ActionProviderRegistration } from "./actionTypes"
+import type { AgentProvider } from "./model"
+import type { InstalledContributionOwner } from "./contributionManifest"
+import { prepareContributionSet, type ContributionRegistration, type SinkHandler } from "./contributionRegistration"
 import {
   WorkflowProviderRegistry,
   type WorkflowProviderCatalog,
   type WorkflowProviderRegistration,
-  type WorkflowProviderRegistrationInput
+  type WorkflowProviderRegistrationInput,
+  type WorkflowProviderRegistryOptions, type ContributionRegistrySnapshot, type ContributionRuntimeResolver
 } from "./contractV2/providerRegistry"
 
 export type { ActionProvider, ActionProviderRegistration } from "./actionTypes"
 export type { WorkflowProviderRegistration, WorkflowProviderRegistrationInput } from "./contractV2/providerRegistry"
-
-interface RegisteredActionProvider {
-  provider: ActionProvider
-  sourceId: string
-  token: symbol
-}
 
 const registerWorkflowProviderCaptured = Function.prototype.call.bind(WorkflowProviderRegistry.prototype.register) as (
   registry: WorkflowProviderRegistry, input: WorkflowProviderRegistrationInput
@@ -25,12 +23,25 @@ const snapshotWorkflowProviderCaptured = Function.prototype.call.bind(WorkflowPr
   registry: WorkflowProviderRegistry
 ) => WorkflowProviderCatalog
 
-const DEFAULT_PROVIDER_SOURCE_ID = "anonymous"
 const WORKFLOW_REGISTER_PROVIDER_SOURCE_ID = "local.workflow-register"
 
 export class ActionRegistry {
-  private readonly providers = new Map<string, RegisteredActionProvider>()
-  private readonly workflowProviders = new WorkflowProviderRegistry()
+  private readonly workflowProviders: WorkflowProviderRegistry
+
+  constructor(options: WorkflowProviderRegistryOptions = {}) {
+    this.workflowProviders = new WorkflowProviderRegistry(options)
+  }
+
+  registerContributionSet(manifest: unknown, installed: InstalledContributionOwner, handlers: unknown): ContributionRegistration {
+    return this.workflowProviders.registerContributionSet(prepareContributionSet(manifest, installed, handlers))
+  }
+  snapshotContributions(): ContributionRegistrySnapshot { return this.workflowProviders.snapshotContributions() }
+  contributionRuntimeResolver(): ContributionRuntimeResolver { return this.workflowProviders.contributionRuntimeResolver() }
+  setLegacyAgent(provider: AgentProvider): void { this.workflowProviders.setLegacyAgent(provider) }
+  getLegacyAgent(): AgentProvider | undefined { return this.workflowProviders.getLegacyAgent() }
+  registerLegacyResultSink(type: string, handler: SinkHandler): void { this.workflowProviders.registerLegacyResultSink(type, handler) }
+  getLegacyResultSink(type: string): SinkHandler | undefined { return this.workflowProviders.getLegacyResultSink(type) }
+  disposeLegacyCompatibility(): void { this.workflowProviders.disposeLegacyCompatibility() }
 
   registerWorkflowProviderContract(
     input: WorkflowProviderRegistrationInput
@@ -43,43 +54,18 @@ export class ActionRegistry {
   }
 
   register(provider: ActionProvider): ActionProviderRegistration {
-    const id = provider.id.trim()
-    if (!id) throw new Error("Action provider id is required.")
-    const sourceId = normalizedSourceId(provider.sourceId)
-    const existing = this.providers.get(id)
-    if (existing) {
-      throw new Error(
-        `Action provider '${id}' is already registered by '${existing.sourceId}' and cannot be replaced by '${sourceId}'.`
-      )
-    }
-
-    const token = Symbol(id)
-    this.providers.set(id, {
-      provider: { ...provider, id, sourceId },
-      sourceId,
-      token
-    })
-
-    let disposed = false
-    return {
-      dispose: () => {
-        if (disposed) return
-        disposed = true
-        const current = this.providers.get(id)
-        if (current?.token === token) this.providers.delete(id)
-      }
-    }
+    return this.workflowProviders.registerLegacyAction(provider)
   }
 
   list(): string[] {
-    return Array.from(this.providers.keys()).sort()
+    return this.workflowProviders.contributionRuntimeResolver().listActionProviderIds()
   }
 
   async execute(providerId: string, input: ActionExecutionInput): Promise<ActionExecutionResult> {
-    const registration = this.providers.get(providerId)
-    if (!registration) return { ok: false, error: `Unsupported action provider: ${providerId}` }
+    const provider = this.workflowProviders.contributionRuntimeResolver().getActionProvider(providerId)
+    if (!provider) return { ok: false, error: `Unsupported action provider: ${providerId}` }
     try {
-      const value = await Promise.resolve(registration.provider.execute(input))
+      const value = await Promise.resolve(provider.execute(input))
       return { ok: true, value }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
@@ -117,10 +103,6 @@ export function createDefaultActionRegistry(options?: DefaultActionRegistryOptio
     })
   }
   return registry
-}
-
-function normalizedSourceId(value: string | undefined): string {
-  return typeof value === "string" && value.trim() ? value.trim() : DEFAULT_PROVIDER_SOURCE_ID
 }
 
 function argumentList(value: unknown): unknown[] {

@@ -1,4 +1,14 @@
 import { types as utilTypes } from "node:util"
+import type { ActionProvider, ActionProviderRegistration } from "../actionTypes"
+import type { AgentProvider } from "../model"
+import {
+  rejectContribution, type ContributionOwner, type FileContribution,
+  type ProviderContribution, type ResultSinkContribution
+} from "../contributionManifest"
+import {
+  readPreparedContributionSet, type PreparedContributionData, type PreparedContributionSet,
+  type ContributionRegistration, type PreflightCheckHandler, type SinkHandler
+} from "../contributionRegistration"
 import {
   compare as compareSemver,
   parse as parseSemver,
@@ -53,6 +63,35 @@ export interface WorkflowProviderCatalogEvidence {
   readonly schemaVersion: "workflow-provider-catalog/v2"
   readonly providers: readonly WorkflowProviderContractEvidence[]
 }
+
+type OwnedMetadata<T> = Readonly<T & { readonly owner: ContributionOwner }>
+export interface ContributionRegistrySnapshot {
+  readonly ownedSetCount: number
+  readonly actionProviders: readonly OwnedMetadata<ProviderContribution>[]
+  readonly preflightChecks: readonly OwnedMetadata<ProviderContribution>[]
+  readonly resultSinks: readonly OwnedMetadata<ResultSinkContribution>[]
+  readonly agentProviders: readonly OwnedMetadata<ProviderContribution>[]
+  readonly workflowTemplates: readonly OwnedMetadata<FileContribution>[]
+  readonly schemas: readonly OwnedMetadata<FileContribution>[]
+}
+export interface ContributionSinkBinding {
+  readonly handler: SinkHandler
+  readonly contractVersion: string
+  readonly ownerToken: object
+}
+export interface ContributionRuntimeResolver {
+  getActionProvider(id: string): ActionProvider | undefined
+  listActionProviderIds(): string[]
+  getPreflightCheck(id: string): PreflightCheckHandler | undefined
+  getResultSinkBinding(type: string): ContributionSinkBinding | undefined
+  getAgentProvider(): AgentProvider | undefined
+}
+export interface WorkflowProviderRegistryOptions {
+  readonly beforeContributionCommit?: (pending: Readonly<{ registration: ContributionRegistration; snapshot: ContributionRegistrySnapshot }>) => void
+  readonly beforeContributionRemove?: (snapshot: ContributionRegistrySnapshot) => void
+}
+interface OwnedContributionSet { readonly data: PreparedContributionData; readonly token: object }
+interface LegacyAction { readonly provider: ActionProvider; readonly token: symbol }
 
 declare const workflowProviderCatalogBrand: unique symbol
 export interface WorkflowProviderCatalog {
@@ -210,8 +249,167 @@ export function invokeBoundWorkflowProviderDispatch(
 
 export class WorkflowProviderRegistry {
   private readonly byId = new MapConstructor<string, Map<string, RegisteredProvider>>()
+  private contributionSets: ReadonlyMap<string, OwnedContributionSet> = new MapConstructor()
+  private readonly legacyActions = new MapConstructor<string, LegacyAction>()
+  private legacyAgent?: AgentProvider
+  private readonly legacySinks = new MapConstructor<string, SinkHandler>()
+  private mutating = false
+  private readonly beforeCommit?: WorkflowProviderRegistryOptions["beforeContributionCommit"]
+  private readonly beforeRemove?: WorkflowProviderRegistryOptions["beforeContributionRemove"]
+
+  constructor(options: WorkflowProviderRegistryOptions = {}) {
+    this.beforeCommit = options.beforeContributionCommit
+    this.beforeRemove = options.beforeContributionRemove
+  }
+
+  private mutate<T>(operation: () => T): T {
+    if (this.mutating) rejectContribution("contribution.registry.reentrant_mutation")
+    this.mutating = true
+    try { return operation() } finally { this.mutating = false }
+  }
+
+  registerContributionSet(prepared: PreparedContributionSet): ContributionRegistration {
+    return this.mutate(() => {
+      const data = readPreparedContributionSet(prepared), owner = data.manifest.owner.id
+      if (this.contributionSets.has(owner)) rejectContribution("contribution.registry.duplicate_owner")
+      const identifiers = (value: PreparedContributionData): string[] => {
+        const m = value.manifest
+        return [...m.action_providers.map(x => x.id), ...m.preflight_checks.map(x => x.id),
+          ...m.result_sinks.map(x => x.type), ...m.workflow_templates.map(x => x.id), ...m.schemas.map(x => x.id),
+          ...(m.agent_provider ? [m.agent_provider.id] : [])]
+      }
+      const occupied = new Set(this.legacyActions.keys())
+      for (const set of this.contributionSets.values()) for (const id of identifiers(set.data)) occupied.add(id)
+      for (const id of identifiers(data)) if (occupied.has(id)) rejectContribution("contribution.registry.duplicate_identifier")
+      if (data.agentProvider && (this.legacyAgent || this.getAtomicAgent())) rejectContribution("contribution.registry.agent_conflict")
+      const token = objectFreeze({}), entry = objectFreeze({ data, token })
+      const next = new MapConstructor(this.contributionSets)
+      next.set(owner, entry)
+      let disposed = false
+      const registration = objectFreeze({ dispose: () => this.mutate(() => {
+        if (disposed) return
+        const current = this.contributionSets.get(owner)
+        if (current?.token !== token) { disposed = true; return }
+        const after = new MapConstructor(this.contributionSets)
+        after.delete(owner)
+        try { this.beforeRemove?.(this.snapshotSets([current])) } catch { rejectContribution("contribution.registry.commit_failed") }
+        this.contributionSets = after
+        disposed = true
+      }) })
+      try { this.beforeCommit?.(objectFreeze({ registration, snapshot: this.snapshotSets(next.values()) })) }
+      catch { rejectContribution("contribution.registry.commit_failed") }
+      this.contributionSets = next
+      return registration
+    })
+  }
+
+  snapshotContributions(): ContributionRegistrySnapshot { return this.snapshotSets(this.contributionSets.values()) }
+
+  private snapshotSets(sets: Iterable<OwnedContributionSet>): ContributionRegistrySnapshot {
+    const actionProviders: OwnedMetadata<ProviderContribution>[] = [], preflightChecks: OwnedMetadata<ProviderContribution>[] = []
+    const resultSinks: OwnedMetadata<ResultSinkContribution>[] = [], agentProviders: OwnedMetadata<ProviderContribution>[] = []
+    const workflowTemplates: OwnedMetadata<FileContribution>[] = [], schemas: OwnedMetadata<FileContribution>[] = []
+    let ownedSetCount = 0
+    for (const { data } of sets) {
+      ownedSetCount++
+      const m = data.manifest, owner = m.owner
+      for (const x of m.action_providers) actionProviders.push(objectFreeze({ ...x, owner }))
+      for (const x of m.preflight_checks) preflightChecks.push(objectFreeze({ ...x, owner }))
+      for (const x of m.result_sinks) resultSinks.push(objectFreeze({ ...x, owner }))
+      if (m.agent_provider) agentProviders.push(objectFreeze({ ...m.agent_provider, owner }))
+      for (const x of m.workflow_templates) workflowTemplates.push(objectFreeze({ ...x, owner }))
+      for (const x of m.schemas) schemas.push(objectFreeze({ ...x, owner }))
+    }
+    return objectFreeze({ ownedSetCount, actionProviders: objectFreeze(actionProviders), preflightChecks: objectFreeze(preflightChecks),
+      resultSinks: objectFreeze(resultSinks), agentProviders: objectFreeze(agentProviders),
+      workflowTemplates: objectFreeze(workflowTemplates), schemas: objectFreeze(schemas) })
+  }
+
+  contributionRuntimeResolver(): ContributionRuntimeResolver {
+    return objectFreeze({
+      getActionProvider: (id: string) => this.getActionProvider(id),
+      listActionProviderIds: () => this.listActionProviderIds(),
+      getPreflightCheck: (id: string) => {
+        for (const { data } of this.contributionSets.values()) {
+          const entry = data.preflightChecks.find(x => x[0] === id)
+          if (entry) return entry[1]
+        }
+        return undefined
+      },
+      getResultSinkBinding: (type: string) => {
+        for (const { data, token } of this.contributionSets.values()) {
+          const handler = data.resultSinks.find(x => x[0] === type)?.[1]
+          const declaration = data.manifest.result_sinks.find(x => x.type === type)
+          if (handler && declaration) return objectFreeze({ handler, contractVersion: declaration.contract_version, ownerToken: token })
+        }
+        return undefined
+      },
+      getAgentProvider: () => this.getAtomicAgent()
+    })
+  }
+
+  private getActionProvider(id: string): ActionProvider | undefined {
+    const legacy = this.legacyActions.get(id)
+    if (legacy) return legacy.provider
+    for (const { data } of this.contributionSets.values()) {
+      const provider = data.actionProviders.find(x => x.id === id)
+      if (provider) return provider
+    }
+    return undefined
+  }
+  private listActionProviderIds(): string[] {
+    const ids = this.listLegacyActions()
+    for (const { data } of this.contributionSets.values()) for (const x of data.actionProviders) ids.push(x.id)
+    return ids.sort()
+  }
+  private getAtomicAgent(): AgentProvider | undefined {
+    for (const { data } of this.contributionSets.values()) if (data.agentProvider) return data.agentProvider
+    return undefined
+  }
+
+  registerLegacyAction(provider: ActionProvider): ActionProviderRegistration {
+    return this.mutate(() => {
+      const id = provider.id.trim()
+      if (!id) throw new Error("Action provider id is required.")
+      const sourceId = typeof provider.sourceId === "string" && provider.sourceId.trim() ? provider.sourceId.trim() : "anonymous"
+      const existing = this.getActionProvider(id)
+      if (existing) throw new Error(`Action provider '${id}' is already registered by '${existing.sourceId}' and cannot be replaced by '${sourceId}'.`)
+      // A V1 action must not occupy any atomic contribution identifier.
+      for (const { data } of this.contributionSets.values()) {
+        const m = data.manifest
+        if (m.preflight_checks.some(x => x.id === id) || m.result_sinks.some(x => x.type === id)
+          || m.agent_provider?.id === id || m.workflow_templates.some(x => x.id === id) || m.schemas.some(x => x.id === id)) rejectContribution("contribution.registry.duplicate_identifier")
+      }
+      const token = SymbolConstructor(id)
+      this.legacyActions.set(id, { provider: { ...provider, id, sourceId }, token })
+      let disposed = false
+      return { dispose: () => this.mutate(() => {
+        if (disposed) return
+        if (this.legacyActions.get(id)?.token === token) this.legacyActions.delete(id)
+        disposed = true
+      }) }
+    })
+  }
+  listLegacyActions(): string[] { return Array.from(this.legacyActions.keys()).sort() }
+  getLegacyAction(id: string): ActionProvider | undefined { return this.legacyActions.get(id)?.provider }
+  setLegacyAgent(provider: AgentProvider): void { this.mutate(() => { this.legacyAgent = provider }) }
+  getLegacyAgent(): AgentProvider | undefined { return this.legacyAgent }
+  registerLegacyResultSink(type: string, handler: SinkHandler): void {
+    this.mutate(() => {
+      if (!type.trim()) throw new Error("Result sink type is required.")
+      this.legacySinks.set(type, handler)
+    })
+  }
+  getLegacyResultSink(type: string): SinkHandler | undefined { return this.legacySinks.get(type) }
+  disposeLegacyCompatibility(): void {
+    this.mutate(() => { this.legacyActions.clear(); this.legacyAgent = undefined; this.legacySinks.clear() })
+  }
 
   register(input: WorkflowProviderRegistrationInput): WorkflowProviderRegistration {
+    return this.mutate(() => this.registerV2(input))
+  }
+
+  private registerV2(input: WorkflowProviderRegistrationInput): WorkflowProviderRegistration {
     const wrapper = snapshotExactOrThrow(input, REGISTRATION_FIELDS, "Workflow provider registration")
     assertId(wrapper.sourceId, "Workflow provider source id")
     const sourceId = wrapper.sourceId as string
@@ -233,7 +431,7 @@ export class WorkflowProviderRegistry {
 
     let disposed = false
     return objectFreeze({
-      dispose: () => {
+      dispose: () => this.mutate(() => {
         if (disposed) return
         disposed = true
         const currentVersions = mapGet(this.byId, validated.evidence.id) as Map<string, RegisteredProvider> | undefined
@@ -245,7 +443,7 @@ export class WorkflowProviderRegistry {
           getMapSize(currentVersions) === 0
           && mapGet(this.byId, validated.evidence.id) === currentVersions
         ) mapDelete(this.byId, validated.evidence.id)
-      }
+      })
     })
   }
 
