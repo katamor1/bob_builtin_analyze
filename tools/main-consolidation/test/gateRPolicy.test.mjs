@@ -10,8 +10,8 @@ test('R1 active suites validate inventory and measured inactive product wiring',
   assert.equal(observation.state, 'ACTIVE_TEST_SUITES_PASSED');
   assert.equal(observation.inventoryValidation, 'PASSED');
   assert.equal(observation.runtimeSuiteState, 'PASSED');
-  assert.equal(observation.runtimeSuitesExecuted, 8);
-  assert.deepEqual(observation.activeCapabilityIds,['WF2-R1-PROVENANCE']);
+  assert.equal(observation.runtimeSuitesExecuted, 15);
+  assert.deepEqual(observation.activeCapabilityIds,['WF2-R1-PROVENANCE','WF2-R2-INVOKE']);
   assert.equal(observation.archiveTestsExecuted, 0);
   assert.equal(observation.providerDispatches, 0);
   assert.equal(observation.bobDispatches, 0);
@@ -38,7 +38,7 @@ const clone = bytes => JSON.parse(bytes);
 const reject = operation => assert.throws(operation, /Gate R|catalog|inventory|active|canonical|baseline|path|object|array|alias|key|identity/i);
 test('valid sealed inventory and R1 manifest are admitted', () => {
   assert.equal(policy.validateGateRInventory(inventoryBytes).state, 'VALID');
-  assert.equal(policy.validateGateRActiveSuite(activeBytes).state, 'VALID_R1');
+  assert.equal(policy.validateGateRActiveSuite(activeBytes).state, 'VALID_R1_R2');
 });
 const mutations = [
  ['missing historical path', i => i.paths.pop()],
@@ -121,7 +121,7 @@ const r1FamilyRows = [
  ['source-ba56f810f0c338c02ff4e864','workflowContractV2RuntimeLeaseScope.test.js','R1_closed_scope_blocks_detached_work'],
  ['source-fde858a48c84d66184d3513a','workflowContractV2RunProvenance.test.js','R1_exact_provenance_and_stale_write_checks']
 ].map(([sourceItemId,name,required])=>({sourceItemId,testPath:'extensions/workflow-register/test/'+name,requiredCaseNames:[required]}));
-test('R1 exact active-eight manifest is admitted without future completion authority',()=>{const active={schemaVersion:'workflow-gate-r-active-suite/v1',authority:'integrated_runtime_only',catalogSha256:policy.GATE_R_CATALOG_SHA256,capabilities:[{capabilityId:'WF2-R1-PROVENANCE',testFamilies:r1FamilyRows}]};assert.equal(policy.validateGateRActiveSuite(active).state,'VALID_R1');});
+test('R1 exact active-eight manifest is admitted without future completion authority',()=>{const active={schemaVersion:'workflow-gate-r-active-suite/v1',authority:'integrated_runtime_only',catalogSha256:policy.GATE_R_CATALOG_SHA256,capabilities:[{capabilityId:'WF2-R1-PROVENANCE',testFamilies:r1FamilyRows}]};assert.throws(()=>policy.validateGateRActiveSuite(active),TypeError);});
 const tap = name => 'TAP version 13\n# Subtest: '+name+'\nok 1 - '+name+'\n  ---\n  duration_ms: 1\n  type: test\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1\n';
 const child = stdout => ({stdout,stderr:'',exitCode:0,signal:null,timedOut:false,outputOverflow:false});
 test('R1 completed required TAP case is genuine success',()=>{assert.equal(typeof policy.validateGateRTestObservation,'function');assert.equal(policy.validateGateRTestObservation(r1FamilyRows[0],child(tap(r1FamilyRows[0].requiredCaseNames[0]))).state,'PASSED');});
@@ -151,3 +151,37 @@ for(const target of ['extensions/workflow-register/test/workflowContractV2GateR.
  const result=spawnSync(process.execPath,['--import',pathToFileURL(preload).href,join(tools,'run-gate-r.mjs')],{cwd:owned,encoding:'utf8',timeout:10000});
  assert.notEqual(result.status,0);assert.match(result.stderr,/active suite requires exact R1/);assert.equal(result.stdout,'');assert.equal(existsSync(scheduled),false);
 });
+
+const r2FamilyRows = [{"sourceItemId":"source-42e52f0142bc1480cba3f8bb","testPath":"extensions/workflow-register/test/workflowContractV2ProviderInvocationReviewCases.test.js","requiredCaseNames":["R2_closed_scope_and_concurrent_attempt_refusal"]},{"sourceItemId":"source-5ec92ed8eb7c664752c179f6","testPath":"extensions/workflow-register/test/workflowContractV2ProviderInvocationArchitecture.test.js","requiredCaseNames":["R2_product_paths_remain_unreachable"]},{"sourceItemId":"source-67e4c888b7aa389e2ebf5135","testPath":"extensions/workflow-register/test/workflowContractV2ProviderInvocationFollowup.test.js","requiredCaseNames":["R2_snapshot_dispatch_and_retry_identity"]},{"sourceItemId":"source-917527dedba80f811bb34bac","testPath":"extensions/workflow-register/test/workflowContractV2ProviderInvocationFailurePrecedence.test.js","requiredCaseNames":["R2_staging_failure_and_settlement_precedence"]},{"sourceItemId":"source-aa64e1c64d51e4da51fd72c7","testPath":"extensions/workflow-register/test/workflowContractV2ProviderInvocationFoundation.test.js","requiredCaseNames":["R2_authentic_retained_run_and_attempt_foundation"]},{"sourceItemId":"source-e9053c4efd76a31cfe133bdb","testPath":"extensions/workflow-register/test/workflowContractV2ProviderInvocation.test.js","requiredCaseNames":["R2_compiled_input_output_error_contract"]},{"sourceItemId":"source-e98cec4ab341f9224f6e2ee0","testPath":"extensions/workflow-register/test/workflowContractV2ProviderInvocationHardening.test.js","requiredCaseNames":["R2_bounded_hostile_values_and_write_sessions"]}];
+const activeR1R2 = () => ({ schemaVersion:'workflow-gate-r-active-suite/v1',authority:'integrated_runtime_only',catalogSha256:policy.GATE_R_CATALOG_SHA256,capabilities:[{capabilityId:'WF2-R1-PROVENANCE',testFamilies:structuredClone(r1FamilyRows)},{capabilityId:'WF2-R2-INVOKE',testFamilies:structuredClone(r2FamilyRows)}] });
+test('R2 exact fifteen-family manifest retains all eight R1 and seven R2 bodies',()=>{
+ assert.equal(policy.validateGateRActiveSuite(activeR1R2()).state,'VALID_R1_R2');
+ for(const cap of [0,1])for(let i=0;i<activeR1R2().capabilities[cap].testFamilies.length;i++){const a=activeR1R2();a.capabilities[cap].testFamilies.splice(i,1);assert.throws(()=>policy.validateGateRActiveSuite(a),TypeError);}
+ for(const capabilityId of ['WF2-R3-ARTIFACT-TX','WF2-R4-EXECUTOR','WF2-R5-BOB','WF2-R6-ARCHIVED']){const a=activeR1R2();a.capabilities.push({capabilityId,testFamilies:[]});assert.throws(()=>policy.validateGateRActiveSuite(a),TypeError);}
+ for(const testPath of ['extensions/workflow-register/test/workflowContractV2ProviderInvocationTestSupport.js','extensions/workflow-register/test/workflowContractV2GateR.test.js','npm test']){const a=activeR1R2();a.capabilities[1].testFamilies[0].testPath=testPath;assert.throws(()=>policy.validateGateRActiveSuite(a),TypeError);}
+});
+test('R2 required child case is executable and inherits the strict TAP refusal contract',()=>{
+ const row=r2FamilyRows[0];assert.equal(policy.validateGateRTestObservation(row,child(tap(row.requiredCaseNames[0]))).state,'PASSED');
+ for(const stdout of ['',tap('helper only'),tap(row.requiredCaseNames[0]).replace('ok 1 - ','not ok 1 - '),tap(row.requiredCaseNames[0]).replace('\n  ---',' # SKIP blocked\n  ---'),tap(row.requiredCaseNames[0])+tap(row.requiredCaseNames[0])])assert.throws(()=>policy.validateGateRTestObservation(row,child(stdout)),TypeError);
+});
+test('R2 cannot narrow the shipping domain to source and test files',()=>{
+ for(const extension of ['workflow-register','bob-bazaar-review','bob-code-consistency-review'])for(const suffix of ['README.md','.vscodeignore','scripts/check-vsix-policy.js']){
+  const files=mainFiles(),target=files.find(row=>row.path==='extensions/'+extension+'/'+suffix);assert.ok(target);target.blobSha='0'.repeat(40);assert.throws(()=>policy.validateGateRRepositoryFiles(files),TypeError);
+ }
+ for(const extension of ['workflow-register','bob-bazaar-review','bob-code-consistency-review']){const files=mainFiles();files.push({path:'extensions/'+extension+'/unexpected.txt',mode:'100644',blobSha:'0'.repeat(40)});files.sort((a,b)=>a.path<b.path?-1:1);assert.throws(()=>policy.validateGateRRepositoryFiles(files),TypeError);}
+});
+const wireSort=v=>Array.isArray(v)?v.map(wireSort):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,wireSort(v[k])])):v;
+const wireText=v=>JSON.stringify(wireSort(v))+'\n';
+const wiring2=()=>({...wiring(),schemaVersion:'workflow-r2-product-wiring/v1'});
+const wireMarker=(version,value)=>'# R'+version+'_PRODUCT_WIRING_BASE64='+Buffer.from(wireText(value)).toString('base64')+'\n';
+test('R2 combined wiring digest binds both decoded real-observation formats',()=>{
+ assert.equal(typeof policy.validateGateRProductWiringOutputs,'function','two separately measured wiring outputs must be bound');
+ const r1=wiring(),r2=wiring2(),result=policy.validateGateRProductWiringOutputs({r1:wireMarker(1,r1),r2:wireMarker(2,r2)});
+ assert.equal(result.counterScope,'contract_v2_product_paths');for(const key of ['v2ProductLeaseAcquisitions','providerDispatches','bobDispatches','v2ProductRunDirectoryCreations','v2ProductArtifactStages'])assert.equal(result[key],0);
+ assert.equal(result.wiringObservationSha256,policy.gateRDigest(Buffer.from(wireText({r1,r2}))));
+});
+for(const [name,mutate]of [
+ ['missing R1',o=>o.r1=''],['missing R2',o=>o.r2=''],['duplicate R1',o=>o.r1+=o.r1],['duplicate R2',o=>o.r2+=o.r2],
+ ['wrong role',o=>o.r2=wireMarker(1,wiring())],['wrong R2 schema',o=>o.r2=wireMarker(2,wiring())],['noncanonical JSON',o=>o.r2='# R2_PRODUCT_WIRING_BASE64='+Buffer.from(JSON.stringify(wiring2())).toString('base64')+'\n'],
+ ['invalid base64',o=>o.r2='# R2_PRODUCT_WIRING_BASE64=not/base64===\n'],['nonzero R2 dispatch',o=>o.r2=wireMarker(2,{...wiring2(),providerDispatches:1})],['nonzero R1 lease',o=>o.r1=wireMarker(1,{...wiring(),v2ProductLeaseAcquisitions:1})],['missing R2 surface',o=>{const v=wiring2();v.observedProductSurfaces.pop();o.r2=wireMarker(2,v)}]
+])test('R2 combined wiring rejects '+name,()=>{assert.equal(typeof policy.validateGateRProductWiringOutputs,'function');const value={r1:wireMarker(1,wiring()),r2:wireMarker(2,wiring2())};mutate(value);assert.throws(()=>policy.validateGateRProductWiringOutputs(value),TypeError);});

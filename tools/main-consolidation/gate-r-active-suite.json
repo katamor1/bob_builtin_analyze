@@ -61,6 +61,60 @@
           "testPath": "extensions/workflow-register/test/workflowContractV2RunProvenance.test.js"
         }
       ]
+    },
+    {
+      "capabilityId": "WF2-R2-INVOKE",
+      "testFamilies": [
+        {
+          "requiredCaseNames": [
+            "R2_closed_scope_and_concurrent_attempt_refusal"
+          ],
+          "sourceItemId": "source-42e52f0142bc1480cba3f8bb",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationReviewCases.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R2_product_paths_remain_unreachable"
+          ],
+          "sourceItemId": "source-5ec92ed8eb7c664752c179f6",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationArchitecture.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R2_snapshot_dispatch_and_retry_identity"
+          ],
+          "sourceItemId": "source-67e4c888b7aa389e2ebf5135",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationFollowup.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R2_staging_failure_and_settlement_precedence"
+          ],
+          "sourceItemId": "source-917527dedba80f811bb34bac",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationFailurePrecedence.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R2_authentic_retained_run_and_attempt_foundation"
+          ],
+          "sourceItemId": "source-aa64e1c64d51e4da51fd72c7",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationFoundation.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R2_compiled_input_output_error_contract"
+          ],
+          "sourceItemId": "source-e9053c4efd76a31cfe133bdb",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocation.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R2_bounded_hostile_values_and_write_sessions"
+          ],
+          "sourceItemId": "source-e98cec4ab341f9224f6e2ee0",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationHardening.test.js"
+        }
+      ]
     }
   ],
   "catalogSha256": "dc215522dfcae4c114740b2411e63a90ded87d2f803a8e946bed47be352881f2",

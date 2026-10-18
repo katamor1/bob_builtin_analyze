@@ -23,6 +23,27 @@
     },
     {
       "requiredCaseNames": [
+        "R2_closed_scope_and_concurrent_attempt_refusal"
+      ],
+      "sourceItemId": "source-42e52f0142bc1480cba3f8bb",
+      "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationReviewCases.test.js"
+    },
+    {
+      "requiredCaseNames": [
+        "R2_product_paths_remain_unreachable"
+      ],
+      "sourceItemId": "source-5ec92ed8eb7c664752c179f6",
+      "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationArchitecture.test.js"
+    },
+    {
+      "requiredCaseNames": [
+        "R2_snapshot_dispatch_and_retry_identity"
+      ],
+      "sourceItemId": "source-67e4c888b7aa389e2ebf5135",
+      "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationFollowup.test.js"
+    },
+    {
+      "requiredCaseNames": [
         "R1_run_only_discriminator_preserves_public_schema"
       ],
       "sourceItemId": "source-718be8379c70ab754a9d7484",
@@ -37,6 +58,13 @@
     },
     {
       "requiredCaseNames": [
+        "R2_staging_failure_and_settlement_precedence"
+      ],
+      "sourceItemId": "source-917527dedba80f811bb34bac",
+      "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationFailurePrecedence.test.js"
+    },
+    {
+      "requiredCaseNames": [
         "R1_terminal_release_follows_durable_hooks"
       ],
       "sourceItemId": "source-a5eabe004258ac7de4b9ebdb",
@@ -44,10 +72,31 @@
     },
     {
       "requiredCaseNames": [
+        "R2_authentic_retained_run_and_attempt_foundation"
+      ],
+      "sourceItemId": "source-aa64e1c64d51e4da51fd72c7",
+      "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationFoundation.test.js"
+    },
+    {
+      "requiredCaseNames": [
         "R1_closed_scope_blocks_detached_work"
       ],
       "sourceItemId": "source-ba56f810f0c338c02ff4e864",
       "testPath": "extensions/workflow-register/test/workflowContractV2RuntimeLeaseScope.test.js"
+    },
+    {
+      "requiredCaseNames": [
+        "R2_compiled_input_output_error_contract"
+      ],
+      "sourceItemId": "source-e9053c4efd76a31cfe133bdb",
+      "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocation.test.js"
+    },
+    {
+      "requiredCaseNames": [
+        "R2_bounded_hostile_values_and_write_sessions"
+      ],
+      "sourceItemId": "source-e98cec4ab341f9224f6e2ee0",
+      "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationHardening.test.js"
     },
     {
       "requiredCaseNames": [
@@ -2501,7 +2550,7 @@
       "path": "extensions/bob-code-consistency-review/tsconfig.json"
     },
     {
-      "blobSha": "1a44bce64a25da2507890b7527629103868eec1f",
+      "blobSha": "3e99f4416c1187c85fb5b7d3990320ca6e62d22f",
       "mode": "100644",
       "path": "extensions/workflow-register/.vscodeignore"
     },
@@ -2816,6 +2865,11 @@
       "path": "extensions/workflow-register/schema/workflow-register.v1.schema.json"
     },
     {
+      "blobSha": "d2b6e8c999979899eb27502cd1ec13c29a31c8a1",
+      "mode": "100644",
+      "path": "extensions/workflow-register/scripts/check-contract-v2-runtime-reachability.js"
+    },
+    {
       "blobSha": "7394440f5188a9647e4def3faf584ef0b85e1bde",
       "mode": "100644",
       "path": "extensions/workflow-register/scripts/check-export-star-policy.js"
@@ -2826,7 +2880,7 @@
       "path": "extensions/workflow-register/scripts/check-import-cycles.js"
     },
     {
-      "blobSha": "de09da752e7c84fd635c8bc40783bb445c4346f7",
+      "blobSha": "5b9b2a6f78768d33259d56bc4338ff84c0cc8def",
       "mode": "100644",
       "path": "extensions/workflow-register/scripts/check-vsix-policy.js"
     },
@@ -2846,7 +2900,7 @@
       "path": "extensions/workflow-register/scripts/lib/workflow-contract-v2-environment.js"
     },
     {
-      "blobSha": "841e179df989061574d0dd185136015ecdda80fc",
+      "blobSha": "262c09aa26b59785436a00f88122da2eb5378b46",
       "mode": "100644",
       "path": "extensions/workflow-register/scripts/recompress-vsix.js"
     },
@@ -3166,7 +3220,7 @@
       "path": "extensions/workflow-register/src/core/contractV2/diagnostics.ts"
     },
     {
-      "blobSha": "7eb4976a534551fca57ec6fcfd612c62bd175241",
+      "blobSha": "1cf8b769733140885f7af889527b633d80a7405c",
       "mode": "100644",
       "path": "extensions/workflow-register/src/core/contractV2/index.ts"
     },
@@ -3256,7 +3310,7 @@
       "path": "extensions/workflow-register/src/core/contractV2/packageShape.ts"
     },
     {
-      "blobSha": "3948750e9f58dac0a77e6d258a9536170d5b4b8b",
+      "blobSha": "fc1fa472c1b0e73a86303797c8e225155eda1af7",
       "mode": "100644",
       "path": "extensions/workflow-register/src/core/contractV2/planLease.ts"
     },
@@ -3284,6 +3338,26 @@
       "blobSha": "3173e057e2f7ae051388eb867e26484a060f4f39",
       "mode": "100644",
       "path": "extensions/workflow-register/src/core/contractV2/providerRegistry.ts"
+    },
+    {
+      "blobSha": "a2baf67a1f6d8fbaa6b5660ecb582411d2212b81",
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/core/contractV2/runLeaseExecutionCoordinator.ts"
+    },
+    {
+      "blobSha": "99332e0f9e7f8bbc63e5ea0bdf6cde88b54d3a48",
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/core/contractV2/runPlanLeaseContext.ts"
+    },
+    {
+      "blobSha": "04293c22078d6baecdd12a079386d2eb8d27feb5",
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/core/contractV2/runPlanProvenance.ts"
+    },
+    {
+      "blobSha": "d6698f2dd30e95b590e6e882c8d3f306b1a85358",
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/core/contractV2/runPlanState.ts"
     },
     {
       "blobSha": "fb156a59270d85f824743a81d61ca83a92bdf442",
@@ -3511,7 +3585,7 @@
       "path": "extensions/workflow-register/src/core/modelProviders.ts"
     },
     {
-      "blobSha": "a9b79d40510c7eacfb0f12b8ea0c59b9e55b96bc",
+      "blobSha": "9350a3160b4c44ea9a0484a57224af9bfce01d76",
       "mode": "100644",
       "path": "extensions/workflow-register/src/core/modelRuntime.ts"
     },
@@ -3606,7 +3680,7 @@
       "path": "extensions/workflow-register/src/core/runDiagnostics.ts"
     },
     {
-      "blobSha": "834a4018f7e9af269a237ab6f18906059ccb90af",
+      "blobSha": "0b8fe64b2970e6e58f4b03fd9b9f2cefad883322",
       "mode": "100644",
       "path": "extensions/workflow-register/src/core/runProvenance.ts"
     },
@@ -3676,7 +3750,7 @@
       "path": "extensions/workflow-register/src/core/runtime/runRetentionService.ts"
     },
     {
-      "blobSha": "8b14cb373d27bb207d43456768cee135c892ecdf",
+      "blobSha": "7ce8ea08beb4e79707469cf305b7ce9a0f73ea36",
       "mode": "100644",
       "path": "extensions/workflow-register/src/core/runtime/runStateCodec.ts"
     },
@@ -3696,7 +3770,7 @@
       "path": "extensions/workflow-register/src/core/runtime/runStatePath.ts"
     },
     {
-      "blobSha": "1f80ae949c884116aaa5019cd11c76576c208ad6",
+      "blobSha": "19bcf32d95157df18874c4cb7e34f872f73d1d44",
       "mode": "100644",
       "path": "extensions/workflow-register/src/core/runtime/runStateStore.ts"
     },
@@ -4181,9 +4255,14 @@
       "path": "extensions/workflow-register/src/workflowContractV2Entrypoint.ts"
     },
     {
-      "blobSha": "2b6dd32e6e67e36d2831f0da6617b2e7b1a19229",
+      "blobSha": "45a6644f19e9bf0046c324a2055299f7373e16ce",
       "mode": "100644",
       "path": "extensions/workflow-register/src/workflowContractV2ExecutionGuard.ts"
+    },
+    {
+      "blobSha": "5a73daa6b60706d4ac20c1cd4efe831950a2c5f1",
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/workflowContractV2LeasedRunStateStore.ts"
     },
     {
       "blobSha": "5166b44dc54de4a53fb3aa63b05359b2f5f39586",
@@ -4196,9 +4275,14 @@
       "path": "extensions/workflow-register/src/workflowContractV2ProviderLifecycle.ts"
     },
     {
-      "blobSha": "820beb77bd74b3f650aaa5366378fa9c383f0359",
+      "blobSha": "a1163a3dad08a112f5fc9fadc6e6974b6fc1f745",
       "mode": "100644",
       "path": "extensions/workflow-register/src/workflowContractV2RunStateStore.ts"
+    },
+    {
+      "blobSha": "890cdf82b18f64c461dcfd134c2a952df2fac4e5",
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/workflowContractV2RuntimeBoundary.ts"
     },
     {
       "blobSha": "ef350518463426c098d2dd3ac9a7f84a43dad1b6",
@@ -4241,7 +4325,7 @@
       "path": "extensions/workflow-register/src/workflowRegistrationService.ts"
     },
     {
-      "blobSha": "d028b7e4f7c71f238ff6f8789e5f1120dd580552",
+      "blobSha": "050d3d560ba048754e52b59b12a30ed071648332",
       "mode": "100644",
       "path": "extensions/workflow-register/src/workflowRunCommands.ts"
     },
@@ -4286,7 +4370,7 @@
       "path": "extensions/workflow-register/test/agentStep.test.js"
     },
     {
-      "blobSha": "9f4ed7c20869a4ef0c230b18b880a2ce9b234530",
+      "blobSha": "d9a6c6a3ae37a01dd6ef5ba882a5cc4674802e85",
       "mode": "100644",
       "path": "extensions/workflow-register/test/architectureContracts.test.js"
     },
@@ -5121,17 +5205,17 @@
       "path": "extensions/workflow-register/test/workflowContractV2Entrypoints.test.js"
     },
     {
-      "blobSha": "208c6a2bf45f62f538a51cfef57139dc1ac7c087",
+      "blobSha": "2027f815aa02b4abd101d0dd679f3376b5f903a0",
       "mode": "100644",
       "path": "extensions/workflow-register/test/workflowContractV2ExecutionBoundary.test.js"
     },
     {
-      "blobSha": "bc85a22bad3d257e81faeb6588768916f6815390",
+      "blobSha": "72daba1158c7de99b68919d1554ed6faecae08ac",
       "mode": "100644",
       "path": "extensions/workflow-register/test/workflowContractV2ExecutionGuard.test.js"
     },
     {
-      "blobSha": "4ee5982b7cb5a8e9d5cc60135bb75f27f4d1a9f9",
+      "blobSha": "662fe36cd988c3bb7bc07cd989cf40cdc1bb0ba1",
       "mode": "100644",
       "path": "extensions/workflow-register/test/workflowContractV2GateR.test.js"
     },
@@ -5314,6 +5398,46 @@
       "blobSha": "70f79a6fd36e924382f6791bcdb368423f89ff38",
       "mode": "100644",
       "path": "extensions/workflow-register/test/workflowContractV2ProviderRegistry.test.js"
+    },
+    {
+      "blobSha": "4c2c913f2de623179a593068c8a2494f39ef525b",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/workflowContractV2ReachabilityPolicy.test.js"
+    },
+    {
+      "blobSha": "5c82f224df23b08aebb451e83be2da100468cce5",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/workflowContractV2RunLeaseDisposal.test.js"
+    },
+    {
+      "blobSha": "e7b89229b327da21767a78d38c66c74426f7fe57",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/workflowContractV2RunPlanTestSupport.js"
+    },
+    {
+      "blobSha": "b23d54aa0089dc00ee5e286d67599d4d70d508aa",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/workflowContractV2RunProvenance.test.js"
+    },
+    {
+      "blobSha": "25cb088b0263f1d51a89c758d59731ba057db5cc",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/workflowContractV2RunProvenanceProjection.test.js"
+    },
+    {
+      "blobSha": "c80f102bf41b817a8e5fc3bda962cc97f63ceb4b",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/workflowContractV2RunSchemaType.test.js"
+    },
+    {
+      "blobSha": "d3b62ec79771ac6bb787b97e11c8d4cf2b7612d4",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/workflowContractV2RuntimeLeaseScope.test.js"
+    },
+    {
+      "blobSha": "4d51b398935f42789c3a0eae6d36905c7eaf23ae",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/workflowContractV2TerminalLeaseRelease.test.js"
     },
     {
       "blobSha": "d1036dfe549f193c2e8a71f289b6bd88003d80fb",
@@ -5616,305 +5740,216 @@
       "path": "extensions/workflow-register/tsconfig.json"
     }
   ],
-  "baseMainSha": "5fc1cd30c39102b946f9300a0d77afd306eaaa03",
-  "baseTreeSha": "aaa6f2d8bbfb82b81d11b0e34f536d8c43475253",
-  "capabilityId": "WF2-R1-PROVENANCE",
+  "baseMainSha": "abdedeb23fe133c2b541c8cc2fa7d35f2e8b5688",
+  "baseTreeSha": "db566dab17c1a17c5d66804fe1f0b84a415a3b3d",
+  "capabilityId": "WF2-R2-INVOKE",
   "deltas": [
     {
-      "afterBlobSha": "3e99f4416c1187c85fb5b7d3990320ca6e62d22f",
-      "beforeBlobSha": "1a44bce64a25da2507890b7527629103868eec1f",
+      "afterBlobSha": "c134f32ebfc6dee5bc80595be20781969c0eb5e3",
+      "beforeBlobSha": "d2b6e8c999979899eb27502cd1ec13c29a31c8a1",
       "familyIds": [
-        "source-75c07aaa99be8455bdc3285f"
-      ],
-      "mode": "100644",
-      "path": "extensions/workflow-register/.vscodeignore"
-    },
-    {
-      "afterBlobSha": "d2b6e8c999979899eb27502cd1ec13c29a31c8a1",
-      "beforeBlobSha": null,
-      "familyIds": [
-        "source-75c07aaa99be8455bdc3285f"
+        "source-5ec92ed8eb7c664752c179f6",
+        "source-9c06a4751ee2e5cb236ffade"
       ],
       "mode": "100644",
       "path": "extensions/workflow-register/scripts/check-contract-v2-runtime-reachability.js"
     },
     {
-      "afterBlobSha": "5b9b2a6f78768d33259d56bc4338ff84c0cc8def",
-      "beforeBlobSha": "de09da752e7c84fd635c8bc40783bb445c4346f7",
+      "afterBlobSha": "50261aa7ac9004340ffd20b949d37f5c34fb5aa7",
+      "beforeBlobSha": "5b9b2a6f78768d33259d56bc4338ff84c0cc8def",
       "familyIds": [
-        "source-75c07aaa99be8455bdc3285f"
+        "source-14cfd7d06e0a3ff1d07dbd07",
+        "source-5ec92ed8eb7c664752c179f6",
+        "source-7fac6492e3e471002b40d219",
+        "source-9c06a4751ee2e5cb236ffade",
+        "source-e6276ab81d5965f9ef86745d",
+        "source-f3f7f4b0b7abd506c0c8f506",
+        "source-fecb7999677bed9e8fe3ce13"
       ],
       "mode": "100644",
       "path": "extensions/workflow-register/scripts/check-vsix-policy.js"
     },
     {
-      "afterBlobSha": "262c09aa26b59785436a00f88122da2eb5378b46",
-      "beforeBlobSha": "841e179df989061574d0dd185136015ecdda80fc",
+      "afterBlobSha": "f4e2d1dada7cefbf1527285a5259c1c7751a58da",
+      "beforeBlobSha": "262c09aa26b59785436a00f88122da2eb5378b46",
       "familyIds": [
-        "source-75c07aaa99be8455bdc3285f"
+        "source-14cfd7d06e0a3ff1d07dbd07",
+        "source-5ec92ed8eb7c664752c179f6",
+        "source-7fac6492e3e471002b40d219",
+        "source-9c06a4751ee2e5cb236ffade",
+        "source-e6276ab81d5965f9ef86745d",
+        "source-f3f7f4b0b7abd506c0c8f506",
+        "source-fecb7999677bed9e8fe3ce13"
       ],
       "mode": "100644",
       "path": "extensions/workflow-register/scripts/recompress-vsix.js"
     },
     {
-      "afterBlobSha": "1cf8b769733140885f7af889527b633d80a7405c",
-      "beforeBlobSha": "7eb4976a534551fca57ec6fcfd612c62bd175241",
-      "familyIds": [
-        "source-5878428770ba85ec6765b380"
-      ],
-      "mode": "100644",
-      "path": "extensions/workflow-register/src/core/contractV2/index.ts"
-    },
-    {
-      "afterBlobSha": "fc1fa472c1b0e73a86303797c8e225155eda1af7",
-      "beforeBlobSha": "3948750e9f58dac0a77e6d258a9536170d5b4b8b",
-      "familyIds": [
-        "source-9aad994c88d618f45c216249"
-      ],
-      "mode": "100644",
-      "path": "extensions/workflow-register/src/core/contractV2/planLease.ts"
-    },
-    {
-      "afterBlobSha": "a2baf67a1f6d8fbaa6b5660ecb582411d2212b81",
+      "afterBlobSha": "da5d27c545d81c366c1fb29b74814310fe889077",
       "beforeBlobSha": null,
       "familyIds": [
-        "source-04042ee1d12b54981a558cd1",
-        "source-b06ff4b70ad3a69d34490e7e"
+        "source-7fac6492e3e471002b40d219",
+        "source-fecb7999677bed9e8fe3ce13"
       ],
       "mode": "100644",
-      "path": "extensions/workflow-register/src/core/contractV2/runLeaseExecutionCoordinator.ts"
+      "path": "extensions/workflow-register/src/core/contractV2/providerAttemptStaging.ts"
     },
     {
-      "afterBlobSha": "99332e0f9e7f8bbc63e5ea0bdf6cde88b54d3a48",
+      "afterBlobSha": "576b5397adc049ce8c3e23f289960c5bafcffe9f",
       "beforeBlobSha": null,
       "familyIds": [
-        "source-299b38c2a6c3696dbc79dd52",
-        "source-9aad994c88d618f45c216249",
-        "source-ba622294349bb562549c5825"
+        "source-e6276ab81d5965f9ef86745d"
       ],
       "mode": "100644",
-      "path": "extensions/workflow-register/src/core/contractV2/runPlanLeaseContext.ts"
+      "path": "extensions/workflow-register/src/core/contractV2/providerEnvelopeSnapshot.ts"
     },
     {
-      "afterBlobSha": "04293c22078d6baecdd12a079386d2eb8d27feb5",
+      "afterBlobSha": "b3f8554090438062ec37bc2f759e5cbe32594bf0",
       "beforeBlobSha": null,
       "familyIds": [
-        "source-7ae51bbef33180664889fba4",
-        "source-9aad994c88d618f45c216249"
+        "source-14cfd7d06e0a3ff1d07dbd07",
+        "source-7fac6492e3e471002b40d219",
+        "source-f3f7f4b0b7abd506c0c8f506"
       ],
       "mode": "100644",
-      "path": "extensions/workflow-register/src/core/contractV2/runPlanProvenance.ts"
+      "path": "extensions/workflow-register/src/core/contractV2/providerInvocation.ts"
     },
     {
-      "afterBlobSha": "d6698f2dd30e95b590e6e882c8d3f306b1a85358",
-      "beforeBlobSha": null,
+      "afterBlobSha": "19cc9f1c9af56c1697e9deb1dea9e10f877bd07e",
+      "beforeBlobSha": "3173e057e2f7ae051388eb867e26484a060f4f39",
       "familyIds": [
-        "source-a7f21730f621e090b2aed5e9"
+        "source-9c06a4751ee2e5cb236ffade"
       ],
       "mode": "100644",
-      "path": "extensions/workflow-register/src/core/contractV2/runPlanState.ts"
+      "path": "extensions/workflow-register/src/core/contractV2/providerRegistry.ts"
     },
     {
-      "afterBlobSha": "9350a3160b4c44ea9a0484a57224af9bfce01d76",
-      "beforeBlobSha": "a9b79d40510c7eacfb0f12b8ea0c59b9e55b96bc",
+      "afterBlobSha": "be42aea5df7b5b6bec26f0d5b555f14041a29307",
+      "beforeBlobSha": "d9a6c6a3ae37a01dd6ef5ba882a5cc4674802e85",
       "familyIds": [
-        "source-50f29b856d5d39f3e342ca85",
-        "source-5206f6fdf1c711d1bb161d62"
-      ],
-      "mode": "100644",
-      "path": "extensions/workflow-register/src/core/modelRuntime.ts"
-    },
-    {
-      "afterBlobSha": "0b8fe64b2970e6e58f4b03fd9b9f2cefad883322",
-      "beforeBlobSha": "834a4018f7e9af269a237ab6f18906059ccb90af",
-      "familyIds": [
-        "source-0ee8bd8c0cf158480af89527"
-      ],
-      "mode": "100644",
-      "path": "extensions/workflow-register/src/core/runProvenance.ts"
-    },
-    {
-      "afterBlobSha": "7ce8ea08beb4e79707469cf305b7ce9a0f73ea36",
-      "beforeBlobSha": "8b14cb373d27bb207d43456768cee135c892ecdf",
-      "familyIds": [
-        "source-7ae51bbef33180664889fba4"
-      ],
-      "mode": "100644",
-      "path": "extensions/workflow-register/src/core/runtime/runStateCodec.ts"
-    },
-    {
-      "afterBlobSha": "19bcf32d95157df18874c4cb7e34f872f73d1d44",
-      "beforeBlobSha": "1f80ae949c884116aaa5019cd11c76576c208ad6",
-      "familyIds": [
-        "source-75c07aaa99be8455bdc3285f",
-        "source-fde858a48c84d66184d3513a"
-      ],
-      "mode": "100644",
-      "path": "extensions/workflow-register/src/core/runtime/runStateStore.ts"
-    },
-    {
-      "afterBlobSha": "45a6644f19e9bf0046c324a2055299f7373e16ce",
-      "beforeBlobSha": "2b6dd32e6e67e36d2831f0da6617b2e7b1a19229",
-      "familyIds": [
-        "source-9aad994c88d618f45c216249"
-      ],
-      "mode": "100644",
-      "path": "extensions/workflow-register/src/workflowContractV2ExecutionGuard.ts"
-    },
-    {
-      "afterBlobSha": "5a73daa6b60706d4ac20c1cd4efe831950a2c5f1",
-      "beforeBlobSha": null,
-      "familyIds": [
-        "source-04042ee1d12b54981a558cd1",
-        "source-5ca2654642f10f69b53d3f8b"
-      ],
-      "mode": "100644",
-      "path": "extensions/workflow-register/src/workflowContractV2LeasedRunStateStore.ts"
-    },
-    {
-      "afterBlobSha": "a1163a3dad08a112f5fc9fadc6e6974b6fc1f745",
-      "beforeBlobSha": "820beb77bd74b3f650aaa5366378fa9c383f0359",
-      "familyIds": [
-        "source-75c07aaa99be8455bdc3285f"
-      ],
-      "mode": "100644",
-      "path": "extensions/workflow-register/src/workflowContractV2RunStateStore.ts"
-    },
-    {
-      "afterBlobSha": "890cdf82b18f64c461dcfd134c2a952df2fac4e5",
-      "beforeBlobSha": null,
-      "familyIds": [
-        "source-01ca179efcbe182b733f7a89"
-      ],
-      "mode": "100644",
-      "path": "extensions/workflow-register/src/workflowContractV2RuntimeBoundary.ts"
-    },
-    {
-      "afterBlobSha": "050d3d560ba048754e52b59b12a30ed071648332",
-      "beforeBlobSha": "d028b7e4f7c71f238ff6f8789e5f1120dd580552",
-      "familyIds": [
-        "source-75c07aaa99be8455bdc3285f"
-      ],
-      "mode": "100644",
-      "path": "extensions/workflow-register/src/workflowRunCommands.ts"
-    },
-    {
-      "afterBlobSha": "d9a6c6a3ae37a01dd6ef5ba882a5cc4674802e85",
-      "beforeBlobSha": "9f4ed7c20869a4ef0c230b18b880a2ce9b234530",
-      "familyIds": [
-        "source-3266621c45ba21fc5873f61d"
+        "source-5ec92ed8eb7c664752c179f6",
+        "source-9c06a4751ee2e5cb236ffade"
       ],
       "mode": "100644",
       "path": "extensions/workflow-register/test/architectureContracts.test.js"
     },
     {
-      "afterBlobSha": "2027f815aa02b4abd101d0dd679f3376b5f903a0",
-      "beforeBlobSha": "208c6a2bf45f62f538a51cfef57139dc1ac7c087",
+      "afterBlobSha": "146bf1204aa63f0976b455df01a4e63aea7df2f7",
+      "beforeBlobSha": "2ecb87ad06dabe87abc8c50f51250de38f39c6e9",
       "familyIds": [
-        "source-1125e24c264c3e7ff427c8ae",
-        "source-75c07aaa99be8455bdc3285f"
+        "source-14cfd7d06e0a3ff1d07dbd07",
+        "source-5ec92ed8eb7c664752c179f6",
+        "source-7fac6492e3e471002b40d219",
+        "source-9c06a4751ee2e5cb236ffade",
+        "source-e6276ab81d5965f9ef86745d",
+        "source-f3f7f4b0b7abd506c0c8f506",
+        "source-fecb7999677bed9e8fe3ce13"
       ],
       "mode": "100644",
-      "path": "extensions/workflow-register/test/workflowContractV2ExecutionBoundary.test.js"
+      "path": "extensions/workflow-register/test/vsixCompression.test.js"
     },
     {
-      "afterBlobSha": "72daba1158c7de99b68919d1554ed6faecae08ac",
-      "beforeBlobSha": "bc85a22bad3d257e81faeb6588768916f6815390",
+      "afterBlobSha": "426024dd8404ea025a65c2ac0f6550778ad64162",
+      "beforeBlobSha": "662fe36cd988c3bb7bc07cd989cf40cdc1bb0ba1",
       "familyIds": [
-        "source-3266621c45ba21fc5873f61d"
-      ],
-      "mode": "100644",
-      "path": "extensions/workflow-register/test/workflowContractV2ExecutionGuard.test.js"
-    },
-    {
-      "afterBlobSha": "662fe36cd988c3bb7bc07cd989cf40cdc1bb0ba1",
-      "beforeBlobSha": "4ee5982b7cb5a8e9d5cc60135bb75f27f4d1a9f9",
-      "familyIds": [
-        "source-3266621c45ba21fc5873f61d",
-        "source-34c61efc427121c81952998a",
-        "source-41c31bf3997087539134b1c2",
-        "source-718be8379c70ab754a9d7484",
-        "source-75c07aaa99be8455bdc3285f",
-        "source-a5eabe004258ac7de4b9ebdb",
-        "source-ba56f810f0c338c02ff4e864",
-        "source-fde858a48c84d66184d3513a"
+        "source-42e52f0142bc1480cba3f8bb",
+        "source-5ec92ed8eb7c664752c179f6",
+        "source-67e4c888b7aa389e2ebf5135",
+        "source-917527dedba80f811bb34bac",
+        "source-aa64e1c64d51e4da51fd72c7",
+        "source-e9053c4efd76a31cfe133bdb",
+        "source-e98cec4ab341f9224f6e2ee0"
       ],
       "mode": "100644",
       "path": "extensions/workflow-register/test/workflowContractV2GateR.test.js"
     },
     {
-      "afterBlobSha": "4c2c913f2de623179a593068c8a2494f39ef525b",
-      "beforeBlobSha": null,
+      "afterBlobSha": "63877b14d533b5bf97c68fc1728ce5e24bb27245",
+      "beforeBlobSha": "4748739a077c2d7fd736dad9c5c4ea4071b2afdd",
       "familyIds": [
-        "source-75c07aaa99be8455bdc3285f"
+        "source-14cfd7d06e0a3ff1d07dbd07",
+        "source-5ec92ed8eb7c664752c179f6",
+        "source-7fac6492e3e471002b40d219",
+        "source-9c06a4751ee2e5cb236ffade",
+        "source-e6276ab81d5965f9ef86745d",
+        "source-f3f7f4b0b7abd506c0c8f506",
+        "source-fecb7999677bed9e8fe3ce13"
       ],
       "mode": "100644",
-      "path": "extensions/workflow-register/test/workflowContractV2ReachabilityPolicy.test.js"
+      "path": "extensions/workflow-register/test/workflowContractV2ManifestPackaging.test.js"
     },
     {
-      "afterBlobSha": "5c82f224df23b08aebb451e83be2da100468cce5",
+      "afterBlobSha": "7f4ee26a51964e4eac423c65390596514594f1cc",
       "beforeBlobSha": null,
       "familyIds": [
-        "source-299b38c2a6c3696dbc79dd52",
-        "source-41c31bf3997087539134b1c2"
+        "source-e9053c4efd76a31cfe133bdb"
       ],
       "mode": "100644",
-      "path": "extensions/workflow-register/test/workflowContractV2RunLeaseDisposal.test.js"
+      "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocation.test.js"
     },
     {
-      "afterBlobSha": "e7b89229b327da21767a78d38c66c74426f7fe57",
+      "afterBlobSha": "d5365cf6fb2cf5a3eca2169c3c6eb6bb669a1b93",
       "beforeBlobSha": null,
       "familyIds": [
-        "source-fde858a48c84d66184d3513a"
+        "source-5ec92ed8eb7c664752c179f6"
       ],
       "mode": "100644",
-      "path": "extensions/workflow-register/test/workflowContractV2RunPlanTestSupport.js"
+      "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocationArchitecture.test.js"
     },
     {
-      "afterBlobSha": "b23d54aa0089dc00ee5e286d67599d4d70d508aa",
+      "afterBlobSha": "c1ebbed3e7045cfe7f8f287ee290de6b812d2b92",
       "beforeBlobSha": null,
       "familyIds": [
-        "source-fde858a48c84d66184d3513a"
+        "source-917527dedba80f811bb34bac"
       ],
       "mode": "100644",
-      "path": "extensions/workflow-register/test/workflowContractV2RunProvenance.test.js"
+      "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocationFailurePrecedence.test.js"
     },
     {
-      "afterBlobSha": "25cb088b0263f1d51a89c758d59731ba057db5cc",
+      "afterBlobSha": "4ea707beb152b7139e3b1a50d1d7f0a195aad6d9",
       "beforeBlobSha": null,
       "familyIds": [
-        "source-34c61efc427121c81952998a"
+        "source-67e4c888b7aa389e2ebf5135"
       ],
       "mode": "100644",
-      "path": "extensions/workflow-register/test/workflowContractV2RunProvenanceProjection.test.js"
+      "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocationFollowup.test.js"
     },
     {
-      "afterBlobSha": "c80f102bf41b817a8e5fc3bda962cc97f63ceb4b",
+      "afterBlobSha": "5f02198822e95e701c470a7ecbc62b20b29660cc",
       "beforeBlobSha": null,
       "familyIds": [
-        "source-718be8379c70ab754a9d7484"
+        "source-aa64e1c64d51e4da51fd72c7"
       ],
       "mode": "100644",
-      "path": "extensions/workflow-register/test/workflowContractV2RunSchemaType.test.js"
+      "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocationFoundation.test.js"
     },
     {
-      "afterBlobSha": "d3b62ec79771ac6bb787b97e11c8d4cf2b7612d4",
+      "afterBlobSha": "4ecdabf2574166fbcc3fea18c4774aaa21a2b01f",
       "beforeBlobSha": null,
       "familyIds": [
-        "source-ba56f810f0c338c02ff4e864"
+        "source-e98cec4ab341f9224f6e2ee0"
       ],
       "mode": "100644",
-      "path": "extensions/workflow-register/test/workflowContractV2RuntimeLeaseScope.test.js"
+      "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocationHardening.test.js"
     },
     {
-      "afterBlobSha": "4d51b398935f42789c3a0eae6d36905c7eaf23ae",
+      "afterBlobSha": "ad023813a29238bba5d37387b0ee2e418285b5d7",
       "beforeBlobSha": null,
       "familyIds": [
-        "source-a5eabe004258ac7de4b9ebdb"
+        "source-42e52f0142bc1480cba3f8bb"
       ],
       "mode": "100644",
-      "path": "extensions/workflow-register/test/workflowContractV2TerminalLeaseRelease.test.js"
+      "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocationReviewCases.test.js"
+    },
+    {
+      "afterBlobSha": "d49b94515864e3dc18e1a544e5c1ce2c6c2358b0",
+      "beforeBlobSha": null,
+      "familyIds": [
+        "source-aa64e1c64d51e4da51fd72c7"
+      ],
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocationTestSupport.js"
     }
   ],
-  "schemaVersion": "workflow-gate-r-main-admission/v1"
+  "schemaVersion": "workflow-gate-r-main-admission/v2"
 }

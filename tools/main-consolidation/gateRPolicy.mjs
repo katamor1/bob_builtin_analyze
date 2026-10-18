@@ -72,9 +72,9 @@ export function validateGateRInventory(input) {
 export function validateGateRActiveSuite(input) {
   const value = inputData(input, 'active suite');
   readGateRCatalog();
-  const expected = {schemaVersion:'workflow-gate-r-active-suite/v1',authority:'integrated_runtime_only',catalogSha256:GATE_R_CATALOG_SHA256,capabilities:[{capabilityId:'WF2-R1-PROVENANCE',testFamilies:gateRActiveTestFamilies()}]};
-  if (!gateRCanonicalJson(value).equals(gateRCanonicalJson(expected))) fail('active suite requires exact R1 families and current paths');
-  return Object.freeze({state:'VALID_R1'});
+  const expected = {schemaVersion:'workflow-gate-r-active-suite/v1',authority:'integrated_runtime_only',catalogSha256:GATE_R_CATALOG_SHA256,capabilities:['WF2-R1-PROVENANCE','WF2-R2-INVOKE'].map(capabilityId=>({capabilityId,testFamilies:gateRActiveTestFamilies(capabilityId)}))};
+  if (!gateRCanonicalJson(value).equals(gateRCanonicalJson(expected))) fail('active suite requires exact R1 and R2 families and current paths');
+  return Object.freeze({state:'VALID_R1_R2'});
 }
 export function validateGateRRepositoryFiles(input) {
   return validateGateRMainRepositoryFiles(input);
@@ -95,7 +95,7 @@ export function validateGateRTestObservation(family, input) {
    if(line==='  ...'){if(!diagnostic)fail('TAP unmatched diagnostics');diagnostic=false;continue;}
    if(/^\s/.test(line)){if(!diagnostic)fail('TAP malformed diagnostics');continue;}
    if(diagnostic)fail('TAP truncated diagnostics');
-   if(line!==''&&!/^(?:TAP version 13|#.*|1\.\.\d+|(?:not )?ok \d+ - .+|R1_(?:PROVENANCE_FIXTURE|PRODUCT_WIRING)_BASE64=[A-Za-z0-9+/=]+)$/.test(line))fail('TAP malformed output');
+   if(line!==''&&!/^(?:TAP version 13|#.*|1\.\.\d+|(?:not )?ok \d+ - .+|(?:R1_PROVENANCE_FIXTURE|R[12]_PRODUCT_WIRING)_BASE64=[A-Za-z0-9+/=]+)$/.test(line))fail('TAP malformed output');
   }
   if(diagnostic)fail('TAP incomplete diagnostics');
   if(lines.filter(l=>l==='TAP version 13').length!==1)fail('TAP version');
@@ -114,44 +114,89 @@ export function validateGateRTestObservation(family, input) {
   if(summary.tests!==count||summary.pass!==summary.tests||summary.suites!==0||['fail','cancelled','skipped','todo'].some(k=>summary[k]!==0))fail('TAP failure/cancel/skip/todo summary');
   return Object.freeze({state:'PASSED'});
 }
-export function validateGateRProductWiringObservation(input) {
+export function validateGateRProductWiringObservation(input, expectedSchemaVersion='workflow-r1-product-wiring/v1') {
   const value=inputData(input,'product wiring');
   const counters=['v2ProductLeaseAcquisitions','providerDispatches','bobDispatches','v2ProductRunDirectoryCreations','v2ProductArtifactStages'];
   exact(value,['schemaVersion','counterScope','observedProductSurfaces',...counters],'product wiring');
-  if(value.schemaVersion!=='workflow-r1-product-wiring/v1'||value.counterScope!=='contract_v2_product_paths'||JSON.stringify(value.observedProductSurfaces)!==JSON.stringify(['validation','registration','operation_hub','authoring','legacy_v1'])||counters.some(k=>value[k]!==0))fail('product wiring surfaces/counters');
+  if(!['workflow-r1-product-wiring/v1','workflow-r2-product-wiring/v1'].includes(expectedSchemaVersion)||value.schemaVersion!==expectedSchemaVersion||value.counterScope!=='contract_v2_product_paths'||JSON.stringify(value.observedProductSurfaces)!==JSON.stringify(['validation','registration','operation_hub','authoring','legacy_v1'])||counters.some(k=>value[k]!==0))fail('product wiring surfaces/counters');
   return Object.freeze({...Object.fromEntries(counters.map(k=>[k,value[k]])),counterScope:value.counterScope,wiringObservationSha256:gateRDigest(Buffer.from(canonicalJson(value)))});
 }
-function wiringFromOutput(stdout){
- const markers=stdout.replaceAll('\r\n','\n').split('\n').filter(l=>/^(?:# )?R1_PRODUCT_WIRING_BASE64=/.test(l));if(markers.length!==1)fail('product wiring marker missing/duplicate');
- const encoded=markers[0].replace(/^(?:# )?R1_PRODUCT_WIRING_BASE64=/,'');if(!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded))fail('wiring base64');
+function wiringFromOutput(stdout,version){
+ if(typeof stdout!=='string')fail('product wiring output type');
+ const markers=stdout.replaceAll('\r\n','\n').split('\n').filter(l=>/^(?:# )?R\d+_PRODUCT_WIRING_BASE64=/.test(l));
+ const prefix='R'+version+'_PRODUCT_WIRING_BASE64=';
+ if(markers.length!==1||!markers[0].replace(/^# /,'').startsWith(prefix))fail('product wiring marker missing/duplicate/role');
+ const encoded=markers[0].replace(/^# /,'').slice(prefix.length);if(!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded))fail('wiring base64');
  const bytes=Buffer.from(encoded,'base64');if(bytes.toString('base64')!==encoded)fail('wiring base64 identity');let value;try{value=JSON.parse(bytes);}catch{fail('wiring JSON');}
- if(Buffer.from(canonicalJson(value)).compare(bytes)!==0)fail('wiring noncanonical bytes');return validateGateRProductWiringObservation(value);
+ if(Buffer.from(canonicalJson(value)).compare(bytes)!==0)fail('wiring noncanonical bytes');
+ const measured=validateGateRProductWiringObservation(value,'workflow-r'+version+'-product-wiring/v1');
+ return {value,measured};
 }
-function executeFixedFamily(family,deadline,outputBudget){return new Promise((resolveChild,reject)=>{
- const remaining=deadline-performance.now();if(remaining<=0){reject(new TypeError('Gate R: total timeout'));return;}
- // Family paths come only from the closed manifest; no caller-supplied command/root.
- // node:test's parent IPC context otherwise silently changes direct-child TAP
- // into its binary reporter. Each selected file is its own direct Node process.
+export function validateGateRProductWiringOutputs(input){
+ const outputs=inputData(input,'two product wiring outputs');exact(outputs,['r1','r2'],'two product wiring outputs');
+ const r1=wiringFromOutput(outputs.r1,1),r2=wiringFromOutput(outputs.r2,2);
+ return Object.freeze({...r1.measured,wiringObservationSha256:gateRDigest(Buffer.from(canonicalJson({r1:r1.value,r2:r2.value})))});
+}
+// Cancellation owns only a selected family's child and its descendants. A failed
+// sibling cannot leave Architecture's synchronous policy grandchildren running.
+function stopFamilyProcess(child) {
+ if(!Number.isSafeInteger(child.pid)||child.pid<=0){child.kill();return Promise.resolve();}
+ if(process.platform!=='win32'){
+  try{process.kill(-child.pid,'SIGKILL');}catch(error){if(error.code!=='ESRCH')throw error;}
+  return Promise.resolve();
+ }
+ return new Promise((resolveStop,rejectStop)=>{
+  const killer=spawn(resolve(process.env.SystemRoot||'C:\\Windows','System32','taskkill.exe'),['/PID',String(child.pid),'/T','/F'],{shell:false,windowsHide:true,stdio:'ignore'});
+  let error;const timer=setTimeout(()=>{error=new Error('Gate R: process-tree cancellation timeout');killer.kill();child.kill();},5000);
+  killer.on('error',value=>{error=value;child.kill();});
+  killer.on('close',code=>{clearTimeout(timer);if(error){rejectStop(error);return;}if(code!==0)child.kill();resolveStop();});
+ });
+}
+async function executeFixedFamily(family,context){
+ const {deadline,outputBudget}=context;
+ const remaining=deadline-performance.now();if(remaining<=0)throw new TypeError('Gate R: total timeout');
+ // Paths are from the closed manifest; no caller-supplied command/root. The
+ // parent node:test IPC context must not turn direct-child TAP into binary IPC.
  const environment={...process.env};delete environment.NODE_TEST_CONTEXT;
- const child=spawn(process.execPath,[family.testPath.slice('extensions/workflow-register/'.length)],{cwd:resolve(root,'extensions/workflow-register'),env:environment,shell:false,windowsHide:true,stdio:['ignore','pipe','pipe']});
- let stdout='',stderr='',timedOut=false,outputOverflow=false,spawnError;
- const timer=setTimeout(()=>{timedOut=true;child.kill();},remaining);
- function collect(channel,bytes){outputBudget.bytes+=bytes.length;if(outputBudget.bytes>1048576){outputOverflow=true;child.kill();return;}if(channel==='stdout')stdout+=bytes.toString('utf8');else stderr+=bytes.toString('utf8');}
- child.stdout.on('data',b=>collect('stdout',b));child.stderr.on('data',b=>collect('stderr',b));child.on('error',e=>{spawnError=e;});
- child.on('close',(exitCode,signal)=>{clearTimeout(timer);if(spawnError){reject(spawnError);return;}resolveChild({stdout,stderr,exitCode,signal,timedOut,outputOverflow});});
-});}
+ const child=spawn(process.execPath,[family.testPath.slice('extensions/workflow-register/'.length)],{cwd:resolve(root,'extensions/workflow-register'),env:environment,shell:false,windowsHide:true,detached:process.platform!=='win32',stdio:['ignore','pipe','pipe']});
+ let stdout='',stderr='',timedOut=false,outputOverflow=false,spawnError,closed=false,stopping;
+ const cancel=()=>{if(!closed&&!stopping)stopping=stopFamilyProcess(child).catch(error=>{context.stop(error);});};
+ context.active.add(cancel);
+ const timer=setTimeout(()=>{timedOut=true;context.stop(new TypeError('Gate R: total timeout'));},remaining);
+ function collect(channel,bytes){outputBudget.bytes+=bytes.length;if(outputBudget.bytes>1048576){outputOverflow=true;context.stop(new TypeError('Gate R: child aggregate output overflow'));return;}if(channel==='stdout')stdout+=bytes.toString('utf8');else stderr+=bytes.toString('utf8');}
+ child.stdout.on('data',b=>collect('stdout',b));child.stderr.on('data',b=>collect('stderr',b));
+ child.on('error',error=>{spawnError=error;context.stop(error);});
+ const observation=await new Promise(resolveChild=>child.on('close',(exitCode,signal)=>{closed=true;clearTimeout(timer);resolveChild({stdout,stderr,exitCode,signal,timedOut,outputOverflow});}));
+ if(stopping)await stopping;
+ context.active.delete(cancel);
+ if(spawnError)throw spawnError;
+ return observation;
+}
 export async function gateRResult() {
   const deadline=performance.now()+120000,outputBudget={bytes:0};
   validateGateRInventory(readArtifact('gate-r-archive-inventory.json'));
   const active = readArtifact('gate-r-active-suite.json');
   validateGateRActiveSuite(active); validateGateRRepository();
-  let wiring;
-  for(const family of gateRActiveTestFamilies()){
-    const observation=await executeFixedFamily(family,deadline,outputBudget);
-    try{validateGateRTestObservation(family,observation);}catch(error){throw new TypeError(error.message+' ('+family.testPath+', exit='+observation.exitCode+', stderr='+observation.stderr.slice(0,300)+')');}
-    if(family.sourceItemId==='source-75c07aaa99be8455bdc3285f')wiring=wiringFromOutput(observation.stdout);
-    else if(/R1_PRODUCT_WIRING_BASE64=/.test(observation.stdout))fail('unexpected wiring marker');
+  const outputs=Object.create(null),families=gateRActiveTestFamilies();let next=0;
+  const context={deadline,outputBudget,active:new Set(),failure:null,stop(error){this.failure??=error;for(const cancel of this.active)cancel();}};
+  async function worker(){
+   while(!context.failure&&next<families.length){
+    const family=families[next++];
+    try{
+     const observation=await executeFixedFamily(family,context);
+     try{validateGateRTestObservation(family,observation);}catch(error){throw new TypeError(error.message+' ('+family.testPath+', exit='+observation.exitCode+', stderr='+observation.stderr.slice(0,300)+')');}
+     if(family.sourceItemId==='source-75c07aaa99be8455bdc3285f')outputs.r1=observation.stdout;
+     else if(family.sourceItemId==='source-5ec92ed8eb7c664752c179f6')outputs.r2=observation.stdout;
+     else if(/R\d+_PRODUCT_WIRING_BASE64=/.test(observation.stdout))fail('unexpected wiring marker');
+    }catch(error){context.stop(error);}
+   }
   }
-  if(!wiring||performance.now()>deadline)fail('missing wiring/total timeout');
-  return Object.freeze({schemaVersion:'workflow-gate-r-result/v2',state:'ACTIVE_TEST_SUITES_PASSED',inventoryValidation:'PASSED',runtimeSuiteState:'PASSED',runtimeSuitesExecuted:8,activeCapabilityIds:['WF2-R1-PROVENANCE'],archiveTestsExecuted:0,runtimeActivation:false,catalogSha256:GATE_R_CATALOG_SHA256,activeManifestSha256:gateRDigest(active),...wiring});
+  // Exactly two isolated slots, one shared deadline/budget, and no fail-fast
+  // return: both workers settle all started children before failure is reported.
+  await Promise.all([worker(),worker()]);
+  if(context.failure)throw context.failure;
+  if(performance.now()>deadline)fail('total timeout');
+  const wiring=validateGateRProductWiringOutputs(outputs);
+  if(performance.now()>deadline)fail('total timeout');
+  return Object.freeze({schemaVersion:'workflow-gate-r-result/v3',state:'ACTIVE_TEST_SUITES_PASSED',inventoryValidation:'PASSED',runtimeSuiteState:'PASSED',runtimeSuitesExecuted:15,activeCapabilityIds:['WF2-R1-PROVENANCE','WF2-R2-INVOKE'],archiveTestsExecuted:0,runtimeActivation:false,catalogSha256:GATE_R_CATALOG_SHA256,activeManifestSha256:gateRDigest(active),...wiring});
 }

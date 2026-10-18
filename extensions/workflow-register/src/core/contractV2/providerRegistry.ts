@@ -16,6 +16,7 @@ import type {
   Sha256Digest,
   WorkflowProviderContractInput,
   WorkflowProviderDispatch,
+  WorkflowProviderDispatchInput,
   WorkflowProviderOutputEvidence,
   WorkflowProviderRegistration,
   WorkflowProviderRegistrationInput,
@@ -195,6 +196,17 @@ const RESERVED_WORKSPACE = "workflow.effect.workspace-write"
 const RESERVED_EXTERNAL = "workflow.effect.external"
 const catalogStates = new WeakMap<object, CatalogState>()
 const handleDispatches = new WeakMap<object, WorkflowProviderDispatch>()
+
+// Private R2 bridge: invoke only the dispatch captured by this catalog handle.
+export function invokeBoundWorkflowProviderDispatch(
+  handle: BoundWorkflowProviderDispatchHandle,
+  input: WorkflowProviderDispatchInput
+): Promise<unknown> | unknown {
+  if (typeof handle !== "object" || handle === null || isProxy(handle)) throw new TypeError("Workflow provider dispatch handle is invalid.")
+  const dispatch = weakMapGet(handleDispatches, handle) as WorkflowProviderDispatch | undefined
+  if (dispatch === undefined) throw new TypeError("Workflow provider dispatch handle is invalid.")
+  return reflectApply(dispatch, undefined, [input])
+}
 
 export class WorkflowProviderRegistry {
   private readonly byId = new MapConstructor<string, Map<string, RegisteredProvider>>()

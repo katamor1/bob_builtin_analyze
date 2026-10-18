@@ -186,6 +186,9 @@ test('V2 consumer architecture freezes legacy exceptions and rejects private com
  assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2View.ts':sources['src/workflowContractV2View.ts']+'\nimport { compileWorkflowDocument } from "./core/workflowCompiler"'},allowlist),/private import/)
  assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2View.ts':sources['src/workflowContractV2View.ts']+'\nimport yaml from "js-yaml"'},allowlist),/private import/)
  assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2View.ts':sources['src/workflowContractV2View.ts']+'\nimport { compile } from "./core/contractV2/compiler"'},allowlist),/private import/)
+ assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2View.ts':sources['src/workflowContractV2View.ts']+'\nimport * as privateRuntime from "./core/contractV2/providerEnvelopeSnapshot"'},allowlist),/private import/)
+ assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2View.ts':sources['src/workflowContractV2View.ts']+'\nimport * as privateRuntime from "./core/contractV2/providerAttemptStaging"'},allowlist),/private import/)
+ assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2View.ts':sources['src/workflowContractV2View.ts']+'\nimport * as privateRuntime from "./core/contractV2/providerInvocation"'},allowlist),/private import/)
  for(const forbidden of ['createWorkflowPlanLease','requireActiveWorkflowPlanLease as uncheckedLease','* as leases']) {
   const clause=forbidden.startsWith('*')?forbidden:'{ '+forbidden+' }'
   assert.throws(()=>assertConsumerImports({...sources,'src/workflowContractV2ExecutionGuard.ts':sources['src/workflowContractV2ExecutionGuard.ts']+'\nimport '+clause+' from "./core/contractV2/planLease"'},allowlist),/private import/)

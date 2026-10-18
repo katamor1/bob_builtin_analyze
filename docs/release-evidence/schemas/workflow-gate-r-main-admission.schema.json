@@ -27,6 +27,27 @@
         },
         {
           "requiredCaseNames": [
+            "R2_closed_scope_and_concurrent_attempt_refusal"
+          ],
+          "sourceItemId": "source-42e52f0142bc1480cba3f8bb",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationReviewCases.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R2_product_paths_remain_unreachable"
+          ],
+          "sourceItemId": "source-5ec92ed8eb7c664752c179f6",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationArchitecture.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R2_snapshot_dispatch_and_retry_identity"
+          ],
+          "sourceItemId": "source-67e4c888b7aa389e2ebf5135",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationFollowup.test.js"
+        },
+        {
+          "requiredCaseNames": [
             "R1_run_only_discriminator_preserves_public_schema"
           ],
           "sourceItemId": "source-718be8379c70ab754a9d7484",
@@ -41,6 +62,13 @@
         },
         {
           "requiredCaseNames": [
+            "R2_staging_failure_and_settlement_precedence"
+          ],
+          "sourceItemId": "source-917527dedba80f811bb34bac",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationFailurePrecedence.test.js"
+        },
+        {
+          "requiredCaseNames": [
             "R1_terminal_release_follows_durable_hooks"
           ],
           "sourceItemId": "source-a5eabe004258ac7de4b9ebdb",
@@ -48,10 +76,31 @@
         },
         {
           "requiredCaseNames": [
+            "R2_authentic_retained_run_and_attempt_foundation"
+          ],
+          "sourceItemId": "source-aa64e1c64d51e4da51fd72c7",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationFoundation.test.js"
+        },
+        {
+          "requiredCaseNames": [
             "R1_closed_scope_blocks_detached_work"
           ],
           "sourceItemId": "source-ba56f810f0c338c02ff4e864",
           "testPath": "extensions/workflow-register/test/workflowContractV2RuntimeLeaseScope.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R2_compiled_input_output_error_contract"
+          ],
+          "sourceItemId": "source-e9053c4efd76a31cfe133bdb",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocation.test.js"
+        },
+        {
+          "requiredCaseNames": [
+            "R2_bounded_hostile_values_and_write_sessions"
+          ],
+          "sourceItemId": "source-e98cec4ab341f9224f6e2ee0",
+          "testPath": "extensions/workflow-register/test/workflowContractV2ProviderInvocationHardening.test.js"
         },
         {
           "requiredCaseNames": [
@@ -632,6 +681,7 @@
               "extensions/workflow-register/schema/bob-workflow-customization.v1.schema.json",
               "extensions/workflow-register/schema/bob-workflow-template.v1.schema.json",
               "extensions/workflow-register/schema/workflow-register.v1.schema.json",
+              "extensions/workflow-register/scripts/check-contract-v2-runtime-reachability.js",
               "extensions/workflow-register/scripts/check-export-star-policy.js",
               "extensions/workflow-register/scripts/check-import-cycles.js",
               "extensions/workflow-register/scripts/check-vsix-policy.js",
@@ -726,6 +776,10 @@
               "extensions/workflow-register/src/core/contractV2/predicate.ts",
               "extensions/workflow-register/src/core/contractV2/providerContract.ts",
               "extensions/workflow-register/src/core/contractV2/providerRegistry.ts",
+              "extensions/workflow-register/src/core/contractV2/runLeaseExecutionCoordinator.ts",
+              "extensions/workflow-register/src/core/contractV2/runPlanLeaseContext.ts",
+              "extensions/workflow-register/src/core/contractV2/runPlanProvenance.ts",
+              "extensions/workflow-register/src/core/contractV2/runPlanState.ts",
               "extensions/workflow-register/src/core/contractV2/workflowLock.ts",
               "extensions/workflow-register/src/core/contractV2/workflowLockArrayPreflight.ts",
               "extensions/workflow-register/src/core/contractV2/workflowLockBob.ts",
@@ -906,9 +960,11 @@
               "extensions/workflow-register/src/workflowCatalogReloadCoordinator.ts",
               "extensions/workflow-register/src/workflowContractV2Entrypoint.ts",
               "extensions/workflow-register/src/workflowContractV2ExecutionGuard.ts",
+              "extensions/workflow-register/src/workflowContractV2LeasedRunStateStore.ts",
               "extensions/workflow-register/src/workflowContractV2Product.ts",
               "extensions/workflow-register/src/workflowContractV2ProviderLifecycle.ts",
               "extensions/workflow-register/src/workflowContractV2RunStateStore.ts",
+              "extensions/workflow-register/src/workflowContractV2RuntimeBoundary.ts",
               "extensions/workflow-register/src/workflowContractV2View.ts",
               "extensions/workflow-register/src/workflowDefinitionLoader.ts",
               "extensions/workflow-register/src/workflowDiagnostics.ts",
@@ -1132,6 +1188,14 @@
               "extensions/workflow-register/test/workflowContractV2Predicate.test.js",
               "extensions/workflow-register/test/workflowContractV2ProviderLifecycle.test.js",
               "extensions/workflow-register/test/workflowContractV2ProviderRegistry.test.js",
+              "extensions/workflow-register/test/workflowContractV2ReachabilityPolicy.test.js",
+              "extensions/workflow-register/test/workflowContractV2RunLeaseDisposal.test.js",
+              "extensions/workflow-register/test/workflowContractV2RunPlanTestSupport.js",
+              "extensions/workflow-register/test/workflowContractV2RunProvenance.test.js",
+              "extensions/workflow-register/test/workflowContractV2RunProvenanceProjection.test.js",
+              "extensions/workflow-register/test/workflowContractV2RunSchemaType.test.js",
+              "extensions/workflow-register/test/workflowContractV2RuntimeLeaseScope.test.js",
+              "extensions/workflow-register/test/workflowContractV2TerminalLeaseRelease.test.js",
               "extensions/workflow-register/test/workflowContractV2Yaml.test.js",
               "extensions/workflow-register/test/workflowDefinitionLoader.test.js",
               "extensions/workflow-register/test/workflowDesignBuilder.test.js",
@@ -1203,18 +1267,18 @@
         ],
         "type": "object"
       },
-      "maxItems": 1111,
-      "minItems": 1111,
+      "maxItems": 1126,
+      "minItems": 1126,
       "type": "array"
     },
     "baseMainSha": {
-      "const": "5fc1cd30c39102b946f9300a0d77afd306eaaa03"
+      "const": "abdedeb23fe133c2b541c8cc2fa7d35f2e8b5688"
     },
     "baseTreeSha": {
-      "const": "aaa6f2d8bbfb82b81d11b0e34f536d8c43475253"
+      "const": "db566dab17c1a17c5d66804fe1f0b84a415a3b3d"
     },
     "capabilityId": {
-      "const": "WF2-R1-PROVENANCE"
+      "const": "WF2-R2-INVOKE"
     },
     "deltas": {
       "items": {
@@ -1238,28 +1302,19 @@
           "familyIds": {
             "items": {
               "enum": [
-                "source-01ca179efcbe182b733f7a89",
-                "source-04042ee1d12b54981a558cd1",
-                "source-0ee8bd8c0cf158480af89527",
-                "source-1125e24c264c3e7ff427c8ae",
-                "source-299b38c2a6c3696dbc79dd52",
-                "source-3266621c45ba21fc5873f61d",
-                "source-34c61efc427121c81952998a",
-                "source-41c31bf3997087539134b1c2",
-                "source-50f29b856d5d39f3e342ca85",
-                "source-5206f6fdf1c711d1bb161d62",
-                "source-5878428770ba85ec6765b380",
-                "source-5ca2654642f10f69b53d3f8b",
-                "source-718be8379c70ab754a9d7484",
-                "source-75c07aaa99be8455bdc3285f",
-                "source-7ae51bbef33180664889fba4",
-                "source-9aad994c88d618f45c216249",
-                "source-a5eabe004258ac7de4b9ebdb",
-                "source-a7f21730f621e090b2aed5e9",
-                "source-b06ff4b70ad3a69d34490e7e",
-                "source-ba56f810f0c338c02ff4e864",
-                "source-ba622294349bb562549c5825",
-                "source-fde858a48c84d66184d3513a"
+                "source-14cfd7d06e0a3ff1d07dbd07",
+                "source-42e52f0142bc1480cba3f8bb",
+                "source-5ec92ed8eb7c664752c179f6",
+                "source-67e4c888b7aa389e2ebf5135",
+                "source-7fac6492e3e471002b40d219",
+                "source-917527dedba80f811bb34bac",
+                "source-9c06a4751ee2e5cb236ffade",
+                "source-aa64e1c64d51e4da51fd72c7",
+                "source-e6276ab81d5965f9ef86745d",
+                "source-e9053c4efd76a31cfe133bdb",
+                "source-e98cec4ab341f9224f6e2ee0",
+                "source-f3f7f4b0b7abd506c0c8f506",
+                "source-fecb7999677bed9e8fe3ce13"
               ]
             },
             "minItems": 1,
@@ -1271,37 +1326,25 @@
           },
           "path": {
             "enum": [
-              "extensions/workflow-register/.vscodeignore",
               "extensions/workflow-register/scripts/check-contract-v2-runtime-reachability.js",
               "extensions/workflow-register/scripts/check-vsix-policy.js",
               "extensions/workflow-register/scripts/recompress-vsix.js",
-              "extensions/workflow-register/src/core/contractV2/index.ts",
-              "extensions/workflow-register/src/core/contractV2/planLease.ts",
-              "extensions/workflow-register/src/core/contractV2/runLeaseExecutionCoordinator.ts",
-              "extensions/workflow-register/src/core/contractV2/runPlanLeaseContext.ts",
-              "extensions/workflow-register/src/core/contractV2/runPlanProvenance.ts",
-              "extensions/workflow-register/src/core/contractV2/runPlanState.ts",
-              "extensions/workflow-register/src/core/modelRuntime.ts",
-              "extensions/workflow-register/src/core/runProvenance.ts",
-              "extensions/workflow-register/src/core/runtime/runStateCodec.ts",
-              "extensions/workflow-register/src/core/runtime/runStateStore.ts",
-              "extensions/workflow-register/src/workflowContractV2ExecutionGuard.ts",
-              "extensions/workflow-register/src/workflowContractV2LeasedRunStateStore.ts",
-              "extensions/workflow-register/src/workflowContractV2RunStateStore.ts",
-              "extensions/workflow-register/src/workflowContractV2RuntimeBoundary.ts",
-              "extensions/workflow-register/src/workflowRunCommands.ts",
+              "extensions/workflow-register/src/core/contractV2/providerAttemptStaging.ts",
+              "extensions/workflow-register/src/core/contractV2/providerEnvelopeSnapshot.ts",
+              "extensions/workflow-register/src/core/contractV2/providerInvocation.ts",
+              "extensions/workflow-register/src/core/contractV2/providerRegistry.ts",
               "extensions/workflow-register/test/architectureContracts.test.js",
-              "extensions/workflow-register/test/workflowContractV2ExecutionBoundary.test.js",
-              "extensions/workflow-register/test/workflowContractV2ExecutionGuard.test.js",
+              "extensions/workflow-register/test/vsixCompression.test.js",
               "extensions/workflow-register/test/workflowContractV2GateR.test.js",
-              "extensions/workflow-register/test/workflowContractV2ReachabilityPolicy.test.js",
-              "extensions/workflow-register/test/workflowContractV2RunLeaseDisposal.test.js",
-              "extensions/workflow-register/test/workflowContractV2RunPlanTestSupport.js",
-              "extensions/workflow-register/test/workflowContractV2RunProvenance.test.js",
-              "extensions/workflow-register/test/workflowContractV2RunProvenanceProjection.test.js",
-              "extensions/workflow-register/test/workflowContractV2RunSchemaType.test.js",
-              "extensions/workflow-register/test/workflowContractV2RuntimeLeaseScope.test.js",
-              "extensions/workflow-register/test/workflowContractV2TerminalLeaseRelease.test.js"
+              "extensions/workflow-register/test/workflowContractV2ManifestPackaging.test.js",
+              "extensions/workflow-register/test/workflowContractV2ProviderInvocation.test.js",
+              "extensions/workflow-register/test/workflowContractV2ProviderInvocationArchitecture.test.js",
+              "extensions/workflow-register/test/workflowContractV2ProviderInvocationFailurePrecedence.test.js",
+              "extensions/workflow-register/test/workflowContractV2ProviderInvocationFollowup.test.js",
+              "extensions/workflow-register/test/workflowContractV2ProviderInvocationFoundation.test.js",
+              "extensions/workflow-register/test/workflowContractV2ProviderInvocationHardening.test.js",
+              "extensions/workflow-register/test/workflowContractV2ProviderInvocationReviewCases.test.js",
+              "extensions/workflow-register/test/workflowContractV2ProviderInvocationTestSupport.js"
             ]
           }
         },
@@ -1314,12 +1357,12 @@
         ],
         "type": "object"
       },
-      "maxItems": 31,
-      "minItems": 31,
+      "maxItems": 19,
+      "minItems": 19,
       "type": "array"
     },
     "schemaVersion": {
-      "const": "workflow-gate-r-main-admission/v1"
+      "const": "workflow-gate-r-main-admission/v2"
     }
   },
   "required": [
