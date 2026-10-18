@@ -90,3 +90,70 @@ test('128 writes and 64 MiB total bounds are enforced from genuine declarations'
       await g.withScope(async () => { const r = await invoke(g, g.createAttempt()); if (excess) validation(r); else assert.equal(r.ok, true) })
     }
   })
+
+test('native promise constructor and species observation never executes source behavior', async t => {
+  requireR2()
+  const vm = require('node:vm'), expected = { answer: 42 }
+  let returned
+  const f = await fixtureR2(t, { dispatch: () => returned })
+  const variants = [
+    'constructor-getter', 'throwing-constructor', 'species-getter', 'nonconfig-writable',
+    'cross-realm', 'subclass', 'subclass-species', 'frozen-native', 'frozen-safe-constructor',
+    'unsafe-immutable-constructor', 'proxy-prototype', 'frozen-proxy-prototype'
+  ]
+  for (const [index, kind] of variants.entries()) {
+    let reads = 0, constructions = 0
+    class Subclass extends Promise { constructor(executor) { super(executor); constructions++ } }
+    returned = kind.startsWith('subclass') ? new Subclass(resolve => resolve(expected))
+      : kind === 'cross-realm' ? vm.runInNewContext('Promise.resolve(value)', { value: expected }) : Promise.resolve(expected)
+    if (kind === 'constructor-getter' || kind === 'throwing-constructor' || kind === 'unsafe-immutable-constructor') Object.defineProperty(returned, 'constructor', { configurable: kind !== 'unsafe-immutable-constructor', enumerable: true, get() { reads++; if (kind === 'throwing-constructor') throw Error('provider-owned-constructor-secret'); return Promise } })
+    if (kind === 'species-getter' || kind === 'nonconfig-writable') Object.defineProperty(returned, 'constructor', { configurable: kind !== 'nonconfig-writable', writable: true, value: Object.defineProperty({}, Symbol.species, { get() { reads++; throw Error('provider-owned-species-secret') } }) })
+    if (kind === 'subclass-species') Object.defineProperty(Subclass, Symbol.species, { get() { reads++; throw Error('provider-owned-subclass-species') } })
+    if (kind === 'frozen-safe-constructor') Object.defineProperty(returned, 'constructor', { value: Promise, configurable: false, writable: false })
+    if (kind.includes('proxy-prototype')) Object.setPrototypeOf(returned, new Proxy(Object.getPrototypeOf(returned), { get() { reads++; throw Error('provider-owned-prototype-trap') }, getOwnPropertyDescriptor() { reads++; throw Error('provider-owned-prototype-descriptor') } }))
+    if (kind.startsWith('frozen')) Object.freeze(returned)
+    const before = Object.getOwnPropertyDescriptor(returned, 'constructor'), prototype = Object.getPrototypeOf(returned)
+    await f.withScope(async () => {
+      const result = await invoke(f, f.createAttempt({ attemptId: 'promise' + index }))
+      if (kind === 'unsafe-immutable-constructor' || kind === 'frozen-proxy-prototype') validation(result, 'WF2_PROVIDER_OUTPUT_INVALID')
+      else { assert.equal(result.ok, true, kind); assert.equal(result.output.value.answer, 42) }
+      assert.doesNotMatch(JSON.stringify(result), /provider-owned|secret/)
+    })
+    assert.equal(reads, 0, kind)
+    if (kind.startsWith('subclass')) assert.equal(constructions, 1, 'observing a subclass must not construct another source instance')
+    const after = Object.getOwnPropertyDescriptor(returned, 'constructor')
+    if (before === undefined) assert.equal(after, undefined)
+    else for (const key of ['value', 'get', 'set', 'writable', 'enumerable', 'configurable']) assert.strictEqual(after[key], before[key], kind + ' descriptor ' + key)
+    assert.strictEqual(Object.getPrototypeOf(returned), prototype)
+  }
+  assert.equal(f.counters.dispatch, variants.length)
+})
+
+test('already-rejected native promises are observed safely or explicitly refused under isolated strict host policy', t => {
+  const { spawnSync } = require('node:child_process'), path = require('node:path')
+  const observations = []
+  for (const mode of ['shadowed', 'safe-immutable', 'unsafe-immutable']) {
+    const program = `
+      const assert=require('node:assert/strict');
+      const h=require('./test/workflowContractV2ProviderInvocationTestSupport');
+      (async()=>{let reads=0;const cleanup=[];
+        const f=await h.fixtureR2({after(fn){cleanup.push(fn)}},{dispatch(){
+          const p=Promise.reject({reason:'isolated-provider-rejection'});
+          if('${mode}'==='safe-immutable')Object.defineProperty(p,'constructor',{value:Promise,writable:false,configurable:false});
+          else Object.defineProperty(p,'constructor',{configurable:'${mode}'==='shadowed',get(){reads++;return Promise}});
+          return p;
+        }});
+        try{await f.withScope(async()=>{const result=await h.invoke(f,f.createAttempt());console.log(JSON.stringify({mode:'${mode}',reads,result,dispatches:f.counters.dispatch}));});}
+        finally{for(const fn of cleanup.reverse())await fn();}
+      })().catch(error=>{console.error(error.stack);process.exitCode=2});
+    `
+    const env = { ...process.env }; delete env.NODE_TEST_CONTEXT
+    const child = spawnSync(process.execPath, ['--unhandled-rejections=strict', '-e', program], { cwd: path.resolve(__dirname, '..'), env, encoding: 'utf8', windowsHide: true, timeout: 60000, maxBuffer: 1048576 })
+    assert.equal(child.error, undefined)
+    const observed = JSON.parse(child.stdout.trim()); assert.equal(observed.reads, 0); assert.equal(observed.dispatches, 1)
+    if (mode === 'unsafe-immutable') { assert.equal(observed.result.ok, false); assert.equal(observed.result.failure, 'validation'); assert.equal(observed.result.diagnostics[0].code, 'WF2_PROVIDER_OUTPUT_INVALID'); assert.equal(child.status, 1); assert.match(child.stderr, /ERR_UNHANDLED_REJECTION/) }
+    else { assert.equal(child.status, 0, child.stderr); assert.equal(observed.result.failure, 'provider-error'); assert.equal(observed.result.error.reason, 'isolated-provider-rejection'); assert.doesNotMatch(child.stderr, /UNHANDLED|must-not-read/) }
+    observations.push({ mode, status: child.status, signal: child.signal, stdout: child.stdout, stderr: child.stderr })
+  }
+  t.diagnostic('R2_PROMISE_ISOLATED_BASE64=' + Buffer.from(JSON.stringify(observations)).toString('base64'))
+})

@@ -14,6 +14,7 @@ export interface WorkflowAttemptInvocationSession {
   readonly idempotency: WorkflowProviderIdempotencyInput
   readonly effect: WorkflowProviderEffectInput
   assertActive(): void
+  sealWriter(): void
   sealWrites(): Promise<void>
   finish(outcome: "accepted" | "provider_failed" | "rejected"): void
 }
@@ -154,11 +155,11 @@ export function beginWorkflowAttemptInvocation(input: AuthorityInput & { readonl
       new Uint8ArrayConstructor(buffer, offset, length)
       const copy = new Uint8ArrayConstructor(length); apply(setBytes, copy, [bytes])
       writes.rows.push(freeze({ id: declarations[0].id, bytes: copy })); writes.total += length
-    } catch (error) { failure = error; if (!writes.sealed) writes.failed = true }
+    } catch (error) { failure = error; if (!finished) writes.failed = true }
     const pending = failure === undefined ? new NativePromise<void>(resolve => resolve()) : new NativePromise<void>((_, reject) => reject(failure))
-    // Observe every rejection even if the provider deliberately ignores its write.
-    apply(nativeThen, pending, [undefined, () => {}])
-    if (!writes.sealed && writes.count <= 128) writes.pending.push(pending)
+    // Observe before exposure and retain only the unexposed completion promise.
+    const observed = apply(nativeThen, pending, [() => {}, () => {}]) as Promise<void>
+    if (!writes.sealed && writes.count <= 128) writes.pending.push(observed)
     return pending
   }
   const idempotency: WorkflowProviderIdempotencyInput = binding.idempotency === "key-required"
@@ -167,6 +168,7 @@ export function beginWorkflowAttemptInvocation(input: AuthorityInput & { readonl
   const effect: WorkflowProviderEffectInput = binding.sideEffect === "workspace-write"
     ? freeze({ kind: "workspace-write", artifacts: freeze({ writeArtifact }) }) : freeze({ kind: binding.sideEffect })
   return freeze({ idempotency, effect, assertActive,
+    sealWriter(): void { writes.sealed = true },
     async sealWrites(): Promise<void> {
       writes.sealed = true; assertActive()
       for (const pending of writes.pending) {

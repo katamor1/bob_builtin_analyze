@@ -26,6 +26,53 @@ const empty = freeze([]) as readonly []
 const fields = ["lease", "stepId", "value", "signal", "attempt"] as const
 const invalid = (): TypeError => new TypeError("Workflow compiled provider invocation is invalid.")
 
+const descriptorOf = Object.getOwnPropertyDescriptor
+const defineProperty = Object.defineProperty
+const deleteProperty = Reflect.deleteProperty
+const isExtensible = Object.isExtensible
+const speciesKey = Symbol.species
+const nativeSpeciesGetter = descriptorOf(NativePromise, speciesKey)?.get
+function inheritedDescriptor(value: object, key: PropertyKey): PropertyDescriptor | null | undefined {
+  let current: object | null = value
+  for (let depth = 0; depth < 64 && current !== null; depth++) {
+    if (isProxy(current)) return null
+    const descriptor = descriptorOf(current, key)
+    if (descriptor) return descriptor
+    current = prototypeOf(current)
+  }
+  return current === null ? undefined : null
+}
+function safeImmutablePromise(promise: object): boolean {
+  const constructor = inheritedDescriptor(promise, "constructor")
+  if (constructor === null) return false
+  if (constructor && !hasOwn(constructor, "value")) return constructor.get === undefined
+  const value = constructor?.value
+  if (value === undefined) return true
+  if (value === null || (typeof value !== "object" && typeof value !== "function") || isProxy(value)) return false
+  const species = inheritedDescriptor(value, speciesKey)
+  if (species === null) return false
+  if (!species) return true
+  if (hasOwn(species, "value")) return species.value === undefined || species.value === null || species.value === NativePromise
+  return species.get === undefined || (value === NativePromise && species.get === nativeSpeciesGetter)
+}
+function observeNativePromise(promise: object, fulfilled: (value: unknown) => void, rejected: (error: unknown) => void): boolean {
+  if (isProxy(promise)) return false
+  const original = descriptorOf(promise, "constructor")
+  const shadow = original ? original.configurable || (hasOwn(original, "value") && original.writable) : isExtensible(promise)
+  try {
+    if (!shadow) {
+      if (!safeImmutablePromise(promise)) return false
+      apply(nativeThen, promise, [fulfilled, rejected]); return true
+    }
+    // No source callbacks can run in this synchronous native-only section.
+    // Bypass SpeciesConstructor without permanently changing the source object.
+    defineProperty(promise, "constructor", original ? { value: undefined } : { value: undefined, configurable: true })
+    try { apply(nativeThen, promise, [fulfilled, rejected]) }
+    finally { if (original) defineProperty(promise, "constructor", original); else deleteProperty(promise, "constructor") }
+    return true
+  } catch { return false }
+}
+
 export async function invokeCompiledWorkflowProvider(input: {
   readonly lease: WorkflowPlanLease; readonly stepId: string; readonly value: unknown; readonly signal: AbortSignal; readonly attempt: WorkflowAttemptStaging
 }): Promise<CompiledProviderInvocationResult> {
@@ -74,9 +121,9 @@ export async function invokeCompiledWorkflowProvider(input: {
     if (!threw && isPromise(result)) {
       const promise = result
       // Capture raw fulfillment/rejection into locals; never resolve a promise with provider data.
-      await new NativePromise<void>(resolve => { apply(nativeThen, promise, [(value: unknown) => { result = value; resolve() }, (error: unknown) => { threw = true; result = error; resolve() }]) })
+      await new NativePromise<void>(resolve => { if (!observeNativePromise(promise, value => { result = value; session.sealWriter(); resolve() }, error => { threw = true; result = error; session.sealWriter(); resolve() })) { session.sealWriter(); resolve() } })
       session.assertActive()
-    }
+    } else session.sealWriter()
     session.assertActive()
     try { await session.sealWrites() } catch {
       session.assertActive()

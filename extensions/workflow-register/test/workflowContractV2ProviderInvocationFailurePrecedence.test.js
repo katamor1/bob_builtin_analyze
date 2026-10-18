@@ -65,3 +65,50 @@ test('failed writes also consume the finite session write budget', async t => {
     } })
     await f.withScope(async () => { validation(await invoke(f, f.createAttempt())); await assert.rejects(last) })
   })
+
+test('writer completion waits never consult provider-modified promise properties', async t => {
+  requireR2()
+  let kind, invalidWrite, reads = 0, exposed, index = 0
+  const f = await fixtureR2(t, { sideEffect: 'workspace-write', dispatch({ effect }) {
+      exposed = effect.artifacts.writeArtifact({ id: invalidWrite ? 'unknown' : 'artifact0', bytes: new Uint8Array([1]) })
+      if (kind === 'constructor' || kind === 'throwing-constructor') Object.defineProperty(exposed, 'constructor', { get() { reads++; if (kind === 'throwing-constructor') throw Error('writer-constructor-secret'); return Promise } })
+      if (kind === 'species') Object.defineProperty(exposed, 'constructor', { value: Object.defineProperty({}, Symbol.species, { get() { reads++; throw Error('writer-species-secret') } }) })
+      if (kind === 'then-catch') for (const name of ['then', 'catch']) Object.defineProperty(exposed, name, { get() { reads++; throw Error('writer-property-secret') } })
+      if (kind === 'frozen') Object.freeze(exposed)
+      return {}
+    } }), before = f.snapshotRunFiles()
+  for (const variant of ['constructor', 'throwing-constructor', 'species', 'then-catch', 'frozen']) for (const bad of [false, true]) {
+    kind = variant; invalidWrite = bad; reads = 0
+    await f.withScope(async () => { const attempt = f.createAttempt({ attemptId: 'writerPromise' + index++ }), result = await invoke(f, attempt)
+      if (invalidWrite) { validation(result, 'WF2_ARTIFACT_SCHEMA_INVALID'); assert.throws(() => staging().readWorkflowAttemptStagedArtifacts(attempt), TypeError) }
+      else { assert.equal(result.ok, true); assert.deepEqual([...staging().readWorkflowAttemptStagedArtifacts(attempt)[0].bytes], [1]) }
+      assert.doesNotMatch(JSON.stringify(result), /writer-.*secret/)
+    })
+    assert.equal(reads, 0, kind); assert.equal(f.counters.dispatch, index); assert.deepEqual(f.snapshotRunFiles(), before)
+  }
+  assert.equal(index, 10)
+})
+
+for (const rejected of [false, true]) test('native ' + (rejected ? 'rejection' : 'fulfillment') + ' seals writers before the await continuation', async t => {
+  let late
+  const f = await fixtureR2(t, { sideEffect: 'workspace-write', dispatch({ effect }) {
+    const promise = rejected ? Promise.reject({ reason: 'typed' }) : Promise.resolve({})
+    queueMicrotask(() => queueMicrotask(() => { late = effect.artifacts.writeArtifact({ id: 'artifact0', bytes: new Uint8Array([1]) }); late.catch(() => {}) }))
+    return promise
+  } }), before = f.snapshotRunFiles()
+  await f.withScope(async () => { const attempt = f.createAttempt(), result = await invoke(f, attempt); await assert.rejects(late); validation(result, 'WF2_ARTIFACT_SCHEMA_INVALID'); assert.throws(() => staging().readWorkflowAttemptStagedArtifacts(attempt), TypeError) })
+  assert.equal(f.counters.dispatch, 1); assert.deepEqual(f.snapshotRunFiles(), before)
+})
+
+test('observed settlement sealing preserves abort and owner-loss precedence', async t => {
+  for (const mode of ['abort', 'owner-loss']) for (const rejected of [false, true]) {
+    let late
+    const controller = new AbortController(), f = await fixtureR2(t, { sideEffect: 'workspace-write', dispatch({ effect }) {
+      const promise = rejected ? Promise.reject({ reason: 'typed' }) : Promise.resolve({})
+      queueMicrotask(() => queueMicrotask(() => { if (mode === 'abort') controller.abort(); else require('./workflowContractV2ProviderInvocationTestSupport').privateModule('core/contractV2/runPlanLeaseContext').releaseWorkflowContractV2RunPlanLease(f.workspaceRoot, f.run.runId); late = effect.artifacts.writeArtifact({ id: 'artifact0', bytes: new Uint8Array([1]) }); late.catch(() => {}) }))
+      return promise
+    } }), before = f.snapshotRunFiles()
+    await f.withScope(async () => { const attempt = f.createAttempt(); await assert.rejects(invoke(f, attempt, { signal: controller.signal }), mode === 'abort' ? { name: 'AbortError' } : TypeError); await assert.rejects(late); assert.throws(() => staging().readWorkflowAttemptStagedArtifacts(attempt), mode === 'abort' ? { name: 'AbortError' } : TypeError) })
+    assert.equal(f.counters.dispatch, 1); assert.deepEqual(f.snapshotRunFiles(), before)
+  }
+})
