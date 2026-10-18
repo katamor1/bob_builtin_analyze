@@ -92,3 +92,11 @@ test("VSIX packaging compacts only P7 modules, preserves all other payloads and 
   assert.equal(run().status, 0)
   assert.deepEqual(fs.readFileSync(target), bytes)
 })
+
+require('node:test').test('R2 direct dependency compaction retains independent AST signatures',()=>{
+ const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),ts=require('typescript');
+ const {compactManifestModule}=require('../scripts/lib/compact-manifest-module');
+ const signature=code=>{const source=ts.createSourceFile('subject.js',code,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);assert.equal(source.parseDiagnostics.length,0);const visit=node=>{const children=node.getChildren(source);return[node.kind,children.length?children.map(visit):node.getText(source)]};return JSON.stringify(visit(source))};
+ assert.notEqual(signature('const result=1;'),signature('const result=2;'));
+ for(const name of ['providerRegistry','compiledPlan','jsonSchemaCatalog','jsonSchema','jsonValue','canonicalJson']){const original=fs.readFileSync(path.join(__dirname,'../out/core/contractV2',name+'.js'),'utf8'),compact=compactManifestModule(original);assert.equal(signature(compact),signature(original),name);}
+});

@@ -15,7 +15,16 @@ const COMPACT_MODULES = new Set([
   "extension/out/workflowContractV2LeasedRunStateStore.js",
   "extension/out/core/contractV2/runPlanProvenance.js",
   "extension/out/core/contractV2/runPlanState.js",
-  "extension/out/core/runtime/runStateStore.js"
+  "extension/out/core/runtime/runStateStore.js",
+  "extension/out/core/contractV2/providerEnvelopeSnapshot.js",
+  "extension/out/core/contractV2/providerAttemptStaging.js",
+  "extension/out/core/contractV2/providerInvocation.js",
+  "extension/out/core/contractV2/providerRegistry.js",
+  "extension/out/core/contractV2/compiledPlan.js",
+  "extension/out/core/contractV2/jsonSchemaCatalog.js",
+  "extension/out/core/contractV2/jsonSchema.js",
+  "extension/out/core/contractV2/jsonValue.js",
+  "extension/out/core/contractV2/canonicalJson.js"
 ])
 const MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024
@@ -129,6 +138,6 @@ function main() {
     requireZip(fs.readFileSync(target).equals(before))
     fs.renameSync(temporary, target)
   } finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary) }
-  console.log("VSIX compression: " + before.length + " -> " + after.length + " bytes; declared P7/R1 module ASTs and all other entry contents preserved")
+  console.log("VSIX compression: " + before.length + " -> " + after.length + " bytes; declared P7/R1/R2 module ASTs and all other entry contents preserved")
 }
 try { main() } catch (error) { console.error(error.message); process.exitCode = 1 }
