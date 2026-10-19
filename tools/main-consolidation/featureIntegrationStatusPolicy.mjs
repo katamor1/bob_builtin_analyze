@@ -16,12 +16,42 @@ const COMPLETION_REGISTRY = Object.freeze([
   Object.freeze({sha256:'cc316f2c59dcdd37db17c20561067249b235ad84043906d89b547e2c3f965a44',evidenceSha256:'59b0cb77b47ac6a3880560b0591c89aa1edf1630af2f0a5125e9583910539291',reference:Object.freeze({boundaryId:'WORKFLOW-B-GATE-P',sha256:'cc316f2c59dcdd37db17c20561067249b235ad84043906d89b547e2c3f965a44',state:'VERIFIED',acceptedMainSha:'36c80d9b71b5c3825a9dfcb21ed666e94c54f303'})}),
   Object.freeze({sha256:'983a10ba98a58811b86550866bca5e6b7b0f6d32966a12c84195e77d3c584d22',evidenceSha256:'189be15fbbdf93ecc4fcaa96cfc8969b8c8affe1590d2b0969a1efbd95a0c041',reference:Object.freeze({boundaryId:'GATE-R-ARCHIVE-INVENTORY',sha256:'983a10ba98a58811b86550866bca5e6b7b0f6d32966a12c84195e77d3c584d22',state:'VERIFIED',acceptedMainSha:'e11b217651b790308d823b689b000c7f7c048a8d'})}),
   Object.freeze({sha256:'e1583bebaea4bcc2909bfd0db320cc6c633d136176d767c0958802db22eaf5fd',evidenceSha256:'22d29779b8cfa73466206495014e89dbd4e4657453bfda96d1b6e8cb4c630583',reference:Object.freeze({boundaryId:'WF2-R1-PROVENANCE',sha256:'e1583bebaea4bcc2909bfd0db320cc6c633d136176d767c0958802db22eaf5fd',state:'VERIFIED',acceptedMainSha:'bd3347814284daadebefaa0ab6ab2187690ff348'})}),
-  Object.freeze({sha256:'6782c1e797fcf7d76090e39a1afd735f3449efe59a9d521c375d4c360e0de04c',evidenceSha256:'0a5920718eb49bf26fa09e5180320006ba1c97abbb808af07f940b4abf0ea129',reference:Object.freeze({boundaryId:'WF2-R2-INVOKE',sha256:'6782c1e797fcf7d76090e39a1afd735f3449efe59a9d521c375d4c360e0de04c',state:'VERIFIED',acceptedMainSha:'a58d5c74be087917093921c26d57c603a3d1c0d5'})})
+  Object.freeze({sha256:'6782c1e797fcf7d76090e39a1afd735f3449efe59a9d521c375d4c360e0de04c',evidenceSha256:'0a5920718eb49bf26fa09e5180320006ba1c97abbb808af07f940b4abf0ea129',reference:Object.freeze({boundaryId:'WF2-R2-INVOKE',sha256:'6782c1e797fcf7d76090e39a1afd735f3449efe59a9d521c375d4c360e0de04c',state:'VERIFIED',acceptedMainSha:'a58d5c74be087917093921c26d57c603a3d1c0d5'})}),
+  Object.freeze({sha256:'af004f545e7f88dbb4d53df7c81460bf153a40bd56627758aaf8c5f02e59f57c',evidenceSha256:'f859e6fd4e8fbedf43c7d2e33a1f08a9bfd889997d96a1c140478e772d3ee8ea',reference:Object.freeze({boundaryId:'REG-BRIDGE-OWNER-VERSION-LIFECYCLE',sha256:'af004f545e7f88dbb4d53df7c81460bf153a40bd56627758aaf8c5f02e59f57c',state:'VERIFIED',acceptedMainSha:'4f76cbf7a303e8c7b3a0b73055bfa247cc0f1895'})})
 ])
 const GATE_R_COMPLETION_SCOPES = Object.freeze(['GATE-R-ARCHIVE-INVENTORY','GATE-R-ACTIVE-MANIFEST','GATE-R-VALIDATOR','GATE-R-RUNNER'])
 const hashes = record => Object.fromEntries(record.externalEvidence.map(row=>[row.id,{bytes:row.bytes,sha256:row.sha256}]))
 const gitSha = value => {if(typeof value!=='string'||!/^[a-f0-9]{40}$/.test(value))throw new TypeError('invalid Git identity')}
 const hash256 = value => {if(typeof value!=='string'||!/^[a-f0-9]{64}$/.test(value))throw new TypeError('invalid evidence digest')}
+
+
+// Closed recovery import for source M1. Current human CI exception is explicit;
+// failed/pre-start CI is never decoded as successful checkout or test execution.
+function validateOwnerLifecycleCompletion(record) {
+ exactKeys(record,["acceptedMainSha","acceptedTreeSha","activeRuntime","automaticCleanup","boundaryId","ci","externalEvidence","finalProgramUat","installedUat","limits","local","mergeParents","mutationAuthority","packages","preservation","pullRequestNumber","repository","review","runtimeActivation","schemaVersion","source","sourceHeadSha","state"],'owner lifecycle completion')
+ if(record.schemaVersion!=='bob-builtin-analyze/reg-bridge-owner-version-lifecycle-completion/v1'||record.state!=='VERIFIED')throw new TypeError('owner lifecycle schema/state')
+ gitSha(record.sourceHeadSha);gitSha(record.acceptedMainSha);gitSha(record.acceptedTreeSha)
+ if(record.sourceHeadSha!=='87ad6b85b10051f15f2942b286cb9cdfee852ec2'||record.acceptedMainSha!=='4f76cbf7a303e8c7b3a0b73055bfa247cc0f1895'||record.acceptedTreeSha!=='5447e68a8754960d6ca85541db3a94ff64f0b965'||record.pullRequestNumber!==194)throw new TypeError('owner lifecycle source M1 identity')
+ same(record.mergeParents,['88de3a67aedf5c8d1b3ee2ea3226a973703ebaf0','87ad6b85b10051f15f2942b286cb9cdfee852ec2'],'owner lifecycle merge parents')
+ const ci=record.ci,authorization=ci.authorization
+ if(ci.mode!=='explicit_current_slice_user_ci_waiver'||ci.allRequiredGatesSucceeded!==false||authorization.userInstruction!=='今回のCIを免除して残りを続行'||authorization.inheritedFromR2!==false)throw new TypeError('owner lifecycle current CI exception')
+ if(authorization.scope.sliceId!==record.boundaryId||authorization.scope.sourceHeadSha!==record.sourceHeadSha||authorization.scope.acceptedMainSha!==record.acceptedMainSha||authorization.scope.accountStartupRestrictionOnly!==true||authorization.scope.includesSeparateMetadataIntegration!==true)throw new TypeError('owner lifecycle CI exception scope')
+ if(ci.candidate.head!==record.sourceHeadSha||ci.actualMain.head!==record.acceptedMainSha)throw new TypeError('owner lifecycle CI subject')
+ for(const scope of [ci.candidate,ci.actualMain]){
+  if(scope.allRequiredGatesSucceeded!==false||scope.workflows.length!==4||scope.manual.state!=='not_run'||scope.manual.workflowsDispatched!==0)throw new TypeError('owner lifecycle CI observation')
+  for(const workflow of scope.workflows){if(workflow.conclusion!=='failure')throw new TypeError('owner lifecycle CI failure must remain failure');for(const job of workflow.jobs){const skipped=scope===ci.actualMain&&job.name==='Extension source metrics';if(job.conclusion!==(skipped?'skipped':'failure')||job.steps!==0||job.checkoutVerified!==false||(!skipped&&job.runnerId!==0))throw new TypeError('owner lifecycle pre-start jobs')}}
+ }
+ if(record.source.selectedSourceItems!==46||record.source.sourceAdmissionDeltas!==57||record.source.metadataIsNotSourceSubject!==true)throw new TypeError('owner lifecycle source scope')
+ if(record.review.fixedHeadSha!==record.sourceHeadSha||record.review.important!==2||record.review.importantFixedByObservedTdd!==2||record.review.secondReview!==false)throw new TypeError('owner lifecycle review closure')
+ const workflow=record.packages.workflowRegister
+ if(workflow.capBytes!==1200000||workflow.vsix.bytes>workflow.capBytes||workflow.approvedCompactionPaths.length!==79||workflow.independentAstTokenProofCount!==79||workflow.unchangedWorkflowPayloadCount!==906)throw new TypeError('owner lifecycle package capacity/proof')
+ for(const pkg of Object.values(record.packages))if(pkg.sourceHeadSha!==record.sourceHeadSha||pkg.sourceTreeSha!==record.acceptedTreeSha||pkg.vsix.bytes>pkg.capBytes)throw new TypeError('owner lifecycle package subject')
+ const installed=record.installedUat
+ if(installed.state!=='PASSED'||installed.sourceHeadSha!==record.sourceHeadSha||installed.sourceTreeSha!==record.acceptedTreeSha||installed.requiredCases.length!==5||installed.requiredCases.some(row=>row.status!=='pass')||installed.nativeHostExit!==0||installed.nativeDeactivatePromiseAwaited!==true)throw new TypeError('owner lifecycle installed subject')
+ if(record.preservation.allHashesVerified!==true||record.externalEvidence.length!==record.preservation.files+1)throw new TypeError('owner lifecycle retained evidence')
+ for(const key of ['providerDispatches','bobDispatches','v2ProductLeaseAcquisitions','v2ProductRunDirectoryCreations','v2ProductArtifactStages'])if(record.activeRuntime.gateRResult[key]!==0)throw new TypeError('owner lifecycle inactive product paths')
+ if(Object.values(record.activeRuntime.productWiring).some(value=>value!==0)||record.activeRuntime.gateRResult.runtimeSuitesExecuted!==15||record.activeRuntime.gateRResult.runtimeActivation!==false||record.runtimeActivation!==false||record.automaticCleanup!==false||record.finalProgramUat!=='not_run')throw new TypeError('owner lifecycle inactive limits')
+}
 
 export function validateCompletionObservation(record,{programIndex,evidenceDigests}) {
   validateProgramIndex(programIndex)
@@ -42,6 +72,7 @@ export function validateCompletionObservation(record,{programIndex,evidenceDiges
       hash256(row.artifact.sha256)
     }
   }
+  if(record.boundaryId==='REG-BRIDGE-OWNER-VERSION-LIFECYCLE')validateOwnerLifecycleCompletion(record)
   const registration=COMPLETION_REGISTRY.find(entry=>entry.sha256===recordDigest)
   if(!registration) throw new TypeError('unregistered completion observation')
   if(digest(evidenceDigests)!==registration.evidenceSha256) throw new TypeError('actual evidence digest registry mismatch')
