@@ -9,13 +9,14 @@ import { WorkflowRegisterService } from "./workflowRegisterService"
 import type { StepCompletionOptions } from "./workflowRegisterService"
 import type { BobWorkflowGateAcceptance, BobWorkflowGateAcceptResult } from "./bobWorkflowGateRegistry"
 import type { ArtifactSourceRunArg, RunCommandArg, WorkflowCommandArg } from "./workflowRunCommands"
+import type { ProviderRegistryV1Api } from "./api/providerRegistryApi"
 
 /**
  * 他の Bob companion extension へ公開する workflow-register API。
  *
  * provider ID、workflow ID、command ID は WORKFLOW.md と companion extension から参照される互換性契約である。
  */
-export interface WorkflowRegisterApi {
+export interface WorkflowRegisterApi extends ProviderRegistryV1Api {
   compileCurrentWorkflowPackage: (input: CompileCurrentWorkflowContractV2Input) => Promise<WorkflowContractV2CompileResult>
   compileWorkflowPackageGeneration: (input: CompileWorkflowContractV2GenerationInput) => Promise<WorkflowContractV2CompileResult>
   acquireCurrentWorkflowPackage: (input: CompileCurrentWorkflowContractV2Input) => Promise<WorkflowContractV2AcquireResult>
@@ -144,8 +145,13 @@ export interface WorkflowRegisterApi {
  * @returns workflow-aware companion extension が利用する public API object。
  */
 export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi {
-  const service = new WorkflowRegisterService(String(context.extension.packageJSON.version ?? "unknown"))
+  const service = new WorkflowRegisterService(String(context.extension.packageJSON.version ?? "unknown"), {
+    id: context.extension.id,
+    version: String(context.extension.packageJSON.version ?? "unknown"),
+    extensionRoot: context.extension.extensionPath
+  })
   const api: WorkflowRegisterApi = {
+    ...service.providerRegistryApi(),
     compileCurrentWorkflowPackage: input => service.compileCurrentWorkflowPackage(input),
     compileWorkflowPackageGeneration: input => service.compileWorkflowPackageGeneration(input),
     acquireCurrentWorkflowPackage: input => service.acquireCurrentWorkflowPackage(input),

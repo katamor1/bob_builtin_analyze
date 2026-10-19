@@ -41,6 +41,7 @@ export class ActionRegistry {
   getLegacyAgent(): AgentProvider | undefined { return this.workflowProviders.getLegacyAgent() }
   registerLegacyResultSink(type: string, handler: SinkHandler): void { this.workflowProviders.registerLegacyResultSink(type, handler) }
   getLegacyResultSink(type: string): SinkHandler | undefined { return this.workflowProviders.getLegacyResultSink(type) }
+  listLegacyResultSinkTypes(): string[] { return this.workflowProviders.listLegacyResultSinkTypes() }
   disposeLegacyCompatibility(): void { this.workflowProviders.disposeLegacyCompatibility() }
 
   registerWorkflowProviderContract(
@@ -80,14 +81,19 @@ export interface DefaultActionRegistryOptions {
 
 export function createDefaultActionRegistry(options?: DefaultActionRegistryOptions): ActionRegistry {
   const registry = new ActionRegistry()
-  registry.register({
+  for (const provider of createDefaultActionProviders(options)) registry.register(provider)
+  return registry
+}
+
+export function createDefaultActionProviders(options?: DefaultActionRegistryOptions): ActionProvider[] {
+  const providers: ActionProvider[] = [{
     ...createMechanicalChecksActionProvider({
       isWorkspaceTrusted: options?.isWorkspaceTrusted
     }),
     sourceId: WORKFLOW_REGISTER_PROVIDER_SOURCE_ID
-  })
+  }]
   if (options) {
-    registry.register({
+    providers.push({
       id: "vscode.executeCommand",
       sourceId: WORKFLOW_REGISTER_PROVIDER_SOURCE_ID,
       execute: (input) => {
@@ -102,7 +108,7 @@ export function createDefaultActionRegistry(options?: DefaultActionRegistryOptio
       }
     })
   }
-  return registry
+  return providers
 }
 
 function argumentList(value: unknown): unknown[] {

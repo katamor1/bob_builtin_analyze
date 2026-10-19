@@ -401,6 +401,7 @@ export class WorkflowProviderRegistry {
     })
   }
   getLegacyResultSink(type: string): SinkHandler | undefined { return this.legacySinks.get(type) }
+  listLegacyResultSinkTypes(): string[] { return Array.from(this.legacySinks.keys()).sort() }
   disposeLegacyCompatibility(): void {
     this.mutate(() => { this.legacyActions.clear(); this.legacyAgent = undefined; this.legacySinks.clear() })
   }

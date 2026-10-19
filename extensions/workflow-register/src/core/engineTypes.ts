@@ -1,7 +1,8 @@
 import type { ActionRegistry } from "./actionRegistry"
 import type {
   WorkflowPreflightCheckInput,
-  WorkflowPreflightCheckResult
+  WorkflowPreflightCheckResult,
+  WorkflowPreflightCheckResolver
 } from "./engine/preflight"
 import type {
   AgentProvider,
@@ -87,6 +88,7 @@ export interface WorkflowEngineOptions {
     (input: WorkflowPreflightCheckInput) => Promise<WorkflowPreflightCheckResult> | WorkflowPreflightCheckResult
   >
   strictPreflightChecks?: boolean
+  preflightResolver?: WorkflowPreflightCheckResolver
   hooks?: WorkflowExecutionHooks
   manualCompletion?: (input: ManualCompletionInput) => Promise<ManualCompletionResult> | ManualCompletionResult
   recoverResultText?: (input: RecoverResultTextInput) => Promise<string | undefined> | string | undefined

@@ -6,11 +6,20 @@ export interface WorkflowPreflightCheckInput {
   workflow: CoreWorkflowDefinition
   run: WorkflowRunState
   checkId: string
+  workspaceRoot?: string
 }
 
 export type WorkflowPreflightCheckResult = boolean | string | { ok: boolean; error?: string }
 
 export type WorkflowPreflightChecks = Record<string, (input: WorkflowPreflightCheckInput) => Promise<WorkflowPreflightCheckResult> | WorkflowPreflightCheckResult>
+
+export interface WorkflowPreflightCheckResolver {
+  getPreflightCheck(id: string): WorkflowPreflightChecks[string] | undefined
+}
+
+export function createPreflightCheckResolver(local: WorkflowPreflightChecks, owned: WorkflowPreflightCheckResolver): WorkflowPreflightCheckResolver {
+  return Object.freeze({ getPreflightCheck: (id: string) => Object.hasOwn(local, id) ? local[id] : owned.getPreflightCheck(id) })
+}
 
 export interface EvaluateWorkflowPreflightInput {
   workflow: CoreWorkflowDefinition
@@ -19,6 +28,8 @@ export interface EvaluateWorkflowPreflightInput {
   fileExists?: (relativePath: string) => Promise<boolean> | boolean
   preflightChecks: WorkflowPreflightChecks
   strictPreflightChecks: boolean
+  preflightResolver?: WorkflowPreflightCheckResolver
+  workspaceRoot?: string
 }
 
 export function createDefaultPreflightChecks(workspaceRoot: string | undefined): WorkflowPreflightChecks {
@@ -51,13 +62,15 @@ async function evaluatePreflightEntry(input: EvaluateWorkflowPreflightInput, pre
   }
   for (const file of preflight.files ?? []) await checkFile(file, input.fileExists, errors, warnings, required && policy === "stop", preflight.id)
   for (const checkId of preflight.checks ?? []) {
-    const check = input.preflightChecks[checkId]
+    const check = input.preflightResolver
+      ? input.preflightResolver.getPreflightCheck(checkId)
+      : Object.hasOwn(input.preflightChecks, checkId) ? input.preflightChecks[checkId] : undefined
     if (!check) {
       if (input.strictPreflightChecks) fail(`Unsupported preflight check: ${checkId}`)
       else warnings.push(`${preflight.id}: skipped unsupported preflight check: ${checkId}`)
       continue
     }
-    const result = await Promise.resolve(check({ workflow: input.workflow, run: input.run, checkId }))
+    const result = await Promise.resolve(check({ workflow: input.workflow, run: input.run, checkId, workspaceRoot: input.workspaceRoot }))
     const error = formatPreflightCheckFailure(result)
     if (error) fail(`${checkId}: ${error}`)
   }

@@ -20,7 +20,7 @@ test("Bob registration deactivates the previous audited source before replacing 
   assert.match(source, /export interface BoundBobSource \{[\s\S]*readonly deactivate: \(\) => unknown[\s\S]*readonly log: \(message: string\) => unknown[\s\S]*readonly registerWorkflow: \(workflow: unknown\) => unknown[\s\S]*\}/)
   assert.doesNotMatch(source, /deactivate\?: \(\) => unknown/)
   assert.match(source, /private registeredSource\?: BobSourceLike/)
-  assert.match(source, /dispose\(\): void \{[\s\S]*void deactivateRegisteredSource\(source\)[\s\S]*\}/)
+  assert.match(source, /dispose\(\): void \{[\s\S]*await source\?\.deactivate\(\)[\s\S]*\}/)
   assert.match(
     source,
     new RegExp([
@@ -70,15 +70,20 @@ test("workflow reload re-registers current workflows and clears Bob context when
   assert.match(source, /"setContext", "bob-code\.hasWorkflows", registeredIds\.size > 0/)
 })
 
-test("workflow service removes manually disposed action providers from its lifecycle store", () => {
-  const source = registrationSource()
-
-  assert.match(source, /import \{ ActionProviderRegistrationStore \} from "\.\/core\/actionProviderRegistrationStore"/)
-  assert.match(source, /private readonly actionProviderRegistrations = new ActionProviderRegistrationStore\(\)/)
-  assert.match(source, /return this\.actionProviderRegistrations\.track\(this\.actionRegistry\.register\(provider\)\)/)
-  assert.match(source, /this\.actionProviderRegistrations\.dispose\(\)/)
-  assert.doesNotMatch(source, /actionProviderRegistrations: ActionProviderRegistration\[\]/)
-  assert.doesNotMatch(source, /actionProviderRegistrations\.push\(/)
+test("workflow service removes manually disposed actions from the same owned backend", async () => {
+  const { service } = require("./providerRegistryRuntimeTestSupport").service()
+  const first = service.registerActionProvider({ id: "fixture.manual", execute: () => "first" })
+  assert(service.actionRegistry.list().includes("fixture.manual"))
+  first.dispose()
+  assert(!service.actionRegistry.list().includes("fixture.manual"))
+  const second = service.registerActionProvider({ id: "fixture.manual", execute: () => "second" })
+  first.dispose()
+  assert(service.actionRegistry.list().includes("fixture.manual"))
+  assert.equal(Object.hasOwn(service, "actionProviderRegistrations"), false)
+  service.dispose()
+  await service.whenDisposed()
+  assert.deepEqual(service.actionRegistry.list(), [])
+  second.dispose()
 })
 
 test("workflow service closes the manual step panel during deactivation", () => {

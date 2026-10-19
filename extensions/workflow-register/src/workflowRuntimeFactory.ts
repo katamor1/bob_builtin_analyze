@@ -15,7 +15,9 @@ import type {
 } from "./bobWorkflowTypes"
 import type { ActionRegistry } from "./core/actionRegistry"
 import { normalizeAutomaticPauseSettings } from "./core/automaticPauseSettings"
-import { createCommandAgentProvider } from "./core/agentProvider"
+import { createCommandAgentProvider, createLiveAgentProvider } from "./core/agentProvider"
+import { createDefaultPreflightChecks, createPreflightCheckResolver, type WorkflowPreflightCheckResolver } from "./core/engine/preflight"
+import { writeBuiltInFileSink } from "./builtInContributions"
 import {
   WorkflowPlanStore,
   type AcquireWorkflowPlanInput,
@@ -26,7 +28,7 @@ import {
 import { WorkflowEngine } from "./core/engine"
 import type { ManualCompletionInput, ManualCompletionResult, WorkflowEngineOptions } from "./core/engine"
 import type { CoreWorkflowDefinition, AgentProvider } from "./core/model"
-import { createDefaultResultSinkRegistry, ResultSinkRegistry } from "./core/resultSinkRegistry"
+import { createDefaultResultSinkHandlers, ResultSinkRegistry, type DefaultResultSinkRegistryOptions } from "./core/resultSinkRegistry"
 import { FileRunControlStore, RunControlStore } from "./core/runControlStore"
 import { RunStateStore } from "./core/runStateStore"
 import { FileTaskSnapshotStore, TaskSnapshotStore } from "./core/taskSnapshots"
@@ -44,9 +46,10 @@ export interface TaskSnapshotSettings {
 export interface WorkflowRuntimeFactoryOptions {
   engineVersion: string
   actionRegistry: ActionRegistry
-  customResultSinks: Array<{ type: string; handler: Parameters<ResultSinkRegistry["register"]>[1] }>
+  customResultSinks?: Array<{ type: string; handler: Parameters<ResultSinkRegistry["register"]>[1] }>
   stepRuntime: StepRuntime
-  agentProvider: () => AgentProvider | undefined
+  agentProvider?: () => AgentProvider | undefined
+  ownedBuiltIns?: boolean
   inputsProvider: (workflow: WorkflowDefinition, provided: Record<string, unknown>) => ReturnType<BobWorkflowRunnerInputCollector>
   gateRegistry: BobWorkflowGateRegistry
   workflowById?: (id: string) => CoreWorkflowDefinition | undefined
@@ -81,8 +84,9 @@ export class WorkflowRuntimeFactory {
       resultSinks: this.createResultSinks(workspaceRoot),
       runStore: this.createRunStore(workspaceRoot),
       runControlStore: this.createRunControlStore(workspaceRoot),
-      agentProvider: agentProvider ?? this.options.agentProvider() ?? this.createCommandAgentProvider(),
+      agentProvider: createLiveAgentProvider(() => agentProvider ?? this.resolveAgentProvider()),
       preflightChecks: this.createPreflightChecks(workspaceRoot),
+      preflightResolver: this.createPreflightResolver(workspaceRoot),
       manualCompletion: (input) => this.holdStandaloneManualStep(input),
       recoverResultText: snapshotStore
         ? (input) => recoverResultTextFromSnapshots(snapshotStore, input.workflow, input.run, input.step)
@@ -104,7 +108,8 @@ export class WorkflowRuntimeFactory {
       runControlStore: (workspaceRoot) => this.createRunControlStore(workspaceRoot),
       taskSnapshotStore: (workspaceRoot) => this.createTaskSnapshotStore(workspaceRoot),
       preflightChecks: (workspaceRoot) => this.createPreflightChecks(workspaceRoot),
-      agentProvider: this.options.agentProvider() ?? this.createCommandAgentProvider(),
+      resolveAgentProvider: () => this.resolveAgentProvider(),
+      preflightResolver: workspaceRoot => this.createPreflightResolver(workspaceRoot),
       stepRuntime: this.options.stepRuntime,
       gateRegistry: this.options.gateRegistry,
       onManualStepHeld: this.options.onManualStepHeld,
@@ -169,16 +174,42 @@ export class WorkflowRuntimeFactory {
   }
 
   private createResultSinks(workspaceRoot: string): ResultSinkRegistry {
-    const registry = createDefaultResultSinkRegistry({
+    const context: DefaultResultSinkRegistryOptions = {
       workspaceRoot,
       isWorkspaceTrusted: () => vscode.workspace.isTrusted,
       executeCommand: (command, ...args) => {
         requireTrustedCommandExecution("write command result sink")
         return vscode.commands.executeCommand(command, ...args)
       }
+    }
+    return new ResultSinkRegistry({
+      workspaceRoot,
+      runtimeContext: context,
+      contributions: this.options.actionRegistry.contributionRuntimeResolver(),
+      legacyHandler: type => this.legacyResultSink(type),
+      listTypes: () => [...this.options.actionRegistry.snapshotContributions().resultSinks.map(sink => sink.type), ...this.options.actionRegistry.listLegacyResultSinkTypes(), ...(this.options.customResultSinks?.map(sink => sink.type) ?? [])],
+      requireOwnedSinks: this.options.ownedBuiltIns === true,
+      fallbackHandlers: this.options.ownedBuiltIns ? undefined : createDefaultResultSinkHandlers(context),
+      fileTransactionFactory: (scope, binding) => binding.handler === writeBuiltInFileSink ? createDefaultResultSinkHandlers({ ...context, workspaceRoot: scope.workspaceRoot }).fileTransaction : undefined
     })
-    for (const sink of this.options.customResultSinks) registry.register(sink.type, sink.handler)
-    return registry
+  }
+
+  private resolveAgentProvider(): AgentProvider | undefined {
+    return this.options.agentProvider?.() ?? this.options.actionRegistry.getLegacyAgent()
+      ?? this.options.actionRegistry.contributionRuntimeResolver().getAgentProvider() ?? this.createCommandAgentProvider()
+  }
+
+  private legacyResultSink(type: string): Parameters<ResultSinkRegistry["register"]>[1] | undefined {
+    const owned = this.options.actionRegistry.getLegacyResultSink(type)
+    if (owned) return owned
+    const legacy = this.options.customResultSinks ?? []
+    for (let index = legacy.length - 1; index >= 0; index--) if (legacy[index].type === type) return legacy[index].handler
+    return undefined
+  }
+
+  private createPreflightResolver(workspaceRoot: string): WorkflowPreflightCheckResolver {
+    const local = this.options.ownedBuiltIns ? {} : { ...createDefaultPreflightChecks(workspaceRoot), ...this.createPreflightChecks(workspaceRoot) }
+    return createPreflightCheckResolver(local, this.options.actionRegistry.contributionRuntimeResolver())
   }
 
   private createTaskSnapshotStore(workspaceRoot: string): TaskSnapshotStore | undefined {

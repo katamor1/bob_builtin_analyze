@@ -6,10 +6,10 @@ const isProxy = types.isProxy, descriptors = Object.getOwnPropertyDescriptors, o
 const frozenOwners = Object.freeze({
   'src/workflowContractV2Product.ts': '595ad8ef36b41109f668a095aaa18532227b327573555bdd8d51a62b786220dd',
   'src/workflowContractV2Entrypoint.ts': '4f9bdc0b94393fbcbbcb32c7ff0d41d1454b745645b15d5f6edd3741ae72520b',
-  'src/workflowContractV2ProviderLifecycle.ts': '0e9df7de9431e63f9723df189019e7ae5c21f5b6596f0dc93a4c9e11f0d3d76d',
-  'src/workflowRuntimeFactory.ts': '799a3aaebf2f8b83a0bf55cbac249ad1b0f2e49c7055f4a271e113dd68b06c71',
-  'src/workflowRegisterService.ts': 'de76f03cb2186bb3b84811823d0fae6e25c1bde41417b6dd83e7c12aa00587c3',
-  'src/extension.ts': 'f91806cf03e77346aeaff80554acab37074a97886760173e8e95ac94df0ee2a0',
+  'src/workflowContractV2ProviderLifecycle.ts': '49beecbdd4ebb539da46cce7700c752bc5c2b63d2a3c8147de9311173ea03cb9',
+  'src/workflowRuntimeFactory.ts': 'a74b7a8e50ff2c96d1149e5942a78b1adf6cb233c112d0037853b91f347d1899',
+  'src/workflowRegisterService.ts': '83b1fc84a44893d27b50f3b07c7c806b0e53a2f36f8cb17388f152ceda247785',
+  'src/extension.ts': 'a64f052abb3ed3468ec0b928d12d5ad2e7928fe8beee97a11653501fbc493ba2',
   'src/core/contractV2/planStore.ts': '15077c3f15b27f63d13336b5eb12dd35d42845b530fd7628744fb1620e464644'
 })
 const roots = Object.freeze(['src/extension.ts', 'src/extensionWithAuthoring.ts', 'src/workflowRuntimeFactory.ts',

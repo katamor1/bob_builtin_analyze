@@ -1,6 +1,6 @@
 import {gateRInputData,gateRCanonicalJson,gateRDigest,gateRPathRows} from './gateRData.mjs';
 const fail=reason=>{throw new TypeError('Registry bridge source admission: '+reason)};
-export const REGISTRY_BRIDGE_SOURCE_ADMISSION_SHA256='e96c50e67c9cab04d140e3b0d0290dccaa38e95fba0753be061748fc7157f940';
+export const REGISTRY_BRIDGE_SOURCE_ADMISSION_SHA256='292c30a6b0894bb7ee56e372748f338fb9c2bf50472f1fd5e31261ec46cd370d';
 const BASE_FILES_SHA256='44557aa00c8d4e846afac1b4bf286851d66a7594fe0360b9b9858cc8226e1b46';
 const admitted=[
   {
@@ -34,6 +34,12 @@ const admitted=[
     ]
   },
   {
+    "path": "extensions/workflow-register/scripts/check-contract-v2-runtime-reachability.js",
+    "sourceItemIds": [
+      "source-240df7c38b2b9a2698b1e2b8"
+    ]
+  },
+  {
     "path": "extensions/workflow-register/scripts/recompress-vsix.js",
     "sourceItemIds": [
       "source-888302701c275d7a8c7fb34c"
@@ -46,9 +52,27 @@ const admitted=[
     ]
   },
   {
+    "path": "extensions/workflow-register/src/bobWorkflowRunner.ts",
+    "sourceItemIds": [
+      "source-473b8fbfa56d3c4c61e553a0"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/builtInContributions.ts",
+    "sourceItemIds": [
+      "source-178b32177a4de88216c81e1e"
+    ]
+  },
+  {
     "path": "extensions/workflow-register/src/core/actionRegistry.ts",
     "sourceItemIds": [
       "source-88604e6280fac57594af0b14"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/core/agentProvider.ts",
+    "sourceItemIds": [
+      "source-f8e9072cf65ee834911af7cc"
     ]
   },
   {
@@ -67,6 +91,73 @@ const admitted=[
     "path": "extensions/workflow-register/src/core/contributionRegistration.ts",
     "sourceItemIds": [
       "source-888302701c275d7a8c7fb34c"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/core/disposeResources.ts",
+    "sourceItemIds": [
+      "source-730d00e957bf6cefffeeacf2"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/core/engine.ts",
+    "sourceItemIds": [
+      "source-4aa26e2ba3475a88e66b9d2e"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/core/engine/preflight.ts",
+    "sourceItemIds": [
+      "source-d79dcd8a933e2243f74ff982"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/core/engineTypes.ts",
+    "sourceItemIds": [
+      "source-721523ae63cd162bf55c8c6f"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/core/resultSinkRegistry.ts",
+    "sourceItemIds": [
+      "source-e2649725e3a40cd18302e95a"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/core/runtime/resultSinkRegistry.ts",
+    "sourceItemIds": [
+      "source-e2649725e3a40cd18302e95a"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/extension.ts",
+    "sourceItemIds": [
+      "source-30975ac1581193529a323011"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/workflowContractV2ProviderLifecycle.ts",
+    "sourceItemIds": [
+      "source-06b495365a39505884c0f86f"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/workflowRegisterService.ts",
+    "sourceItemIds": [
+      "source-240df7c38b2b9a2698b1e2b8"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/workflowRuntimeFactory.ts",
+    "sourceItemIds": [
+      "source-f89eb258abf02ed66382987d"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/builtInContributionRegistration.test.js",
+    "sourceItemIds": [
+      "source-83eef9cf8e2990705d59370e",
+      "source-a1581360299210be8dd381b0"
     ]
   },
   {
@@ -102,7 +193,8 @@ const admitted=[
   {
     "path": "extensions/workflow-register/test/fixtures/provider-registry-api/consumer.ts",
     "sourceItemIds": [
-      "source-68e935618e8909d8f47822a1"
+      "source-68e935618e8909d8f47822a1",
+      "source-c5828e6fb833ccaa6eea4c0f"
     ]
   },
   {
@@ -112,9 +204,21 @@ const admitted=[
     ]
   },
   {
+    "path": "extensions/workflow-register/test/operationHubAgentProvider.test.js",
+    "sourceItemIds": [
+      "source-f89eb258abf02ed66382987d"
+    ]
+  },
+  {
     "path": "extensions/workflow-register/test/providerRegistryApi.test.js",
     "sourceItemIds": [
       "source-68e935618e8909d8f47822a1"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/providerRegistryDisposal.test.js",
+    "sourceItemIds": [
+      "source-06b495365a39505884c0f86f"
     ]
   },
   {
@@ -124,9 +228,51 @@ const admitted=[
     ]
   },
   {
+    "path": "extensions/workflow-register/test/providerRegistryRuntimeLifecycle.test.js",
+    "sourceItemIds": [
+      "source-49c3dcb3210f6747397403d8"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/providerRegistryRuntimeTestSupport.js",
+    "sourceItemIds": [
+      "source-49c3dcb3210f6747397403d8"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/providerRegistryRuntimeWiring.test.js",
+    "sourceItemIds": [
+      "source-2b3053b0bd0857926680aaa4"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/registrationWiring.test.js",
+    "sourceItemIds": [
+      "source-657058eea29c4c1daed416c3"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/runtimeWiring.test.js",
+    "sourceItemIds": [
+      "source-6e4f27e3414ecd0dbbe3abb7"
+    ]
+  },
+  {
     "path": "extensions/workflow-register/test/vsixCompression.test.js",
     "sourceItemIds": [
       "source-c357a71f441254a3b0893e6a"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/workflowContractV2ExecutionBoundary.test.js",
+    "sourceItemIds": [
+      "source-240df7c38b2b9a2698b1e2b8"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/workflowRegister.test.js",
+    "sourceItemIds": [
+      "source-30975ac1581193529a323011"
     ]
   }
 ];

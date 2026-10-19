@@ -5,6 +5,14 @@ export interface CommandAgentProviderOptions {
   executeCommand: (command: string, input: AgentExecutionInput) => Promise<unknown> | unknown
 }
 
+export function createLiveAgentProvider(resolve: () => AgentProvider | undefined): AgentProvider {
+  return Object.freeze({ run: async (input: AgentExecutionInput) => {
+    const provider = resolve()
+    if (!provider) throw new Error("Agent provider is required for agent workflow steps.")
+    return await Promise.resolve(provider.run(input))
+  } })
+}
+
 export function createCommandAgentProvider(options: CommandAgentProviderOptions): AgentProvider | undefined {
   const command = options.command?.trim()
   if (!command) return undefined

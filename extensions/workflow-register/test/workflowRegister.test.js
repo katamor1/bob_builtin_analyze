@@ -90,7 +90,7 @@ test("package contributes standalone workflow launcher commands without a hard B
   ]) {
     assertContributesCommand(packageJson, command)
   }
-  assert.match(source, /new WorkflowRegisterService\(String\(context\.extension\.packageJSON\.version \?\? "unknown"\)\)/)
+  assert.match(source, /new WorkflowRegisterService\(String\(context\.extension\.packageJSON\.version \?\? "unknown"\), \{\s*id: context\.extension\.id,\s*version: String\(context\.extension\.packageJSON\.version \?\? "unknown"\),\s*extensionRoot: context\.extension\.extensionPath\s*\}\)/)
   assert.match(source, /registerCommand\([\s\S]*"workflowRegister\.runWorkflowStep"[\s\S]*service\.runWorkflowStep\(workflowId, stepId, inputs\)/)
   assert.match(source, /registerCommand\([\s\S]*"workflowRegister\.startFromStepWithArtifacts"[\s\S]*service\.startFromStepWithArtifacts\(workflowId, stepId, sourceRunArg, inputs\)/)
   assert.match(source, /registerCommand\("workflowRegister\.runNextStep", \(runArg\?: RunCommandArg\) => service\.runNextStep\(runArg\)\)/)

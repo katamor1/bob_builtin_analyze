@@ -9,5 +9,10 @@ export function consume(old: WorkflowRegisterApi, api: ProviderRegistryV1Api, ma
   old.registerActionProvider({ id: "fixture.action", execute: () => undefined }).dispose()
   old.registerAgentProvider({ run: () => "value" })
   old.registerResultSink("file", async () => ({ ok: true }))
+  const combined: ProviderRegistryV1Api = old
+  combined.registerContributionSet(manifest, context, handlers).dispose()
+  old.negotiateProviderRegistry({ min: "provider-registry/v1", max: "provider-registry/v1" })
+  const publicVersion: "provider-registry/v1" = old.apiVersion
+  void publicVersion
   return version
 }

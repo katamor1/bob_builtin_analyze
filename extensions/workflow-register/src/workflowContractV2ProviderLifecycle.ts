@@ -38,7 +38,8 @@ const objectPrototype = Object.prototype
 const reflectApply = Reflect.apply
 const reflectOwnKeys = Reflect.ownKeys
 const setAdd = Set.prototype.add
-const setClear = Set.prototype.clear
+const arrayPush = Array.prototype.push
+const arrayReverse = Array.prototype.reverse
 const setDelete = Set.prototype.delete
 const setForEach = Set.prototype.forEach
 const SetConstructor = Set
@@ -96,24 +97,24 @@ export class WorkflowContractV2ProviderLifecycle {
   }
 
   dispose(): void {
-    if (this.disposed) return
     this.disposed = true
     this.entrypoint = undefined
+    const pending: ManagedRegistration[] = [], failures: unknown[] = []
     reflectApply(setForEach, this.registrations, [
-      (managed: ManagedRegistration) => {
-        if (managed.disposed) return
-        managed.disposed = true
-        managed.registration.dispose()
-      }
+      (managed: ManagedRegistration) => { reflectApply(arrayPush, pending, [managed]) }
     ])
-    reflectApply(setClear, this.registrations, [])
+    reflectApply(arrayReverse, pending, [])
+    for (const managed of pending) {
+      try { this.disposeRegistration(managed) } catch (error) { reflectApply(arrayPush, failures, [error]) }
+    }
+    if (failures.length) throw new AggregateError(failures, "Workflow Contract v2 provider cleanup failed.")
   }
 
   private disposeRegistration(managed: ManagedRegistration): void {
     if (managed.disposed) return
+    managed.registration.dispose()
     managed.disposed = true
     reflectApply(setDelete, this.registrations, [managed])
-    managed.registration.dispose()
     if (this.disposed) return
 
     try {
