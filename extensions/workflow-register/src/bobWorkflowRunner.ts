@@ -61,6 +61,8 @@ interface BobWorkflowEngineRunnerOptions {
   taskSnapshotStore: (workspaceRoot: string) => TaskSnapshotStore | undefined
   preflightChecks: (workspaceRoot: string) => NonNullable<WorkflowEngineOptions["preflightChecks"]>
   agentProvider?: AgentProvider
+  resolveAgentProvider?: () => AgentProvider | undefined
+  preflightResolver?: (workspaceRoot: string) => WorkflowEngineOptions["preflightResolver"]
   stepRuntime: StepRuntime
   inputsProvider: BobWorkflowRunnerInputCollector
   gateRegistry: BobWorkflowGateRegistry
@@ -128,6 +130,7 @@ export class BobWorkflowEngineRunner {
       runControlStore: this.options.runControlStore?.(workspaceRoot),
       agentProvider: this.createAgentProvider(task),
       preflightChecks: this.options.preflightChecks(workspaceRoot),
+      preflightResolver: this.options.preflightResolver?.(workspaceRoot),
       hooks: this.createHooks(
         task,
         snapshotProvider,
@@ -298,7 +301,8 @@ export class BobWorkflowEngineRunner {
           if (!result) throw new Error("Bob サブエージェントから結果が返りませんでした。もう一度実行してください。")
           return result
         }
-        if (this.options.agentProvider) return this.options.agentProvider.run(input)
+        const provider = this.options.resolveAgentProvider?.() ?? this.options.agentProvider
+        if (provider) return provider.run(input)
         throw new Error("Bob の startSubagent API を利用できません。Bob 拡張機能の状態を確認してください。")
       }
     }

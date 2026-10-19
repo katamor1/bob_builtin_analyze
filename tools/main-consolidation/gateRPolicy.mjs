@@ -191,9 +191,9 @@ export async function gateRResult() {
     }catch(error){context.stop(error);}
    }
   }
-  // Exactly two isolated slots, one shared deadline/budget, and no fail-fast
-  // return: both workers settle all started children before failure is reported.
-  await Promise.all([worker(),worker()]);
+  // Exactly three isolated slots, one shared deadline/budget, and no fail-fast
+  // return: all workers settle all started children before failure is reported.
+  await Promise.all([worker(),worker(),worker()]);
   if(context.failure)throw context.failure;
   if(performance.now()>deadline)fail('total timeout');
   const wiring=validateGateRProductWiringOutputs(outputs);

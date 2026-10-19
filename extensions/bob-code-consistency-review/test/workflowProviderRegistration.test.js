@@ -89,18 +89,23 @@ test("code consistency provider generation records the exact API used for regist
   const source = readSourceSet(["extension.ts", "workflowProviderRegistration.ts"])
 
   assert.match(source, /return \{ registered: true, registrations, api \}/)
-  assert.match(source, /register: \(\) => registerWorkflowProviders\(handlers\)/)
+  assert.match(source, /register: \(\) => registerWorkflowProviders\(handlers, context\)/)
   assert.doesNotMatch(source, /api: result\.registered \? currentWorkflowRegisterApi\(\) : undefined/)
 })
 
-test("code consistency workflow providers declare ownership and register disposables", () => {
-  const source = readSourceSet(["extension.ts", "workflowProviderRegistration.ts"])
-
-  assert.match(source, /const CODE_CONSISTENCY_PROVIDER_SOURCE_ID = "local\.bob-code-consistency-review"/)
-  assert.match(source, /sourceId: CODE_CONSISTENCY_PROVIDER_SOURCE_ID/)
-  assert.match(source, /const registrations: vscode\.Disposable\[\] = \[\]/)
-  assert.match(source, /disposeRegistrations\(registrations\)/)
-  assert.match(source, /context\.subscriptions\.push\(\.\.\.registrations\)/)
+test("code consistency retry lifecycle owns exactly one complete contribution set", async (t) => {
+  const { completeApi, environment, tick, id } = require("./providerRegistryBridgeTestSupport")
+  let disposed = 0
+  const { api, calls } = completeApi(() => ({ dispose() { disposed++ } }))
+  const e = environment(api); t.after(e.stop)
+  assert.equal(e.start(), undefined)
+  await tick()
+  assert.equal(e.context.subscriptions.length, 1)
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0][1].id, id)
+  for (const provider of calls[0][2].actionProviders.values()) assert.equal(provider.sourceId, id)
+  e.notify(); await tick(); assert.equal(calls.length, 1)
+  e.stop(); e.stop(); assert.equal(disposed, 1)
 })
 
 test("code consistency provider accepts workflowRoot without first-folder fallback", () => {

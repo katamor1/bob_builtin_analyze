@@ -10,9 +10,12 @@ import {
 } from "./bobWorkflowGateRegistry"
 import { StepRuntime, type StepCompletionExpectation } from "./bobStepRuntime"
 import type { BobSourceLike } from "./bobApi"
-import { createDefaultActionRegistry } from "./core/actionRegistry"
+import { ActionRegistry } from "./core/actionRegistry"
 import type { ActionProvider, ActionProviderRegistration, WorkflowProviderRegistration, WorkflowProviderRegistrationInput } from "./core/actionRegistry"
-import { ActionProviderRegistrationStore } from "./core/actionProviderRegistrationStore"
+import { ProviderRegistryHost, type ProviderRegistryV1Api } from "./api/providerRegistryApi"
+import { registerWorkflowRegisterBuiltInContributions } from "./builtInContributions"
+import { disposeResourcesInOrder, type DisposalResult } from "./core/disposeResources"
+import { rejectContribution, type InstalledContributionOwner } from "./core/contributionManifest"
 import type { AgentProvider, CoreWorkflowDefinition } from "./core/model"
 import type { ResultSinkRegistry } from "./core/resultSinkRegistry"
 import {
@@ -23,7 +26,6 @@ import {
 import { showMarkdownReport } from "./reports"
 import { ManualStepPanelController } from "./webview/manualStepPanel"
 import {
-  deactivateRegisteredSource,
   registerWorkflows as registerWorkflowDefinitions,
   type RegistrationResult
 } from "./workflowRegistrationService"
@@ -47,29 +49,37 @@ export interface StepCompletionOptions extends StepCompletionExpectation {
 
 export class WorkflowRegisterService implements vscode.Disposable {
   private readonly registeredIds = new Set<string>()
-  private readonly watcher = vscode.workspace.createFileSystemWatcher(WORKFLOW_GLOB)
-  private readonly contractV2Watcher = vscode.workspace.createFileSystemWatcher("**/.bob/workflows/*/current.json")
+  private readonly watcher: vscode.FileSystemWatcher
+  private readonly contractV2Watcher: vscode.FileSystemWatcher
   private legacyRegistrationFingerprint?: string
   private readonly bobWorkflowGates = new BobWorkflowGateRegistry()
   private readonly reviewAcceptances = new ReviewAcceptanceCoordinator()
   private readonly stepRuntime = new StepRuntime()
   private readonly coreWorkflows = new Map<string, CoreWorkflowDefinition>()
-  private readonly actionRegistry = createDefaultActionRegistry({
-    isWorkspaceTrusted: () => vscode.workspace.isTrusted,
-    executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args)
-  })
-  private readonly customResultSinks: Array<{ type: string; handler: Parameters<ResultSinkRegistry["register"]>[1] }> = []
-  private readonly actionProviderRegistrations = new ActionProviderRegistrationStore()
+  private readonly actionRegistry = new ActionRegistry()
+  private readonly providerRegistryHost: ProviderRegistryHost
+  private disposalCompletion?: Promise<DisposalResult>
+  private readonly lateSourceDisposalFailures: Array<DisposalResult["failures"][number]> = []
   private readonly manualStepPanel: ManualStepPanelController
   private readonly runtimeFactory: WorkflowRuntimeFactory
   private readonly contractV2Providers: WorkflowContractV2ProviderLifecycle
   private readonly catalogReloads = new WorkflowCatalogReloadCoordinator()
   private readonly runCommands: WorkflowRunCommandService
-  private agentProvider?: AgentProvider
   private registeredSource?: BobSourceLike
   private lastResult: RegistrationResult = { summary: "ワークフロー定義はまだ読み込まれていません。", lines: [] }
 
-  constructor(private readonly engineVersion: string) {
+  constructor(private readonly engineVersion: string, installedOwner?: InstalledContributionOwner) {
+    const installed = installedOwner ?? resolveInstalledContributionOwner("local.workflow-register")
+    if (!installed) rejectContribution("contribution.provenance.invalid")
+    this.providerRegistryHost = new ProviderRegistryHost({ actionRegistry: this.actionRegistry, resolveInstalledExtension: resolveInstalledContributionOwner })
+    registerWorkflowRegisterBuiltInContributions(this.providerRegistryHost, {
+      installed,
+      isWorkspaceTrusted: () => vscode.workspace.isTrusted,
+      executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
+      workspaceFolders: () => vscode.workspace.workspaceFolders ?? []
+    })
+    this.watcher = vscode.workspace.createFileSystemWatcher(WORKFLOW_GLOB)
+    this.contractV2Watcher = vscode.workspace.createFileSystemWatcher("**/.bob/workflows/*/current.json")
     this.manualStepPanel = new ManualStepPanelController({
       host: {
         createWebviewPanel: (viewType, title, showOptions, options) => vscode.window.createWebviewPanel(
@@ -90,10 +100,9 @@ export class WorkflowRegisterService implements vscode.Disposable {
     this.runtimeFactory = new WorkflowRuntimeFactory({
       engineVersion,
       actionRegistry: this.actionRegistry,
-      customResultSinks: this.customResultSinks,
+      ownedBuiltIns: true,
       stepRuntime: this.stepRuntime,
       gateRegistry: this.bobWorkflowGates,
-      agentProvider: () => this.agentProvider,
       inputsProvider: (workflow, provided) => collectBobWorkflowInputs(workflow, provided),
       workflowById: (id) => this.coreWorkflows.get(id),
       contractV2BeforeRun: (workflow) => this.assertContractV2RunCreationReady(workflow),
@@ -138,20 +147,42 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   dispose(): void {
-    this.catalogReloads.dispose()
-    this.contractV2Providers.dispose()
-    this.contractV2Watcher.dispose()
-    this.watcher.dispose()
-    this.manualStepPanel.dispose()
-    this.bobWorkflowGates.dispose()
-    try {
-      this.actionProviderRegistrations.dispose()
-    } catch (error) {
-      console.warn("Failed to dispose one or more workflow action providers", error)
-    }
+    if (this.disposalCompletion) return
+    let finish!: (result: DisposalResult) => void
+    this.disposalCompletion = new Promise(resolve => { finish = resolve })
     const source = this.registeredSource
     this.registeredSource = undefined
-    void deactivateRegisteredSource(source)
+    this.registeredIds.clear()
+    this.coreWorkflows.clear()
+    this.legacyRegistrationFingerprint = undefined
+    void disposeResourcesInOrder([
+      { name: "catalogReloads", dispose: () => { this.catalogReloads.dispose(); return this.catalogReloads.whenIdle() } },
+      { name: "contractV2Providers", dispose: () => this.contractV2Providers.dispose() },
+      { name: "contributions", dispose: () => this.providerRegistryHost.dispose() },
+      { name: "legacyCompatibility", dispose: () => this.actionRegistry.disposeLegacyCompatibility() },
+      { name: "contractV2Watcher", dispose: () => this.contractV2Watcher.dispose() },
+      { name: "watcher", dispose: () => this.watcher.dispose() },
+      { name: "manualStepPanel", dispose: () => this.manualStepPanel.dispose() },
+      { name: "bobWorkflowGates", dispose: () => this.bobWorkflowGates.dispose() },
+      { name: "registeredSource", dispose: async () => { await source?.deactivate() } }
+    ]).then(initial => {
+      const result: DisposalResult = Object.freeze({ failures: Object.freeze([...initial.failures, ...this.lateSourceDisposalFailures]) })
+      finish(result)
+      if (result.failures.length) {
+        try { console.warn("Workflow resource cleanup failed:", result.failures.map(failure => failure.name).join(", ")) } catch { /* Reporting cannot undo cleanup. */ }
+      }
+    })
+  }
+
+  whenDisposed(): Promise<DisposalResult> {
+    if (!this.disposalCompletion) throw new Error("Workflow disposal has not started.")
+    return this.disposalCompletion
+  }
+
+  providerRegistryApi(): ProviderRegistryV1Api { return this.providerRegistryHost.api }
+
+  private assertRegistrationActive(): void {
+    if (this.disposalCompletion) throw new Error("Workflow registration service is disposed.")
   }
 
   async inspect(): Promise<void> {
@@ -205,7 +236,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   registerActionProvider(provider: ActionProvider): ActionProviderRegistration {
-    return this.actionProviderRegistrations.track(this.actionRegistry.register(provider))
+    this.assertRegistrationActive()
+    return this.actionRegistry.register(provider)
   }
 
   registerWorkflowProviderContract(input: WorkflowProviderRegistrationInput): WorkflowProviderRegistration {
@@ -213,11 +245,13 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   registerAgentProvider(provider: AgentProvider): void {
-    this.agentProvider = provider
+    this.assertRegistrationActive()
+    this.actionRegistry.setLegacyAgent(provider)
   }
 
   registerResultSink(type: string, handler: Parameters<ResultSinkRegistry["register"]>[1]): void {
-    this.customResultSinks.push({ type, handler })
+    this.assertRegistrationActive()
+    this.actionRegistry.registerLegacyResultSink(type, handler)
   }
 
   listCoreWorkflows(): CoreWorkflowDefinition[] {
@@ -343,24 +377,37 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   private async reloadCatalog(options: { showReport: boolean }): Promise<void> {
+    if (this.disposalCompletion) return
     const trustError = await requireTrustedWorkspace("ワークフロー登録を再読み込み", { showWarning: options.showReport })
+    if (this.disposalCompletion) return
     if (trustError) {
       this.lastResult = { summary: "ワークスペースが信頼されていません。", lines: [`- 失敗: ${trustError}`] }
       if (options.showReport) await showMarkdownReport("Bob ワークフロー登録", this.lastResult.summary, this.lastResult.lines)
       return
     }
     const result = await this.registerWorkflows()
+    if (this.disposalCompletion) return
     this.lastResult = result
     if (options.showReport) await showMarkdownReport("Bob ワークフロー登録", result.summary, result.lines)
   }
 
   private async registerWorkflows(): Promise<RegistrationResult> {
+    const previousSource = this.registeredSource
     const update = await registerWorkflowDefinitions({
-      previousSource: this.registeredSource,
+      previousSource,
       previousLegacyFingerprint: this.legacyRegistrationFingerprint,
       contractV2: this.contractV2Providers.current(),
       createRunner: (workflow) => this.runtimeFactory.createBobWorkflowRunner(workflow)
     })
+    if (this.disposalCompletion) {
+      if (update.sourceChanged && update.registeredSource && update.registeredSource !== previousSource) {
+        try { await update.registeredSource.deactivate() }
+        catch (error) { this.lateSourceDisposalFailures.push(Object.freeze({ name: "lateRegisteredSource", error })) }
+      }
+      try { await vscode.commands.executeCommand("setContext", "bob-code.hasWorkflows", false) }
+      catch (error) { this.lateSourceDisposalFailures.push(Object.freeze({ name: "workflowContext", error })) }
+      return update.result
+    }
     this.legacyRegistrationFingerprint = update.legacyFingerprint
     this.coreWorkflows.clear()
     for (const workflow of update.coreWorkflows) this.coreWorkflows.set(workflow.id, workflow)
@@ -371,4 +418,15 @@ export class WorkflowRegisterService implements vscode.Disposable {
     }
     return update.result
   }
+}
+
+function resolveInstalledContributionOwner(id: string): InstalledContributionOwner | undefined {
+  try {
+    const extension = vscode.extensions?.getExtension(id)
+    if (!extension || extension.id !== id || typeof extension.extensionPath !== "string") return undefined
+    const metadata = extension.packageJSON
+    if (!metadata || typeof metadata.publisher !== "string" || typeof metadata.name !== "string" || typeof metadata.version !== "string"
+      || `${metadata.publisher}.${metadata.name}` !== id) return undefined
+    return { id, version: metadata.version, extensionRoot: extension.extensionPath }
+  } catch { return undefined }
 }

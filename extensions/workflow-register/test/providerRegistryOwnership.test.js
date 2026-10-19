@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),{test}=require('node:test')
+const {harness,register}=require('./contributionRegistryTestSupport')
+test('action registry facade and V2 catalog share the same unique owned backend',()=>{
+ const {WorkflowProviderRegistry}=require('../out/core/contractV2/providerRegistry.js'),x=harness(),other=harness()
+ const owners=Object.values(x.registry).filter(v=>v instanceof WorkflowProviderRegistry);assert.equal(owners.length,1)
+ const before=JSON.stringify(x.registry.snapshotWorkflowProviderCatalog().evidence),r=register(x)
+ assert.deepEqual(owners[0].snapshotContributions(),x.host.snapshot());assert.equal(other.host.snapshot().ownedSetCount,0)
+ assert.equal(JSON.stringify(x.registry.snapshotWorkflowProviderCatalog().evidence),before);r.dispose();assert.equal(JSON.stringify(x.registry.snapshotWorkflowProviderCatalog().evidence),before)
+ assert.equal(Object.values(x.registry).some(v=>v instanceof Map),false,'legacy action storage must belong to the same backend')
+})

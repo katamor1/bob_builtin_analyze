@@ -9,13 +9,14 @@ import { WorkflowRegisterService } from "./workflowRegisterService"
 import type { StepCompletionOptions } from "./workflowRegisterService"
 import type { BobWorkflowGateAcceptance, BobWorkflowGateAcceptResult } from "./bobWorkflowGateRegistry"
 import type { ArtifactSourceRunArg, RunCommandArg, WorkflowCommandArg } from "./workflowRunCommands"
+import type { ProviderRegistryV1Api } from "./api/providerRegistryApi"
 
 /**
  * 他の Bob companion extension へ公開する workflow-register API。
  *
  * provider ID、workflow ID、command ID は WORKFLOW.md と companion extension から参照される互換性契約である。
  */
-export interface WorkflowRegisterApi {
+export interface WorkflowRegisterApi extends ProviderRegistryV1Api {
   compileCurrentWorkflowPackage: (input: CompileCurrentWorkflowContractV2Input) => Promise<WorkflowContractV2CompileResult>
   compileWorkflowPackageGeneration: (input: CompileWorkflowContractV2GenerationInput) => Promise<WorkflowContractV2CompileResult>
   acquireCurrentWorkflowPackage: (input: CompileCurrentWorkflowContractV2Input) => Promise<WorkflowContractV2AcquireResult>
@@ -143,9 +144,19 @@ export interface WorkflowRegisterApi {
  * @param context command 登録と disposable を所有する VS Code extension context。
  * @returns workflow-aware companion extension が利用する public API object。
  */
+let activeService: WorkflowRegisterService | undefined
+let deactivationCompletion: Promise<void> | undefined
+
 export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi {
-  const service = new WorkflowRegisterService(String(context.extension.packageJSON.version ?? "unknown"))
+  const service = new WorkflowRegisterService(String(context.extension.packageJSON.version ?? "unknown"), {
+    id: context.extension.id,
+    version: String(context.extension.packageJSON.version ?? "unknown"),
+    extensionRoot: context.extension.extensionPath
+  })
+  activeService = service
+  deactivationCompletion = undefined
   const api: WorkflowRegisterApi = {
+    ...service.providerRegistryApi(),
     compileCurrentWorkflowPackage: input => service.compileCurrentWorkflowPackage(input),
     compileWorkflowPackageGeneration: input => service.compileWorkflowPackageGeneration(input),
     acquireCurrentWorkflowPackage: input => service.acquireCurrentWorkflowPackage(input),
@@ -224,8 +235,16 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
 /**
  * workflow-register 拡張を無効化する。
  *
- * @returns なし。
+ * @returns 進行中の登録と非同期解除を待つ完了 Promise。解除失敗は集約して通知する。
  */
-export function deactivate(): void {
-  // context subscriptions 以外に明示破棄する resource はない。
+export function deactivate(): Promise<void> {
+  if (deactivationCompletion) return deactivationCompletion
+  const service = activeService
+  if (!service) return Promise.resolve()
+  service.dispose()
+  deactivationCompletion = service.whenDisposed().then(result => {
+    if (activeService === service) activeService = undefined
+    if (result.failures.length) throw new AggregateError(result.failures.map(failure => failure.error), "Workflow resource cleanup failed.")
+  })
+  return deactivationCompletion
 }

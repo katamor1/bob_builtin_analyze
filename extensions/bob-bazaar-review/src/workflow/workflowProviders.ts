@@ -17,6 +17,7 @@ import {
   captureOptionsFromCommandArgs,
   firstStringArg,
   getWorkflowRegisterApi,
+  readInstalledWorkflowContribution,
   initialTargetFromWorkflowInputs,
   stringInput,
   WORKFLOW_REGISTER_EXTENSION_ID,
@@ -54,25 +55,26 @@ async function registerWorkflowProviders(
   const api = await getWorkflowRegisterApi()
   if (!api) return { registered: false, registrations: [] }
 
-  const registrations: vscode.Disposable[] = []
-  try {
-    registerOwnedProvider(api, registrations, {
+  const { manifest, provenance } = readInstalledWorkflowContribution(context, BAZAAR_PROVIDER_SOURCE_ID)
+  const providers: WorkflowActionProvider[] = []
+  {
+    providers.push({
       id: "bobBazaar.openReviewGui",
       execute: (input) => openBazaarReviewGui(context, initialTargetFromWorkflowInputs(input.inputs, input))
     })
-    registerOwnedProvider(api, registrations, {
+    providers.push({
       id: "bobBazaar.collectReviewContext",
       execute: (input) => collectReviewContext(input)
     })
-    registerOwnedProvider(api, registrations, {
+    providers.push({
       id: "bobBazaar.loadReviewRules",
       execute: (input) => loadReviewRules(input)
     })
-    registerOwnedProvider(api, registrations, {
+    providers.push({
       id: "bobBazaar.captureReviewResult",
       execute: (input) => captureReviewResult(firstStringArg(input.args), captureOptionsFromCommandArgs([input]))
     })
-    registerOwnedProvider(api, registrations, {
+    providers.push({
       id: "bobBazaar.openRuleAuthoringGui",
       execute: async (input) => {
         const configuration = getRuleAuthoringHostConfiguration()
@@ -89,23 +91,23 @@ async function registerWorkflowProviders(
         return result.authoringSession
       }
     })
-    registerOwnedProvider(api, registrations, {
+    providers.push({
       id: "bobBazaar.loadRuleSourceIndex",
       execute: (input) => configuredRuleAuthoringActions().loadRuleSourceIndex(input)
     })
-    registerOwnedProvider(api, registrations, {
+    providers.push({
       id: "bobBazaar.captureRuleEvidenceSelection",
       execute: (input) => configuredRuleAuthoringActions().captureRuleEvidenceSelection(input)
     })
-    registerOwnedProvider(api, registrations, {
+    providers.push({
       id: "bobBazaar.loadSelectedRuleEvidence",
       execute: (input) => configuredRuleAuthoringActions().loadSelectedRuleEvidence(input)
     })
-    registerOwnedProvider(api, registrations, {
+    providers.push({
       id: "bobBazaar.captureRuleProposal",
       execute: (input) => configuredRuleAuthoringActions().captureRuleProposal(input)
     })
-    registerOwnedProvider(api, registrations, {
+    providers.push({
       id: "bobBazaar.openRuleProposalTriageGui",
       execute: async (input) => {
         const target = await resolveRuleAuthoringWorkflowTarget(input)
@@ -129,14 +131,17 @@ async function registerWorkflowProviders(
         return result
       }
     })
-    registerOwnedProvider(api, registrations, {
+    providers.push({
       id: "bobBazaar.verifyRuleAuthoringApply",
       execute: (input) => configuredRuleAuthoringActions().verifyRuleAuthoringApply(input)
     })
+    const registration = api.registerContributionSet(manifest, provenance, {
+      actionProviders: new Map(providers.map(provider => [provider.id, { ...provider, sourceId: BAZAAR_PROVIDER_SOURCE_ID }])),
+      preflightChecks: new Map<string, never>(), resultSinks: new Map<string, never>()
+    })
+    if (!registration || typeof registration.dispose !== "function") throw new Error("Atomic provider registration requires a disposable.")
+    const registrations = [registration]
     return { registered: true, registrations, api }
-  } catch (error) {
-    disposeRegistrations(registrations)
-    throw error
   }
 }
 
@@ -145,18 +150,4 @@ function configuredRuleAuthoringActions() {
   return createRuleAuthoringWorkflowActions({
     maxSelectedEvidenceBytes: configured.limits.maxSelectedEvidenceBytes
   })
-}
-
-function registerOwnedProvider(
-  api: WorkflowRegisterApi,
-  registrations: vscode.Disposable[],
-  provider: WorkflowActionProvider
-): void {
-  const registration = api.registerActionProvider({ ...provider, sourceId: BAZAAR_PROVIDER_SOURCE_ID })
-  if (registration && typeof registration.dispose === "function") registrations.push(registration)
-}
-
-function disposeRegistrations(registrations: vscode.Disposable[]): void {
-  for (const registration of [...registrations].reverse()) registration.dispose()
-  registrations.length = 0
 }

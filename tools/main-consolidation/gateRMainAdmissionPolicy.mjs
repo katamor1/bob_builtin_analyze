@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { applyRegistryBridgeSourceAdmission } from './registryBridgeAdmissionPolicy.mjs';
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
@@ -286,14 +287,15 @@ export function readGateRMainAdmission() {
  validateGateRMainAdmission(bytes);return JSON.parse(bytes);
 }
 export function gateRExpectedMainFiles(){const value=readGateRMainAdmission(),files=new Map(value.baseFiles.map(f=>[f.path,f]));for(const row of value.deltas)files.set(row.path,{path:row.path,mode:row.mode,blobSha:row.afterBlobSha});return [...files.values()].sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);}
+export function gateRCurrentMainFiles(){return applyRegistryBridgeSourceAdmission(readGateRContainedFile(root,'tools/main-consolidation/registry-bridge-source-admission.json'),gateRExpectedMainFiles());}
 export function validateGateRMainRepositoryFiles(input) {
  gateRCanonicalJson(input);if(!Array.isArray(input))fail('source files array');gateRPathRows(input,'source files');
- if(!gateRCanonicalJson(input).equals(gateRCanonicalJson(gateRExpectedMainFiles())))fail('unselected source/shipping change or blob drift');return true;
+ if(!gateRCanonicalJson(input).equals(gateRCanonicalJson(gateRCurrentMainFiles())))fail('unselected source/shipping change or blob drift');return true;
 }
 const blobHash = bytes => createHash('sha1').update(Buffer.from('blob '+bytes.length+'\0')).update(bytes).digest('hex');
 function measuredBlob(bytes,expected){if(blobHash(bytes)===expected)return expected;if(!bytes.subarray(0,8000).includes(0)&&blobHash(Buffer.from(bytes.toString('utf8').replaceAll('\r\n','\n')))===expected)return expected;fail('source blob identity drift');}
 export function validateGateRMainRepository() {
- const expected=gateRExpectedMainFiles(),known=new Set(expected.map(f=>f.path)),snapshot=[];
+ const expected=gateRCurrentMainFiles(),known=new Set(expected.map(f=>f.path)),snapshot=[];
  for(const f of expected)snapshot.push({path:f.path,mode:f.mode,blobSha:measuredBlob(readGateRContainedFile(root,f.path),f.blobSha)});
  function scan(p,top=false){for(const entry of readdirSync(resolve(root,p),{withFileTypes:true})){
   const path=p+'/'+entry.name;

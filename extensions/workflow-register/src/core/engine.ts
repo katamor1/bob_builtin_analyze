@@ -3,6 +3,8 @@ import { ActionRegistry } from "./actionRegistry"
 import { approveHeldWorkflowStep } from "./approvalGuardrails"
 import {
   createDefaultPreflightChecks,
+  createPreflightCheckResolver,
+  type WorkflowPreflightCheckResolver,
   evaluatePreflight,
   exists
 } from "./engine/preflight"
@@ -90,6 +92,7 @@ export class WorkflowEngine {
   private readonly workspaceAvailable?: WorkflowEngineOptions["workspaceAvailable"]
   private readonly fileExists?: WorkflowEngineOptions["fileExists"]
   private readonly preflightChecks: NonNullable<WorkflowEngineOptions["preflightChecks"]>
+  private readonly preflightResolver: WorkflowPreflightCheckResolver
   private readonly strictPreflightChecks: boolean
   private readonly hooks: WorkflowExecutionHooks
   private readonly manualCompletion?: NonNullable<WorkflowEngineOptions["manualCompletion"]>
@@ -108,6 +111,7 @@ export class WorkflowEngine {
       ...createDefaultPreflightChecks(workspaceRoot),
       ...(options.preflightChecks ?? {})
     }
+    this.preflightResolver = options.preflightResolver ?? createPreflightCheckResolver(this.preflightChecks, this.actions.contributionRuntimeResolver())
     this.strictPreflightChecks = options.strictPreflightChecks === true
     this.hooks = options.hooks ?? {}
     this.manualCompletion = options.manualCompletion
@@ -168,6 +172,8 @@ export class WorkflowEngine {
       workspaceAvailable: this.workspaceAvailable,
       fileExists: this.fileExists,
       preflightChecks: this.preflightChecks,
+      preflightResolver: this.preflightResolver,
+      workspaceRoot: this.runStore.workspaceRoot,
       strictPreflightChecks: this.strictPreflightChecks
     })
     if (preflight.warnings.length > 0) run.state["workflow.preflightWarnings"] = JSON.stringify(preflight.warnings)

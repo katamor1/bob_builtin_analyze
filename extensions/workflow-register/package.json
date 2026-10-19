@@ -685,7 +685,7 @@
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "compile": "tsc -p ./",
     "dependency:policy": "node --test test/dependencyPolicy.test.js",
-    "test": "npm run compile && node --test test/*.test.js",
+    "test": "npm run compile && node --test --test-concurrency=2 test/*.test.js",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "package": "vsce package && node scripts/recompress-vsix.js",

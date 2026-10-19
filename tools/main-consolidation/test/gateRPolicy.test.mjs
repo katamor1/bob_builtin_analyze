@@ -29,7 +29,7 @@ test('inventory command prints the complete classified archive rather than just 
 
 import { readFileSync } from 'node:fs';
 import * as policy from '../gateRPolicy.mjs';
-import { gateRExpectedMainFiles } from '../gateRMainAdmissionPolicy.mjs';
+import { gateRCurrentMainFiles as gateRExpectedMainFiles } from '../gateRMainAdmissionPolicy.mjs';
 const mainFiles = () => gateRExpectedMainFiles();
 const inventoryBytes = readFileSync(new URL('../gate-r-archive-inventory.json', import.meta.url));
 const activeBytes = readFileSync(new URL('../gate-r-active-suite.json', import.meta.url));

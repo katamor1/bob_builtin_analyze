@@ -30,6 +30,10 @@ export class WorkflowCatalogReloadCoordinator {
     return result
   }
 
+  whenIdle(): Promise<void> {
+    return this.tail
+  }
+
   dispose(): void {
     this.disposed = true
   }

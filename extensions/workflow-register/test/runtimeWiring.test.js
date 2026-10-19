@@ -197,10 +197,10 @@ test("activation schedules delayed workflow reload retries after Bob finishes st
 test("standalone workflow launcher wires an AgentProvider through API or configured command", () => {
   const source = runtimeSource()
 
-  assert.match(source, /import \{ createCommandAgentProvider \} from "\.\/core\/agentProvider"/)
+  assert.match(source, /import \{ createCommandAgentProvider, createLiveAgentProvider \} from "\.\/core\/agentProvider"/)
   assert.match(source, /registerAgentProvider: \(provider: AgentProvider\) => void/)
   assert.match(source, /registerAgentProvider: \(provider\) => service\.registerAgentProvider\(provider\)/)
-  assert.match(source, /agentProvider: agentProvider \?\? this\.options\.agentProvider\(\) \?\? this\.createCommandAgentProvider\(\)/)
+  assert.match(source, /agentProvider: createLiveAgentProvider\(\(\) => agentProvider \?\? this\.resolveAgentProvider\(\)\)/)
   assert.match(source, orderedPattern(
     "createCommandAgentProvider({",
     'command: config.get<string>("agentCommand", ""),',
@@ -416,7 +416,7 @@ test("standalone next-step commands reuse the Bob review task agent provider", (
     "mode === \"resume\" ? \"operation-hub-resume\" : \"operation-hub-retry\""
   ))
   assert.match(runtimeFactory, /createEngine\(workspaceRoot: string, agentProvider\?: AgentProvider\): WorkflowEngine/)
-  assert.match(runtimeFactory, /agentProvider: agentProvider \?\? this\.options\.agentProvider\(\) \?\? this\.createCommandAgentProvider\(\)/)
+  assert.match(runtimeFactory, /agentProvider: createLiveAgentProvider\(\(\) => agentProvider \?\? this\.resolveAgentProvider\(\)\)/)
 })
 
 test("Bob workflow result recovery is scoped to messages after the current step starts", () => {
@@ -501,12 +501,13 @@ test("WorkflowRegisterService owns and exposes Bob review gates and acceptance c
   assert.doesNotMatch(stepReview, /reviewAcceptancesInFlight/)
 })
 
-test("WorkflowRegisterService disposes pending gates before source deactivation", () => {
-  const source = readSrc("workflowRegisterService.ts")
-
-  assert.match(source, orderedPattern(
-    "this.manualStepPanel.dispose()",
-    "this.bobWorkflowGates.dispose()",
-    "deactivateRegisteredSource(source)"
-  ))
+test("WorkflowRegisterService disposes pending gates before source deactivation", async () => {
+  const { service } = require("./providerRegistryRuntimeTestSupport").service()
+  const attempted = []
+  service.manualStepPanel.dispose = () => attempted.push("panel")
+  service.bobWorkflowGates.dispose = () => attempted.push("gates")
+  service.registeredSource = { deactivate: () => attempted.push("source") }
+  service.dispose()
+  await service.whenDisposed()
+  assert.deepEqual(attempted, ["panel", "gates", "source"])
 })
