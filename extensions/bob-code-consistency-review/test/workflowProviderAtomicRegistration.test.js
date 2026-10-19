@@ -55,3 +55,15 @@ test('atomic bridge never accepts a registration result without a disposable', a
   else await assert.rejects(e.register(), /disposable/i)
   assert.equal(calls.length, 1)
 })
+
+test('native root casing follows platform path identity and retains native provenance', async t => {
+  const { api, calls } = completeApi(), e = environment(api); t.after(e.stop); t.mock.method(console, 'warn', () => {})
+  const nativeRoot = installed.extensionPath
+  const alternate = process.platform === 'win32' ? nativeRoot[0].toLowerCase() + nativeRoot.slice(1) : nativeRoot.toUpperCase()
+  assert.notEqual(alternate, nativeRoot)
+  e.context.extension = { ...installed, extensionPath: alternate }
+  e.context.extensionPath = alternate
+  try { const result = await e.register(); if (result?.registered) for (const registration of result.registrations) registration.dispose() } catch (error) { assert(error instanceof Error) }
+  assert.equal(calls.length, process.platform === 'win32' ? 1 : 0)
+  if (calls.length) assert.equal(calls[0][1].extensionRoot, nativeRoot)
+})

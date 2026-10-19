@@ -1,6 +1,6 @@
 import {gateRInputData,gateRCanonicalJson,gateRDigest,gateRPathRows} from './gateRData.mjs';
 const fail=reason=>{throw new TypeError('Registry bridge source admission: '+reason)};
-export const REGISTRY_BRIDGE_SOURCE_ADMISSION_SHA256='0466f2f260ea2a46f63eb867dfc7768cf010b422605851072218345688038cc4';
+export const REGISTRY_BRIDGE_SOURCE_ADMISSION_SHA256='dee72376180ece5c3039fcdd7eae8f63274fe026bce3bcecbc3ee1e81c7949c5';
 const BASE_FILES_SHA256='44557aa00c8d4e846afac1b4bf286851d66a7594fe0360b9b9858cc8226e1b46';
 const admitted=[
   {

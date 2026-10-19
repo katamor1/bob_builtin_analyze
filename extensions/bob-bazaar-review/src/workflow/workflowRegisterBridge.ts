@@ -168,7 +168,7 @@ export function readInstalledWorkflowContribution(context: Pick<vscode.Extension
   const root = context?.extensionPath ?? declared?.extensionPath
   if (!native || !declared || declared.id !== sourceId || native.id !== sourceId
     || typeof root !== "string" || typeof native.extensionPath !== "string" || typeof declared.extensionPath !== "string"
-    || path.resolve(root) !== path.resolve(native.extensionPath) || path.resolve(declared.extensionPath) !== path.resolve(native.extensionPath)
+    || path.relative(path.resolve(root), path.resolve(native.extensionPath)) !== "" || path.relative(path.resolve(declared.extensionPath), path.resolve(native.extensionPath)) !== ""
     || typeof native.packageJSON?.version !== "string" || declared.packageJSON?.version !== native.packageJSON.version
     || native.packageJSON.publisher + "." + native.packageJSON.name !== sourceId
     || declared.packageJSON?.publisher + "." + declared.packageJSON?.name !== sourceId) {

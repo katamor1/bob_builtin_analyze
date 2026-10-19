@@ -24,7 +24,7 @@
       ]
     },
     {
-      "afterBlobSha": "1501589a3c935ec855293b75359985851160a5f8",
+      "afterBlobSha": "b702a073fb6705506fb93e136af8d32c0a2d6dfa",
       "beforeBlobSha": "b21119fc5d0070a4977a4e1c294bd4346ca7bf5e",
       "mode": "100644",
       "path": "extensions/bob-bazaar-review/src/workflow/workflowRegisterBridge.ts",
@@ -33,7 +33,7 @@
       ]
     },
     {
-      "afterBlobSha": "f9d851283300b248ee76d20caf9f2db81a6555dd",
+      "afterBlobSha": "d65b025fdc3de5dcb4fde2732d587453cc9f9617",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "extensions/bob-bazaar-review/test/providerRegistryBridge.test.js",
@@ -79,7 +79,7 @@
       ]
     },
     {
-      "afterBlobSha": "fe445b4c62e22c8e8a9f1494eab8ef86c6f7fad6",
+      "afterBlobSha": "ebc27cd659e628bee922138e47b19eba5efb8641",
       "beforeBlobSha": "5775bf292c2dfc73c1b44fc67e15994803b92079",
       "mode": "100644",
       "path": "extensions/bob-code-consistency-review/src/workflowProviderRegistration.ts",
@@ -97,7 +97,7 @@
       ]
     },
     {
-      "afterBlobSha": "f9d851283300b248ee76d20caf9f2db81a6555dd",
+      "afterBlobSha": "d65b025fdc3de5dcb4fde2732d587453cc9f9617",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "extensions/bob-code-consistency-review/test/workflowProviderAtomicRegistration.test.js",
