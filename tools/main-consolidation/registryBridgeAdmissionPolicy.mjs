@@ -1,6 +1,6 @@
 import {gateRInputData,gateRCanonicalJson,gateRDigest,gateRPathRows} from './gateRData.mjs';
 const fail=reason=>{throw new TypeError('Registry bridge source admission: '+reason)};
-export const REGISTRY_BRIDGE_SOURCE_ADMISSION_SHA256='dee72376180ece5c3039fcdd7eae8f63274fe026bce3bcecbc3ee1e81c7949c5';
+export const REGISTRY_BRIDGE_SOURCE_ADMISSION_SHA256='1665c66acd04a535b08116e639f5119b98e03609d9bb4d5f8efacc9bba37b5a4';
 const BASE_FILES_SHA256='44557aa00c8d4e846afac1b4bf286851d66a7594fe0360b9b9858cc8226e1b46';
 const admitted=[
   {
@@ -194,6 +194,12 @@ const admitted=[
     "path": "extensions/workflow-register/src/extension.ts",
     "sourceItemIds": [
       "source-30975ac1581193529a323011"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/src/workflowCatalogReloadCoordinator.ts",
+    "sourceItemIds": [
+      "source-240df7c38b2b9a2698b1e2b8"
     ]
   },
   {

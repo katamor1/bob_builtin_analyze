@@ -59,6 +59,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
   private readonly actionRegistry = new ActionRegistry()
   private readonly providerRegistryHost: ProviderRegistryHost
   private disposalCompletion?: Promise<DisposalResult>
+  private readonly lateSourceDisposalFailures: Array<DisposalResult["failures"][number]> = []
   private readonly manualStepPanel: ManualStepPanelController
   private readonly runtimeFactory: WorkflowRuntimeFactory
   private readonly contractV2Providers: WorkflowContractV2ProviderLifecycle
@@ -151,8 +152,11 @@ export class WorkflowRegisterService implements vscode.Disposable {
     this.disposalCompletion = new Promise(resolve => { finish = resolve })
     const source = this.registeredSource
     this.registeredSource = undefined
+    this.registeredIds.clear()
+    this.coreWorkflows.clear()
+    this.legacyRegistrationFingerprint = undefined
     void disposeResourcesInOrder([
-      { name: "catalogReloads", dispose: () => this.catalogReloads.dispose() },
+      { name: "catalogReloads", dispose: () => { this.catalogReloads.dispose(); return this.catalogReloads.whenIdle() } },
       { name: "contractV2Providers", dispose: () => this.contractV2Providers.dispose() },
       { name: "contributions", dispose: () => this.providerRegistryHost.dispose() },
       { name: "legacyCompatibility", dispose: () => this.actionRegistry.disposeLegacyCompatibility() },
@@ -161,7 +165,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
       { name: "manualStepPanel", dispose: () => this.manualStepPanel.dispose() },
       { name: "bobWorkflowGates", dispose: () => this.bobWorkflowGates.dispose() },
       { name: "registeredSource", dispose: async () => { await source?.deactivate() } }
-    ]).then(result => {
+    ]).then(initial => {
+      const result: DisposalResult = Object.freeze({ failures: Object.freeze([...initial.failures, ...this.lateSourceDisposalFailures]) })
       finish(result)
       if (result.failures.length) {
         try { console.warn("Workflow resource cleanup failed:", result.failures.map(failure => failure.name).join(", ")) } catch { /* Reporting cannot undo cleanup. */ }
@@ -372,24 +377,37 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   private async reloadCatalog(options: { showReport: boolean }): Promise<void> {
+    if (this.disposalCompletion) return
     const trustError = await requireTrustedWorkspace("ワークフロー登録を再読み込み", { showWarning: options.showReport })
+    if (this.disposalCompletion) return
     if (trustError) {
       this.lastResult = { summary: "ワークスペースが信頼されていません。", lines: [`- 失敗: ${trustError}`] }
       if (options.showReport) await showMarkdownReport("Bob ワークフロー登録", this.lastResult.summary, this.lastResult.lines)
       return
     }
     const result = await this.registerWorkflows()
+    if (this.disposalCompletion) return
     this.lastResult = result
     if (options.showReport) await showMarkdownReport("Bob ワークフロー登録", result.summary, result.lines)
   }
 
   private async registerWorkflows(): Promise<RegistrationResult> {
+    const previousSource = this.registeredSource
     const update = await registerWorkflowDefinitions({
-      previousSource: this.registeredSource,
+      previousSource,
       previousLegacyFingerprint: this.legacyRegistrationFingerprint,
       contractV2: this.contractV2Providers.current(),
       createRunner: (workflow) => this.runtimeFactory.createBobWorkflowRunner(workflow)
     })
+    if (this.disposalCompletion) {
+      if (update.sourceChanged && update.registeredSource && update.registeredSource !== previousSource) {
+        try { await update.registeredSource.deactivate() }
+        catch (error) { this.lateSourceDisposalFailures.push(Object.freeze({ name: "lateRegisteredSource", error })) }
+      }
+      try { await vscode.commands.executeCommand("setContext", "bob-code.hasWorkflows", false) }
+      catch (error) { this.lateSourceDisposalFailures.push(Object.freeze({ name: "workflowContext", error })) }
+      return update.result
+    }
     this.legacyRegistrationFingerprint = update.legacyFingerprint
     this.coreWorkflows.clear()
     for (const workflow of update.coreWorkflows) this.coreWorkflows.set(workflow.id, workflow)

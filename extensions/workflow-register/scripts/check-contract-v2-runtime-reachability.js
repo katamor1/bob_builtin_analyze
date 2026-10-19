@@ -8,8 +8,8 @@ const frozenOwners = Object.freeze({
   'src/workflowContractV2Entrypoint.ts': '4f9bdc0b94393fbcbbcb32c7ff0d41d1454b745645b15d5f6edd3741ae72520b',
   'src/workflowContractV2ProviderLifecycle.ts': '49beecbdd4ebb539da46cce7700c752bc5c2b63d2a3c8147de9311173ea03cb9',
   'src/workflowRuntimeFactory.ts': 'a74b7a8e50ff2c96d1149e5942a78b1adf6cb233c112d0037853b91f347d1899',
-  'src/workflowRegisterService.ts': '83b1fc84a44893d27b50f3b07c7c806b0e53a2f36f8cb17388f152ceda247785',
-  'src/extension.ts': 'a64f052abb3ed3468ec0b928d12d5ad2e7928fe8beee97a11653501fbc493ba2',
+  'src/workflowRegisterService.ts': '0fb6c1f6d97a22a2931978c5494f3c46c2cb62c9f2849ee21ccb93a736c49781',
+  'src/extension.ts': '342a2ebfd4f0031a237ea5bef67729f0e79350f1b65c2ab98f162292b83fcd42',
   'src/core/contractV2/planStore.ts': '15077c3f15b27f63d13336b5eb12dd35d42845b530fd7628744fb1620e464644'
 })
 const roots = Object.freeze(['src/extension.ts', 'src/extensionWithAuthoring.ts', 'src/workflowRuntimeFactory.ts',

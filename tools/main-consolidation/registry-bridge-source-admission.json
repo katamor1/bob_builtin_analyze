@@ -142,7 +142,7 @@
       ]
     },
     {
-      "afterBlobSha": "3d0c9fdf4ce863dff27024df654ec5bc229e6d1e",
+      "afterBlobSha": "4d84df8e7d7e7de2d8d0cb1038ec6244997654de",
       "beforeBlobSha": "c134f32ebfc6dee5bc80595be20781969c0eb5e3",
       "mode": "100644",
       "path": "extensions/workflow-register/scripts/check-contract-v2-runtime-reachability.js",
@@ -286,12 +286,21 @@
       ]
     },
     {
-      "afterBlobSha": "708da372986b245d31763aa92f2331d9bd30f2a6",
+      "afterBlobSha": "74308e9fff1bf9e4789c89ec9b050708a0d964c2",
       "beforeBlobSha": "8f444e74b1cbf9b0680add908f45ab15f2c3d3ac",
       "mode": "100644",
       "path": "extensions/workflow-register/src/extension.ts",
       "sourceItemIds": [
         "source-30975ac1581193529a323011"
+      ]
+    },
+    {
+      "afterBlobSha": "f9180229a53acf08ffc104da2c6482288c226dbc",
+      "beforeBlobSha": "aba1bcff07e50d8e29dd8d0202141f97b4d82dd7",
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/workflowCatalogReloadCoordinator.ts",
+      "sourceItemIds": [
+        "source-240df7c38b2b9a2698b1e2b8"
       ]
     },
     {
@@ -304,7 +313,7 @@
       ]
     },
     {
-      "afterBlobSha": "040d41c1391d7afb256a8a4c7add6e2b450141f2",
+      "afterBlobSha": "5ddacfec9e7764550a2e750a4f608186badfd52f",
       "beforeBlobSha": "d9c7dcdc12d48be6b7babeac86ea733a36ec6c9a",
       "mode": "100644",
       "path": "extensions/workflow-register/src/workflowRegisterService.ts",
@@ -414,7 +423,7 @@
       ]
     },
     {
-      "afterBlobSha": "1bee893114fed8cfd7a3c2d9de64a99ac24356d9",
+      "afterBlobSha": "238f59f28e926043d8438c134a0e4514c60d079e",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "extensions/workflow-register/test/providerRegistryDisposal.test.js",
