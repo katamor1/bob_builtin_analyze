@@ -48,7 +48,7 @@ export async function makeEvidenceRepository({v2Packages=1}={}){
   const pkg={publisher:'fixture',name,version:'1.0.0',contributes:{commands:[{command:`${name}.run`,title:'Run'}]}};
   const asset=`templates/.bob/workflows/${name}/WORKFLOW.md`,text=Buffer.from(`---\nschemaVersion: workflow-register/v1\nname: ${name}\n---\nFixture\n`);
   const manifest={schema_version:'workflow-contributions/v1',owner,registry_api:{min:'provider-registry/v1',max:'provider-registry/v1'},action_providers:[{id:`${name}.run`,contract_version:`${name}.run/v1`}],preflight_checks:[],result_sinks:[],workflow_templates:[{id:`${name}.template`,path:asset}],schemas:[]};
-  const claims={schemaVersion:'workflow-discovery-claims/v1',owner,scopes:[{prefix:'templates/',role:'template'},...(name==='alpha'?[{prefix:'fixtures/',role:'fixture'}]:[])],exclusions:[],externalCommands:[],mirrors:[{source:asset,destination:`.bob/workflows/${name}/WORKFLOW.md`}]};
+  const claims={schemaVersion:'workflow-discovery-claims/v1',owner,scopes:[{prefix:'templates/',role:'template'},...(name==='alpha'&&v2Packages>0?[{prefix:'fixtures/',role:'fixture'}]:[])],exclusions:[],externalCommands:[],mirrors:[{source:asset,destination:`.bob/workflows/${name}/WORKFLOW.md`}]};
   const files={'package.json':canonical(pkg),'contracts/workflow-contributions.json':canonical(manifest),'contracts/workflow-discovery-claims.json':canonical(claims),[asset]:text};
   for(const [relative,bytes]of Object.entries(files))await write(`${dir}/${relative}`,bytes);
   await write(`.bob/workflows/${name}/WORKFLOW.md`,text);

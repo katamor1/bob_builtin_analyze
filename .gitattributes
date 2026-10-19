@@ -49,3 +49,22 @@ docs/release-evidence/reg-bridge-owner-version-lifecycle-completion-2026-10-19.j
 
 # Gate R source admission is sealed as exact canonical LF bytes.
 tools/main-consolidation/registry-bridge-source-admission.json text eol=lf
+
+# Discovery evidence assets and closed schemas use exact LF bytes.
+.bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md text eol=lf
+.bob/workflows/bazaar-project-rule-review/WORKFLOW.md text eol=lf
+.bob/workflows/code-consistency-review/WORKFLOW.md text eol=lf
+extensions/bob-bazaar-review/contracts/workflow-contributions.json text eol=lf
+extensions/bob-bazaar-review/contracts/workflow-discovery-claims.json text eol=lf
+extensions/bob-bazaar-review/templates/.bob/review/review-result.schema.json text eol=lf
+extensions/bob-bazaar-review/templates/.bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md text eol=lf
+extensions/bob-bazaar-review/templates/.bob/workflows/bazaar-project-rule-review/WORKFLOW.md text eol=lf
+extensions/bob-code-consistency-review/contracts/workflow-contributions.json text eol=lf
+extensions/bob-code-consistency-review/contracts/workflow-discovery-claims.json text eol=lf
+extensions/bob-code-consistency-review/resources/schemas/review-input.schema.json text eol=lf
+extensions/bob-code-consistency-review/templates/.bob/workflows/code-consistency-review/WORKFLOW.md text eol=lf
+extensions/workflow-register/contracts/workflow-contributions.json text eol=lf
+extensions/workflow-register/contracts/workflow-discovery-claims.json text eol=lf
+extensions/workflow-register/schema/workflow-contributions.v1.schema.json text eol=lf
+tools/workflow-evidence/schemas/workflow-discovery-catalog.v1.schema.json text eol=lf
+tools/workflow-evidence/schemas/workflow-discovery-claims.v1.schema.json text eol=lf

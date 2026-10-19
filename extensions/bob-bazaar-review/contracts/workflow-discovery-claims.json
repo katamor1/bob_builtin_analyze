@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "workflow-discovery-claims/v1",
+  "owner": {
+    "id": "local.bob-bazaar-review",
+    "version": "0.3.0"
+  },
+  "scopes": [
+    {
+      "prefix": "templates/.bob/workflows/",
+      "role": "template"
+    }
+  ],
+  "exclusions": [],
+  "externalCommands": [],
+  "mirrors": [
+    {
+      "source": "templates/.bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md",
+      "destination": ".bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md"
+    },
+    {
+      "source": "templates/.bob/workflows/bazaar-project-rule-review/WORKFLOW.md",
+      "destination": ".bob/workflows/bazaar-project-rule-review/WORKFLOW.md"
+    }
+  ]
+}

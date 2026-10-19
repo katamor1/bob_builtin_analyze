@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "workflow-discovery-claims/v1",
+  "owner": {
+    "id": "local.workflow-register",
+    "version": "0.1.0"
+  },
+  "scopes": [
+    {
+      "prefix": "samples/mechanical-checks-parser-pilot/.bob/workflows/",
+      "role": "sample"
+    },
+    {
+      "prefix": "samples/mechanical-checks-precheck/.bob/workflows/",
+      "role": "sample"
+    },
+    {
+      "prefix": "samples/review-gated-step-execution/.bob/workflows/",
+      "role": "sample"
+    },
+    {
+      "prefix": "samples/step-back-branching-approval/.bob/workflows/",
+      "role": "sample"
+    },
+    {
+      "prefix": "test/fixtures/",
+      "role": "fixture"
+    }
+  ],
+  "exclusions": [],
+  "externalCommands": [
+    {
+      "id": "example.preapprovalCheck",
+      "scope": "samples/step-back-branching-approval/.bob/workflows/"
+    }
+  ],
+  "mirrors": []
+}

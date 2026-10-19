@@ -76,6 +76,16 @@
   ],
   "preflight_checks": [],
   "result_sinks": [],
-  "workflow_templates": [],
-  "schemas": []
+  "workflow_templates": [
+    {
+      "id": "bobCodeConsistencyReview.reviewTemplate",
+      "path": "templates/.bob/workflows/code-consistency-review/WORKFLOW.md"
+    }
+  ],
+  "schemas": [
+    {
+      "id": "bobCodeConsistencyReview.reviewInputSchema",
+      "path": "resources/schemas/review-input.schema.json"
+    }
+  ]
 }

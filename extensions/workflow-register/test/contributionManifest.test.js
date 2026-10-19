@@ -95,3 +95,8 @@ test('installed contribution manifests match the literal current owner and actio
     assert.equal(check({ ...m, owner: { ...m.owner, version: '1.2.3-rc.1+build.9' } }), true)
   }
 })
+
+
+test('workflow discovery claims declare real schema without changing runtime contribution fields',()=>{
+ const root=path.join(__dirname,'..'),claimPath=path.join(root,'contracts/workflow-discovery-claims.json');assert.ok(fs.existsSync(claimPath),'owned discovery claims are missing');const claims=JSON.parse(fs.readFileSync(claimPath)),m=JSON.parse(fs.readFileSync(path.join(root,'contracts/workflow-contributions.json')));assert.deepEqual(claims.owner,m.owner);assert.equal(m.workflow_templates.length,0);assert.deepEqual(m.schemas,[{id:'workflowRegister.contributionManifestSchema',path:'schema/workflow-contributions.v1.schema.json'}]);assert.equal(m.action_providers.length,2);assert.equal(Object.hasOwn(m,'scopes'),false);assert.equal(Object.hasOwn(m,'externalCommands'),false);assert.equal(fs.statSync(path.join(root,m.schemas[0].path)).isFile(),true);
+});
