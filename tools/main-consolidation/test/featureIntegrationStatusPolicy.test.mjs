@@ -631,7 +631,7 @@ test('generator_consumes_r1_once_and_rejects_r1_byte_drift',async()=>{
  let reads=0,output
  await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}})
  assert.equal(reads,1,'generator must read accepted R1 completion once')
- assert.equal(output.completionReferences.length,10);assert.equal(output.slices.find(r=>r.sliceId==='WF2-R1-PROVENANCE').state,'VERIFIED');assert.equal(output.nextSliceId,'REG-BRIDGE-OWNER-VERSION-LIFECYCLE')
+ assert.equal(output.completionReferences.length,11);assert.equal(output.slices.find(r=>r.sliceId==='WF2-R1-PROVENANCE').state,'VERIFIED');assert.equal(output.nextSliceId,'REG-BRIDGE-DISCOVERY-EVIDENCE')
  for(const suffix of [Buffer.from('\n'),Buffer.from('\r\n'),Buffer.from(' ')]){
   await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?Buffer.concat([readFileSync(p),suffix]):readFileSync(p),writeStdout:()=>assert.fail('R1 byte drift must never emit projection')}))
  }
@@ -702,7 +702,7 @@ test('rejects_r2_as_conditional_or_runtime_activation_authority',()=>{
 
 test('generator_reads_literal_r2_once_and_refuses_missing_or_noncanonical_bytes',async()=>{
  const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/wf2-r2-completion-2026-10-18.json',import.meta.url));let reads=0,output
- await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,10);assert.equal(output.nextSliceId,'REG-BRIDGE-OWNER-VERSION-LIFECYCLE')
+ await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,11);assert.equal(output.nextSliceId,'REG-BRIDGE-DISCOVERY-EVIDENCE')
  await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>{if(p===target)throw new Error('missing R2');return readFileSync(p)},writeStdout:()=>assert.fail('missing R2 must not emit')}))
  for(const changed of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replace(/\n/g,'\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?changed:readFileSync(p),writeStdout:()=>assert.fail('R2 byte drift must not emit')}))
 })
@@ -727,4 +727,83 @@ test('r2_every_absolute_binding_has_retained_closure',()=>{
  const record=r2Completion(),seen=new Set(),missing=[]
  function visit(value){if(!value||typeof value!=='object')return;if(typeof value.path==='string'&&/^(?:[A-Za-z]:[\\/]|\/)/.test(value.path)&&Number.isSafeInteger(value.bytes)&&/^[a-f0-9]{64}$/.test(value.sha256??'')){const key=JSON.stringify([value.path,value.bytes,value.sha256]);if(!seen.has(key)){seen.add(key);if(!retainedR2Binding(record,value))missing.push(value.path)}}for(const child of Object.values(value))visit(child)}
  visit(record);assert.ok(seen.size>1900);assert.deepEqual(missing,[],'every absolute byte binding must resolve; relative ZIP members resolve through their retained archive')
+})
+
+const ownerCompletion=()=>json('../../../docs/release-evidence/reg-bridge-owner-version-lifecycle-completion-2026-10-19.json')
+const throughOwner=()=>{const c=throughR2();c.completionObservations.push(ownerCompletion());return c}
+const ownerExpected={"recordSha256":"af004f545e7f88dbb4d53df7c81460bf153a40bd56627758aaf8c5f02e59f57c","evidenceSha256":"f859e6fd4e8fbedf43c7d2e33a1f08a9bfd889997d96a1c140478e772d3ee8ea","bytes":72700,"files":157,"source":"87ad6b85b10051f15f2942b286cb9cdfee852ec2","acceptedMainSha":"4f76cbf7a303e8c7b3a0b73055bfa247cc0f1895","tree":"5447e68a8754960d6ca85541db3a94ff64f0b965"}
+test('owner lifecycle advances only ordinal nine',()=>{
+ const c=throughOwner(),p=projectIntegrationStatus(c),old=projectIntegrationStatus(throughR2())
+ assert.equal(p.completionReferences.length,11);assert.equal(p.nextSliceId,'REG-BRIDGE-DISCOVERY-EVIDENCE');assert.deepEqual(p.completionReferences.slice(0,10),old.completionReferences)
+ assert.equal(p.acceptedMainSha,ownerExpected.acceptedMainSha);assert.equal(p.slices.length,20);assert.equal(p.slices.filter(row=>row.state==='VERIFIED').length,9)
+ assert.equal(p.slices[8].state,'VERIFIED');assert.equal(p.slices[8].sliceId,'REG-BRIDGE-OWNER-VERSION-LIFECYCLE');assert.equal(p.slices[9].state,'planned')
+ for(let i=0;i<20;i++)if(i!==8)assert.deepEqual(p.slices[i],old.slices[i])
+ assert.deepEqual(p.boundaries,old.boundaries);assert.deepEqual(p.activeSliceIds,[]);assert.equal(p.automaticCleanup,false);assert.equal(p.mutationAuthority,false)
+ assert.ok(p.slices.every(row=>row.observedActivationStatus==='inactive'));assert.equal(deriveNextSlice({programIndex:c.programIndex,statusProjection:p}).ordinal,10)
+ for(const id of ['WF2-R3-WINDOWS-ADAPTER','WF2-R3-ARTIFACT-TX','WF2-R4-EXECUTOR','WF2-R5-BOB'])assert.equal(p.capabilities.find(row=>row.id===id).executionState,'planned')
+})
+test('owner lifecycle binds source M1 and current CI exception without claiming success',()=>{
+ const r=ownerCompletion();validateCompletionObservation(r,{programIndex:buildProgramIndex(),evidenceDigests:digests(r)})
+ assert.equal(digest(r),ownerExpected.recordSha256);assert.equal(digest(digests(r)),ownerExpected.evidenceSha256)
+ assert.equal(r.sourceHeadSha,ownerExpected.source);assert.equal(r.acceptedMainSha,ownerExpected.acceptedMainSha);assert.equal(r.acceptedTreeSha,ownerExpected.tree)
+ assert.deepEqual(r.mergeParents,['88de3a67aedf5c8d1b3ee2ea3226a973703ebaf0',ownerExpected.source]);assert.equal(r.pullRequestNumber,194)
+ assert.equal(r.ci.mode,'explicit_current_slice_user_ci_waiver');assert.equal(r.ci.allRequiredGatesSucceeded,false);assert.equal(r.ci.authorization.userInstruction,'今回のCIを免除して残りを続行');assert.equal(r.ci.authorization.inheritedFromR2,false)
+ for(const scope of [r.ci.candidate,r.ci.actualMain]){assert.equal(scope.workflows.length,4);assert.equal(scope.allRequiredGatesSucceeded,false);assert.equal(scope.manual.workflowsDispatched,0);for(const workflow of scope.workflows){assert.equal(workflow.conclusion,'failure');for(const job of workflow.jobs){assert.equal(job.checkoutVerified,false);assert.equal(job.steps,0)}}}
+ assert.equal(r.ci.candidate.head,r.sourceHeadSha);assert.equal(r.ci.actualMain.head,r.acceptedMainSha)
+ assert.equal(r.packages.workflowRegister.vsix.bytes,1193572);assert.equal(r.packages.workflowRegister.approvedCompactionPaths.length,79);assert.equal(r.packages.workflowRegister.independentAstTokenProofCount,79);assert.equal(r.packages.workflowRegister.unchangedWorkflowPayloadCount,906)
+ assert.equal(r.installedUat.sourceHeadSha,r.sourceHeadSha);assert.equal(r.installedUat.sourceTreeSha,r.acceptedTreeSha);assert.equal(r.installedUat.requiredCases.length,5);assert.ok(r.installedUat.requiredCases.every(row=>row.status==='pass'));assert.equal(r.installedUat.nativeDeactivatePromiseAwaited,true)
+ assert.equal(r.review.importantFixedByObservedTdd,2);assert.equal(r.review.secondReview,false);assert.equal(r.runtimeActivation,false);assert.equal(r.finalProgramUat,'not_run')
+ for(const key of ['providerDispatches','bobDispatches','v2ProductLeaseAcquisitions','v2ProductRunDirectoryCreations','v2ProductArtifactStages'])assert.equal(r.activeRuntime.gateRResult[key],0)
+})
+test('owner lifecycle rejects source CI payload host nested-evidence and runtime tamper',()=>{
+ const original=ownerCompletion(),mutations=[r=>r.acceptedMainSha=r.sourceHeadSha,r=>r.acceptedTreeSha='0'.repeat(40),r=>r.mergeParents.reverse(),r=>r.ci.mode='verified',r=>r.ci.allRequiredGatesSucceeded=true,r=>r.ci.authorization.userInstruction='',r=>r.ci.authorization.inheritedFromR2=true,r=>r.ci.actualMain.head=r.sourceHeadSha,r=>r.ci.candidate.workflows[0].conclusion='success',r=>r.packages.workflowRegister.vsix.sha256='0'.repeat(64),r=>r.installedUat.sourceHeadSha='0'.repeat(40),r=>r.installedUat.requiredCases.pop(),r=>r.installedUat.nativeHostExit=1,r=>r.source.sourceAdmissionDeltas=56,r=>r.preservation.allHashesVerified=false,r=>r.externalEvidence.pop(),r=>r.externalEvidence.push(r.externalEvidence[0]),r=>r.review.importantFixedByObservedTdd=1,r=>r.runtimeActivation=true,r=>r.mutationAuthority=true,r=>r.finalProgramUat='passed']
+ for(const mutate of mutations){const r=structuredClone(original);mutate(r);assert.throws(()=>validateCompletionObservation(r,{programIndex:buildProgramIndex(),evidenceDigests:digests(r)}))}
+ const actual=digests(original);actual[original.externalEvidence[0].id].bytes++;assert.throws(()=>validateCompletionObservation(original,{programIndex:buildProgramIndex(),evidenceDigests:actual}))
+})
+test('owner lifecycle rejects old-prefix changes nonprefix collections and later promotion',()=>{
+ const c=throughOwner(),records=c.completionObservations
+ const sparse=records.slice();delete sparse[9]
+ for(const completionObservations of [[records.at(-1)],records.slice().reverse(),[...records,records.at(-1)],sparse])assert.throws(()=>projectIntegrationStatus({...c,completionObservations}))
+ const p=projectIntegrationStatus(c);p.completionReferences[0].acceptedMainSha='0'.repeat(40);assert.throws(()=>deriveNextSlice({programIndex:c.programIndex,statusProjection:p}))
+ for(const mutate of [p=>p.slices[9].state='VERIFIED',p=>p.activeSliceIds.push('REG-BRIDGE-OWNER-VERSION-LIFECYCLE'),p=>p.mutationAuthority=true,p=>p.capabilities.find(row=>row.id==='WF2-R3-ARTIFACT-TX').executionState='VERIFIED']){const projection=projectIntegrationStatus(c);mutate(projection);assert.throws(()=>deriveNextSlice({programIndex:c.programIndex,statusProjection:projection}))}
+})
+test('owner generator reads one literal LF completion and rejects missing or noncanonical bytes',async()=>{
+ const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/reg-bridge-owner-version-lifecycle-completion-2026-10-19.json',import.meta.url));let reads=0,output
+ await runGenerator(['--print'],{readFile:async file=>{if(file===target)reads++;return readFileSync(file)},writeStdout:bytes=>{output=JSON.parse(bytes)}})
+ assert.equal(reads,1);assert.equal(output.completionReferences.length,11);assert.equal(output.nextSliceId,'REG-BRIDGE-DISCOVERY-EVIDENCE')
+ await assert.rejects(()=>runGenerator(['--print'],{readFile:async file=>{if(file===target)throw Error('missing owner completion');return readFileSync(file)},writeStdout:()=>assert.fail('missing owner must not emit')}))
+ for(const bytes of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replace(/\n/g,'\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async file=>file===target?bytes:readFileSync(file),writeStdout:()=>assert.fail('owner byte drift must not emit')}))
+})
+test('owner completion LF survives actual index checkout',async()=>{
+ const {mkdtempSync,readFileSync}=await import('node:fs'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),{execFileSync}=await import('node:child_process'),root=fileURLToPath(new URL('../../../',import.meta.url)),temp=mkdtempSync(join(tmpdir(),'owner-completion-lf-')),rel='docs/release-evidence/reg-bridge-owner-version-lifecycle-completion-2026-10-19.json'
+ execFileSync('git',['-c','core.autocrlf=true','checkout-index','--prefix='+temp.replaceAll('\\','/')+'/','--',rel],{cwd:root,windowsHide:true,maxBuffer:32*1024*1024});const checked=readFileSync(join(temp,rel)),indexed=execFileSync('git',['show',':'+rel],{cwd:root,windowsHide:true,maxBuffer:32*1024*1024});assert.ok(checked.equals(indexed));assert.equal(checked.at(-1),10);assert.equal(checked.includes(13),false)
+})
+function ownerRetainedBytes(record,binding,manifest){
+ const same=(a,b)=>a.path===b.path&&a.bytes===b.bytes&&a.sha256===b.sha256
+ const direct=record.externalEvidence.find(row=>same(row,binding)),entry=direct??manifest.entries.find(row=>same(row.original,binding))?.retained
+ assert(entry,'missing retained binding '+binding.path);assert.ok(record.externalEvidence.some(row=>same(row,entry)),'unlisted retained binding');const bytes=readFileSync(entry.path);assert.equal(bytes.length,binding.bytes);assert.equal(digest(bytes),binding.sha256);return bytes
+}
+test('owner completion retains every recursive absolute byte binding including installed subject',async()=>{
+ const {mkdtempSync,writeFileSync}=await import('node:fs'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),temp=mkdtempSync(join(tmpdir(),'owner-retention-closure-')),source=ownerCompletion()
+ const bind=(path,bytes)=>({path,bytes:bytes.length,sha256:digest(bytes)}),payload=Buffer.from('retained owner artifact\n'),payloadOriginal=bind(join(temp,'unavailable-original','artifact.bin'),payload),payloadRetained=bind(join(temp,'retained-artifact.bin'),payload)
+ writeFileSync(payloadRetained.path,payload)
+ const subjectBytes=Buffer.from(JSON.stringify({candidate:{head:source.sourceHeadSha,tree:source.acceptedTreeSha},artifact:payloadOriginal})+'\n'),subjectOriginal=bind(join(temp,'unavailable-original','subject.json'),subjectBytes),subjectRetained=bind(join(temp,'retained-subject.json'),subjectBytes)
+ writeFileSync(subjectRetained.path,subjectBytes)
+ const manifest={entries:[{original:payloadOriginal,retained:payloadRetained},{original:subjectOriginal,retained:subjectRetained}]},manifestBytes=Buffer.from(JSON.stringify(manifest)+'\n'),manifestBinding=bind(join(temp,'retention-manifest.json'),manifestBytes)
+ writeFileSync(manifestBinding.path,manifestBytes)
+ const record={sourceHeadSha:source.sourceHeadSha,acceptedTreeSha:source.acceptedTreeSha,installedUat:{candidate:subjectOriginal},preservation:{manifest:manifestBinding,files:manifest.entries.length},externalEvidence:[{id:'fixture-artifact',...payloadRetained},{id:'fixture-subject',...subjectRetained},{id:'fixture-manifest',...manifestBinding}]},seen=new Set();let count=0
+ function visit(value){if(!value||typeof value!=='object')return;if(typeof value.path==='string'&&/^(?:[A-Za-z]:[\\/]|\/)/.test(value.path)&&Number.isSafeInteger(value.bytes)&&/^[a-f0-9]{64}$/.test(value.sha256??'')){const key=JSON.stringify([value.path,value.bytes,value.sha256]);if(!seen.has(key)){seen.add(key);const bytes=ownerRetainedBytes(record,value,manifest);count++;if((bytes[0]===123||bytes[0]===91)&&bytes.length<32*1024*1024){let nested;try{nested=JSON.parse(bytes.toString())}catch{}if(nested)visit(nested)}}}for(const child of Object.values(value))visit(child)}
+ visit(record);assert.equal(count,5);assert.equal(manifest.entries.length,record.preservation.files);assert.equal(record.externalEvidence.length,record.preservation.files+1)
+ const subject=JSON.parse(ownerRetainedBytes(record,record.installedUat.candidate,manifest));assert.equal(subject.candidate.head,source.sourceHeadSha);assert.equal(subject.candidate.tree,source.acceptedTreeSha)
+ const missing=structuredClone(manifest);missing.entries=missing.entries.filter(row=>row.original.path!==record.installedUat.candidate.path);assert.throws(()=>ownerRetainedBytes(record,record.installedUat.candidate,missing),/missing retained binding/)
+ const unlisted=structuredClone(record);unlisted.externalEvidence=unlisted.externalEvidence.filter(row=>row.path!==payloadRetained.path);assert.throws(()=>ownerRetainedBytes(unlisted,payloadOriginal,manifest),/unlisted retained binding/)
+ writeFileSync(payloadRetained.path,Buffer.from('tampered retained artifact\n'));assert.throws(()=>ownerRetainedBytes(record,payloadOriginal,manifest),assert.AssertionError)
+})
+
+test('owner source admission LF survives actual index checkout',async()=>{
+ const {mkdtempSync}=await import('node:fs'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),{execFileSync}=await import('node:child_process'),{applyRegistryBridgeSourceAdmission,REGISTRY_BRIDGE_SOURCE_ADMISSION_SHA256}=await import('../registryBridgeAdmissionPolicy.mjs'),{gateRExpectedMainFiles}=await import('../gateRMainAdmissionPolicy.mjs')
+ const root=fileURLToPath(new URL('../../../',import.meta.url)),temp=mkdtempSync(join(tmpdir(),'owner-source-admission-lf-')),rel='tools/main-consolidation/registry-bridge-source-admission.json'
+ execFileSync('git',['-c','core.autocrlf=true','checkout-index','--prefix='+temp.replaceAll('\\','/')+'/','--',rel],{cwd:root,windowsHide:true,maxBuffer:32*1024*1024})
+ const checked=readFileSync(join(temp,rel)),indexed=execFileSync('git',['show',':'+rel],{cwd:root,windowsHide:true,maxBuffer:32*1024*1024})
+ assert.ok(checked.equals(indexed),'source admission canonical LF must survive Windows autocrlf checkout');assert.equal(checked.includes(13),false);assert.equal(digest(checked),REGISTRY_BRIDGE_SOURCE_ADMISSION_SHA256);assert.equal(applyRegistryBridgeSourceAdmission(checked,gateRExpectedMainFiles()).length,gateRExpectedMainFiles().length+28)
 })

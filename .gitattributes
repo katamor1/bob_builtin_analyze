@@ -43,3 +43,9 @@ docs/release-evidence/wf2-r1-completion-2026-10-17.json text eol=lf
 
 # R2 completion recovery uses exact canonical LF bytes.
 docs/release-evidence/wf2-r2-completion-2026-10-18.json text eol=lf
+
+# Registry owner lifecycle completion is an exact canonical LF recovery input.
+docs/release-evidence/reg-bridge-owner-version-lifecycle-completion-2026-10-19.json text eol=lf
+
+# Gate R source admission is sealed as exact canonical LF bytes.
+tools/main-consolidation/registry-bridge-source-admission.json text eol=lf
