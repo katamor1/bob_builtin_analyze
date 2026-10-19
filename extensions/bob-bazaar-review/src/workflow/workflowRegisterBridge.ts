@@ -1,3 +1,5 @@
+import * as fs from "node:fs"
+import * as path from "node:path"
 import * as vscode from "vscode"
 import type { CaptureReviewResultOptions } from "../projectRules/resultCaptureTypes"
 import type { BazaarReviewInitialTarget } from "../ui/reviewGuiTypes"
@@ -25,8 +27,13 @@ export interface WorkflowActionProvider {
   execute: (input: WorkflowActionExecutionInput) => Promise<unknown> | unknown
 }
 
+export interface WorkflowContributionProvenance { readonly id: string; readonly version: string; readonly extensionRoot: string }
 export interface WorkflowRegisterApi {
-  registerActionProvider: (provider: WorkflowActionProvider) => vscode.Disposable | void
+  readonly apiVersion: "provider-registry/v1"
+  negotiateProviderRegistry: (range: { min: string; max: string }) => "provider-registry/v1"
+  registerContributionSet: (manifest: unknown, provenance: WorkflowContributionProvenance, handlers: {
+    actionProviders: Map<string, WorkflowActionProvider>; preflightChecks: Map<string, never>; resultSinks: Map<string, never>
+  }) => vscode.Disposable
 }
 
 export async function getWorkflowRegisterApi(extensionId = WORKFLOW_REGISTER_EXTENSION_ID): Promise<WorkflowRegisterApi | undefined> {
@@ -36,10 +43,8 @@ export async function getWorkflowRegisterApi(extensionId = WORKFLOW_REGISTER_EXT
     return undefined
   }
   const api = extension.isActive ? extension.exports : await extension.activate()
-  if (!api?.registerActionProvider) {
-    console.warn(`workflow-register 拡張機能が registerActionProvider を公開していません: ${extensionId}`)
-    return undefined
-  }
+  if (!api || api.apiVersion !== "provider-registry/v1" || typeof api.negotiateProviderRegistry !== "function" || typeof api.registerContributionSet !== "function") return undefined
+  if (api.negotiateProviderRegistry({ min: "provider-registry/v1", max: "provider-registry/v1" }) !== "provider-registry/v1") return undefined
   return api
 }
 
@@ -154,4 +159,22 @@ function parseStateObject(value: string | undefined): Record<string, unknown> | 
   } catch {
     return undefined
   }
+}
+
+/** Native installed metadata is checked before reading a manifest or publishing handlers. */
+export function readInstalledWorkflowContribution(context: Pick<vscode.ExtensionContext, "extension" | "extensionPath"> | undefined, sourceId: string): { manifest: unknown; provenance: WorkflowContributionProvenance } {
+  const native = vscode.extensions.getExtension(sourceId)
+  const declared = context?.extension ?? native
+  const root = context?.extensionPath ?? declared?.extensionPath
+  if (!native || !declared || declared.id !== sourceId || native.id !== sourceId
+    || typeof root !== "string" || typeof native.extensionPath !== "string" || typeof declared.extensionPath !== "string"
+    || path.resolve(root) !== path.resolve(native.extensionPath) || path.resolve(declared.extensionPath) !== path.resolve(native.extensionPath)
+    || typeof native.packageJSON?.version !== "string" || declared.packageJSON?.version !== native.packageJSON.version
+    || native.packageJSON.publisher + "." + native.packageJSON.name !== sourceId
+    || declared.packageJSON?.publisher + "." + declared.packageJSON?.name !== sourceId) {
+    throw new Error("Workflow contribution installed metadata is invalid.")
+  }
+  const bytes = fs.readFileSync(path.join(native.extensionPath, "contracts/workflow-contributions.json"))
+  if (bytes.length > 4_194_304) throw new Error("Workflow contribution manifest is too large.")
+  return { manifest: JSON.parse(bytes.toString("utf8")), provenance: { id: sourceId, version: native.packageJSON.version, extensionRoot: native.extensionPath } }
 }

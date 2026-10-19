@@ -126,7 +126,7 @@ export function registerWorkflowProvidersWithRetry(
 ): void {
   startRetryRegistrationController<WorkflowRegisterApi>({
     retryDelaysMs: WORKFLOW_PROVIDER_RETRY_DELAYS_MS,
-    register: () => registerWorkflowProviders(handlers),
+    register: () => registerWorkflowProviders(handlers, context),
     currentApi: currentWorkflowRegisterApi,
     subscribeChanges: (listener) => vscode.extensions.onDidChange(listener),
     own: (...registrations) => context.subscriptions.push(...registrations),

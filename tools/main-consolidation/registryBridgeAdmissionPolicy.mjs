@@ -1,6 +1,6 @@
 import {gateRInputData,gateRCanonicalJson,gateRDigest,gateRPathRows} from './gateRData.mjs';
 const fail=reason=>{throw new TypeError('Registry bridge source admission: '+reason)};
-export const REGISTRY_BRIDGE_SOURCE_ADMISSION_SHA256='292c30a6b0894bb7ee56e372748f338fb9c2bf50472f1fd5e31261ec46cd370d';
+export const REGISTRY_BRIDGE_SOURCE_ADMISSION_SHA256='eb05f908941f1543618f996ce1aaa68f0982fd9b1fea0459d330a81e86723960';
 const BASE_FILES_SHA256='44557aa00c8d4e846afac1b4bf286851d66a7594fe0360b9b9858cc8226e1b46';
 const admitted=[
   {
@@ -10,9 +10,70 @@ const admitted=[
     ]
   },
   {
+    "path": "extensions/bob-bazaar-review/src/workflow/workflowProviders.ts",
+    "sourceItemIds": [
+      "source-21c74c762ada2909d42a47b0"
+    ]
+  },
+  {
+    "path": "extensions/bob-bazaar-review/src/workflow/workflowRegisterBridge.ts",
+    "sourceItemIds": [
+      "source-21c74c762ada2909d42a47b0"
+    ]
+  },
+  {
+    "path": "extensions/bob-bazaar-review/test/providerRegistryBridge.test.js",
+    "sourceItemIds": [
+      "source-6bd46f52727f256b495ee3d7",
+      "source-fd40c97ba2097bd3305e520d"
+    ]
+  },
+  {
+    "path": "extensions/bob-bazaar-review/test/providerRegistryBridgeTestSupport.js",
+    "sourceItemIds": [
+      "source-fd40c97ba2097bd3305e520d"
+    ]
+  },
+  {
+    "path": "extensions/bob-bazaar-review/test/workflowProviderRegistration.test.js",
+    "sourceItemIds": [
+      "source-0b61f62d20da4612280b6569"
+    ]
+  },
+  {
     "path": "extensions/bob-code-consistency-review/contracts/workflow-contributions.json",
     "sourceItemIds": [
       "source-2cd5d697cee371e3948b8f33"
+    ]
+  },
+  {
+    "path": "extensions/bob-code-consistency-review/src/extension.ts",
+    "sourceItemIds": [
+      "source-09c3e86a1add707d71de4d8c"
+    ]
+  },
+  {
+    "path": "extensions/bob-code-consistency-review/src/workflowProviderRegistration.ts",
+    "sourceItemIds": [
+      "source-ef342bf8f2f3c3f4b9629d6e"
+    ]
+  },
+  {
+    "path": "extensions/bob-code-consistency-review/test/providerRegistryBridgeTestSupport.js",
+    "sourceItemIds": [
+      "source-efdfd169459fd6cf212c2e84"
+    ]
+  },
+  {
+    "path": "extensions/bob-code-consistency-review/test/workflowProviderAtomicRegistration.test.js",
+    "sourceItemIds": [
+      "source-efdfd169459fd6cf212c2e84"
+    ]
+  },
+  {
+    "path": "extensions/bob-code-consistency-review/test/workflowProviderRegistration.test.js",
+    "sourceItemIds": [
+      "source-b828b14f3a5c2a07fea08db5"
     ]
   },
   {
@@ -255,6 +316,13 @@ const admitted=[
     "path": "extensions/workflow-register/test/runtimeWiring.test.js",
     "sourceItemIds": [
       "source-6e4f27e3414ecd0dbbe3abb7"
+    ]
+  },
+  {
+    "path": "extensions/workflow-register/test/threeExtensionProviderLifecycle.test.js",
+    "sourceItemIds": [
+      "source-b7f2224e7b3370bcd1126871",
+      "source-ee09d1109431e8dcb4ef836b"
     ]
   },
   {

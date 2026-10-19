@@ -94,14 +94,19 @@ test("Bazaar provider retry lifecycle recovers restarts and disposes stale or la
   assert.doesNotMatch(source, /^let workflowProviderRegistrationAttempt/m)
 })
 
-test("Bazaar workflow providers declare ownership and register disposables", () => {
-  const source = readSourceSet(["workflow/workflowRegisterBridge.ts", "workflow/workflowProviders.ts"])
-
-  assert.match(source, /const BAZAAR_PROVIDER_SOURCE_ID = "local\.bob-bazaar-review"/)
-  assert.match(source, /sourceId: BAZAAR_PROVIDER_SOURCE_ID/)
-  assert.match(source, /const registrations: vscode\.Disposable\[\] = \[\]/)
-  assert.match(source, /disposeRegistrations\(registrations\)/)
-  assert.match(source, /context\.subscriptions\.push\(\.\.\.registrations\)/)
+test("Bazaar retry lifecycle owns exactly one complete contribution set", async (t) => {
+  const { completeApi, environment, tick, id } = require("./providerRegistryBridgeTestSupport")
+  let disposed = 0
+  const { api, calls } = completeApi(() => ({ dispose() { disposed++ } }))
+  const e = environment(api); t.after(e.stop)
+  assert.equal(e.start(), undefined)
+  await tick()
+  assert.equal(e.context.subscriptions.length, 1)
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0][1].id, id)
+  for (const provider of calls[0][2].actionProviders.values()) assert.equal(provider.sourceId, id)
+  e.notify(); await tick(); assert.equal(calls.length, 1)
+  e.stop(); e.stop(); assert.equal(disposed, 1)
 })
 
 test("Bazaar workflow template starts review target selection from the GUI by default", () => {
