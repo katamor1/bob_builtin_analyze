@@ -82,7 +82,7 @@ export async function captureGitTree({repositoryRoot,commitSha,controlPaths}){
  for(const owner of owners){
   const claims=readJson(owner.claimsPath);if(!Array.isArray(claims.mirrors)||claims.mirrors.length>LIMITS.rows)reject();
   for(const mirror of claims.mirrors){if(typeof mirror?.source!=='string'||typeof mirror?.destination!=='string')reject();selected.add(`${owner.ownerDirectory}/${portablePath(mirror.source)}`);selected.add(portablePath(mirror.destination));}
-  for(const row of metadata)if(row.path.startsWith(owner.ownerDirectory+'/')&&(/(?:^|\/)\.bob\/workflows\/.+\/WORKFLOW\.md$/.test(row.path)||/(?:^|\/)(?:workflow\.yaml|current\.json)$/.test(row.path))){if(++candidates>LIMITS.rows)reject('evidence.limit.exceeded');selected.add(row.path);}
+  for(const row of metadata)if(row.path.startsWith(owner.ownerDirectory+'/')&&/(?:^|\/)(?:WORKFLOW\.md|workflow\.yaml|current\.json)$/.test(row.path)){if(++candidates>LIMITS.rows)reject('evidence.limit.exceeded');selected.add(row.path);}
  }
  const collectionControl=readJson(controlPaths[1]);if(collectionControl.schemaVersion!=='workflow-contract-v2-collections/v1'||!Array.isArray(collectionControl.collections)||collectionControl.collections.length>256)reject();
  for(const collection of collectionControl.collections){portablePath(collection);for(const row of metadata)if(row.path.startsWith(collection+'/'))selected.add(row.path);}
