@@ -68,3 +68,4 @@ extensions/workflow-register/contracts/workflow-discovery-claims.json text eol=l
 extensions/workflow-register/schema/workflow-contributions.v1.schema.json text eol=lf
 tools/workflow-evidence/schemas/workflow-discovery-catalog.v1.schema.json text eol=lf
 tools/workflow-evidence/schemas/workflow-discovery-claims.v1.schema.json text eol=lf
+tools/workflow-evidence/schemas/workflow-discovery-report.v1.schema.json text eol=lf
