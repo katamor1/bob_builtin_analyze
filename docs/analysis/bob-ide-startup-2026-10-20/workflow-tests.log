@@ -1,0 +1,254 @@
+TAP version 13
+# Subtest: Command Palette exposes only the two approved workflow entry points
+ok 1 - Command Palette exposes only the two approved workflow entry points
+  ---
+  duration_ms: 5.8124
+  type: 'test'
+  ...
+# Subtest: extension-local docs document the Command Palette display-name policy
+ok 2 - extension-local docs document the Command Palette display-name policy
+  ---
+  duration_ms: 1.361
+  type: 'test'
+  ...
+# Subtest: registration rejects a schema-valid workflow with duplicate step ids before adaptation
+ok 3 - registration rejects a schema-valid workflow with duplicate step ids before adaptation
+  ---
+  duration_ms: 1615.8352
+  type: 'test'
+  ...
+# Subtest: Bob 2.1 registration loads a Markdown workflow and executes with its actual task capabilities
+ok 4 - Bob 2.1 registration loads a Markdown workflow and executes with its actual task capabilities
+  ---
+  duration_ms: 28.6036
+  type: 'test'
+  ...
+# Subtest: unsupported Bob version diagnostics clear previous registration without registering a source
+ok 5 - unsupported Bob version diagnostics clear previous registration without registering a source
+  ---
+  duration_ms: 38.4482
+  type: 'test'
+  ...
+# Subtest: mixed registration adapts and registers only valid workflow documents
+ok 6 - mixed registration adapts and registers only valid workflow documents
+  ---
+  duration_ms: 74.2977
+  type: 'test'
+  ...
+# Subtest: workspace validation compiles the same nested marker-root document set as registration
+ok 7 - workspace validation compiles the same nested marker-root document set as registration
+  ---
+  duration_ms: 58.8446
+  type: 'test'
+  ...
+# Subtest: explicit current and workspace validation match strict registration diagnostics for warning-only workflows
+ok 8 - explicit current and workspace validation match strict registration diagnostics for warning-only workflows
+  ---
+  duration_ms: 33.6489
+  type: 'test'
+  ...
+# Subtest: CI workflow contract paths include the canonical compiler source
+ok 9 - CI workflow contract paths include the canonical compiler source
+  ---
+  duration_ms: 1.4009
+  type: 'test'
+  ...
+# Subtest: formatted parser diagnostics include their file path exactly once
+    # Subtest: missing front matter
+    ok 1 - missing front matter
+      ---
+      duration_ms: 0.7852
+      type: 'test'
+      ...
+    # Subtest: invalid YAML syntax
+    ok 2 - invalid YAML syntax
+      ---
+      duration_ms: 1.9731
+      type: 'test'
+      ...
+    # Subtest: schema failure
+    ok 3 - schema failure
+      ---
+      duration_ms: 0.7391
+      type: 'test'
+      ...
+    # Subtest: parser warning
+    ok 4 - parser warning
+      ---
+      duration_ms: 0.6025
+      type: 'test'
+      ...
+    # Subtest: parser info
+    ok 5 - parser info
+      ---
+      duration_ms: 0.4823
+      type: 'test'
+      ...
+    1..5
+ok 10 - formatted parser diagnostics include their file path exactly once
+  ---
+  duration_ms: 7.9669
+  type: 'test'
+  ...
+# Subtest: parser diagnostic normalization preserves matching path text inside the message body
+ok 11 - parser diagnostic normalization preserves matching path text inside the message body
+  ---
+  duration_ms: 1.3949
+  type: 'test'
+  ...
+# Subtest: workflow compiler owns parse, semantic, strict, catalog, and diagnostic parity
+ok 12 - workflow compiler owns parse, semantic, strict, catalog, and diagnostic parity
+  ---
+  duration_ms: 13.0565
+  type: 'test'
+  ...
+# Subtest: cross-document duplicate workflow ids remain qualified outside the document compiler
+ok 13 - cross-document duplicate workflow ids remain qualified outside the document compiler
+  ---
+  duration_ms: 2.9458
+  type: 'test'
+  ...
+# Subtest: shadow-only registration displays compiled view without Bob activation, registration, runner or deactivation
+not ok 14 - shadow-only registration displays compiled view without Bob activation, registration, runner or deactivation
+  ---
+  duration_ms: 390.4548
+  type: 'test'
+  location: 'C:\\Users\\stell\\source\\repos\\bob_builtin_analyze\\extensions\\workflow-register\\test\\workflowCompilerParity.test.js:672:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    - workspace: p6-shadow-VLNXv8; workflowRoot=C:\Users\stell\source\repos\bob_builtin_analyze\.superpowers\tmp\bob-startup-20261020\p6-shadow-VLNXv8; marker=.bob; depth=direct; workflow files: 0
+    - workspace: p6-shadow-VLNXv8; Contract v2 package slots: 1
+    - error: [WF2_PACKAGE_LAYOUT_INVALID] workflow.yaml: Package unavailable.
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\stell\source\repos\bob_builtin_analyze\extensions\workflow-register\test\workflowCompilerParity.test.js:675:9)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: invalid or missing current pointer reserves its V2 slot and never falls back to its valid V1 document
+ok 15 - invalid or missing current pointer reserves its V2 slot and never falls back to its valid V1 document
+  ---
+  duration_ms: 190.3903
+  type: 'test'
+  ...
+# Subtest: multi-root same-name V2 slots get separate valid collection identities
+ok 16 - multi-root same-name V2 slots get separate valid collection identities
+  ---
+  duration_ms: 78.5565
+  type: 'test'
+  ...
+# Subtest: V2 validation and registration report the same loader failure while V1 remains synchronous
+ok 17 - V2 validation and registration report the same loader failure while V1 remains synchronous
+  ---
+  duration_ms: 51.6173
+  type: 'test'
+  ...
+# Subtest: V2 pointer reload keeps an unchanged V1 Bob registration and compiled view binding stays private
+not ok 18 - V2 pointer reload keeps an unchanged V1 Bob registration and compiled view binding stays private
+  ---
+  duration_ms: 67.282
+  type: 'test'
+  location: 'C:\\Users\\stell\\source\\repos\\bob_builtin_analyze\\extensions\\workflow-register\\test\\workflowCompilerParity.test.js:698:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    1 !== 2
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 2
+  actual: 1
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\stell\source\repos\bob_builtin_analyze\extensions\workflow-register\test\workflowCompilerParity.test.js:701:84)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: pure V1 explicit reload preserves source re-registration
+ok 19 - pure V1 explicit reload preserves source re-registration
+  ---
+  duration_ms: 34.9849
+  type: 'test'
+  ...
+# Subtest: mixed V1 registration retries a partial failure before caching an unchanged reload
+ok 20 - mixed V1 registration retries a partial failure before caching an unchanged reload
+  ---
+  duration_ms: 101.0554
+  type: 'test'
+  ...
+# Subtest: file exclusions cannot hide V2 slot authority and enable same-slot V1 fallback
+not ok 21 - file exclusions cannot hide V2 slot authority and enable same-slot V1 fallback
+  ---
+  duration_ms: 59.1681
+  type: 'test'
+  location: 'C:\\Users\\stell\\source\\repos\\bob_builtin_analyze\\extensions\\workflow-register\\test\\workflowCompilerParity.test.js:741:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    valid
+
+    1 !== 2
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 2
+  actual: 1
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\stell\source\repos\bob_builtin_analyze\extensions\workflow-register\test\workflowCompilerParity.test.js:760:12)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: malformed V2 slot IDs are diagnosed per candidate while separate V1 remains usable
+    # Subtest: loader
+    ok 1 - loader
+      ---
+      duration_ms: 44.7047
+      type: 'test'
+      ...
+    # Subtest: registration
+    ok 2 - registration
+      ---
+      duration_ms: 43.9046
+      type: 'test'
+      ...
+    # Subtest: workspace-validation
+    ok 3 - workspace-validation
+      ---
+      duration_ms: 43.414
+      type: 'test'
+      ...
+    # Subtest: current-validation
+    ok 4 - current-validation
+      ---
+      duration_ms: 28.4812
+      type: 'test'
+      ...
+    1..4
+ok 22 - malformed V2 slot IDs are diagnosed per candidate while separate V1 remains usable
+  ---
+  duration_ms: 162.3183
+  type: 'test'
+  ...
+# Subtest: malformed V2 structural entries reserve their slot without a searchable workflow file
+ok 23 - malformed V2 structural entries reserve their slot without a searchable workflow file
+  ---
+  duration_ms: 75.6331
+  type: 'test'
+  ...
+1..23
+# tests 32
+# suites 0
+# pass 29
+# fail 3
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3570.3826

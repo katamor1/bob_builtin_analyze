@@ -103,7 +103,7 @@ for (const fails of [false, true]) test(`native deactivate waits for asynchronou
  let extension
  try { const file = require.resolve('../out/extension'); delete require.cache[file]; extension = require(file) } finally { Module._load = original }
  t.after(() => subscriptions.forEach(disposable => disposable.dispose()))
- extension.activate({ extension: { id: 'local.workflow-register', extensionPath: __dirname, packageJSON: { version: '0.1.0' } }, subscriptions })
+ extension.activate({ extension: { id: 'local.workflow-register', extensionPath: __dirname, packageJSON: require('../package.json') }, subscriptions })
  const completion = extension.deactivate()
  assert.equal(typeof completion?.then, 'function', 'native deactivate must return the cleanup Promise')
  assert.equal(extension.deactivate(), completion, 'native completion must be stable')

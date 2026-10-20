@@ -1,0 +1,16 @@
+{
+  "time": "2026-10-20T14:02:00.661Z",
+  "file": "C:/Users/stell/source/repos/bazaar_test/trunk/.bob/workflows/bazaar-project-rule-review/WORKFLOW.md",
+  "backup": "C:\\Users\\stell\\source\\repos\\bob_builtin_analyze\\docs\\analysis\\bob-ide-startup-2026-10-20\\backups\\WORKFLOW.md.before-recovery",
+  "beforeSha256": "42d2b6f0367ea502aae4b4fdc921528d2972a3c3e61da843670069f5146f3f2e",
+  "afterSha256": "5251b67b715213934909f42e033efe843832cae72826425aa4f50cc107a72e38",
+  "removedLine": 171,
+  "remainingMaxResultBytes": 2,
+  "diagnostics": [
+    {
+      "severity": "info",
+      "filePath": "C:/Users/stell/source/repos/bazaar_test/trunk/.bob/workflows/bazaar-project-rule-review/WORKFLOW.md",
+      "message": "workflow-register.bazaar-project-rule-review; schemaVersion=workflow-register/v1; steps=5"
+    }
+  ]
+}

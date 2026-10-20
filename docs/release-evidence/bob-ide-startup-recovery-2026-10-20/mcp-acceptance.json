@@ -1,0 +1,14 @@
+{
+  "time": "2026-10-20T18:54:10.194Z",
+  "passed": true,
+  "serverInfo": {
+    "name": "bob-bazaar-review",
+    "version": "0.3.2"
+  },
+  "protocolVersion": "2024-11-05",
+  "toolCount": 16,
+  "writeToolsHidden": true,
+  "bazaarStatusSucceeded": true,
+  "outsideRootRejected": true,
+  "stderrPresent": false
+}

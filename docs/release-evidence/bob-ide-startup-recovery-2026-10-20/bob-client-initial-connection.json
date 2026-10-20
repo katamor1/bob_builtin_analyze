@@ -1,0 +1,11 @@
+{
+  "time": "2026-10-20T18:47:19.908Z",
+  "sourceLog": "C:/Users/stell/AppData/Roaming/IBM Bob/logs/20261021T034410/window1/exthost/IBM.bob-code/IBM Bob MCP.log",
+  "events": [
+    {
+      "timestamp": "2026-10-21 03:44:56.890",
+      "event": "Session connected"
+    }
+  ],
+  "settingsTrustChanged": false
+}

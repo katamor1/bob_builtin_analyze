@@ -2,7 +2,7 @@
   "name": "workflow-register",
   "displayName": "Bob ワークフロー管理",
   "description": "IBM Bob ワークフローの作成、実行、再開、診断、成果物管理を行います。",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "publisher": "local",
   "license": "UNLICENSED",
   "private": true,

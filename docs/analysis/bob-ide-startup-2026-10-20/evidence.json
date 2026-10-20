@@ -1,0 +1,198 @@
+{
+  "capturedAt": "2026-10-20T13:15:37.980Z",
+  "nodeVersion": "v22.23.2",
+  "bob": {
+    "ideVersion": "2.2.3",
+    "platformVersion": "1.126.0+bob2.2.3",
+    "builtinExtensionVersion": "2.2.3",
+    "stdioReaderExcerpt": "readMessage(){for(;this._buffer;){let r=this._buffer.indexOf(`\n`);if(r===-1)return null;let t=this._buffer.toString(\"utf8\",0,r).replace(/\\r$/,\"\");this._buffer=this._buffer.subarray(r+1);try{return q9t(t)}catch(n){if(n instanceof SyntaxError)continue;throw n}}return null}clear(){this._buffer=void 0}}});function WCe(r){let t=new r",
+    "workflowButton": {
+      "command": "bob-code.task.workflow",
+      "group": "navigation@1",
+      "when": "view === bobChatView && bob-code.hasWorkflows"
+    }
+  },
+  "workspace": "C:\\Users\\stell\\source\\repos\\bazaar_test\\trunk",
+  "extensions": [
+    {
+      "id": "local.workflow-register",
+      "version": "0.1.0",
+      "engine": "^1.106.1",
+      "mainExists": true,
+      "commandCount": 55,
+      "visibleCommands": [
+        "workflowRegister.openOperationHub",
+        "workflowRegister.openWorkflowBuilder"
+      ],
+      "hiddenCommandCount": 53,
+      "manifestDifferentKeys": [
+        "__metadata"
+      ],
+      "vsixSha256": "e22b43a9be86ddd535405dd95eaa6017579a9406969c2bb0f44d640deca5fe50"
+    },
+    {
+      "id": "local.bob-bazaar-review",
+      "version": "0.3.0",
+      "engine": "^1.106.1",
+      "mainExists": true,
+      "commandCount": 19,
+      "visibleCommands": [
+        "bobBazaar.openReviewGui",
+        "bobBazaar.authorProjectRulesFromDocuments"
+      ],
+      "hiddenCommandCount": 17,
+      "manifestDifferentKeys": [
+        "__metadata"
+      ],
+      "vsixSha256": "23dbda34d445058b0214ac66d75c676fb8ea09b856be24349c82902e9f2eaeb6"
+    },
+    {
+      "id": "local.bob-code-consistency-review",
+      "version": "0.1.0",
+      "engine": "^1.106.1",
+      "mainExists": true,
+      "commandCount": 17,
+      "visibleCommands": [
+        "bobCodeConsistency.openReviewWizard"
+      ],
+      "hiddenCommandCount": 16,
+      "manifestDifferentKeys": [
+        "__metadata"
+      ],
+      "vsixSha256": "5c4fd457b00b310fddd7916f5dd9bbee8230a929fb6ac539d31dde840d309b39"
+    }
+  ],
+  "mcpConfig": {
+    "configPath": "C:\\Users\\stell\\source\\repos\\bazaar_test\\trunk\\.bob\\mcp.json",
+    "command": "C:\\Users\\stell\\AppData\\Local\\Programs\\IBM Bob\\IBM Bob.exe",
+    "args": [
+      "c:\\Users\\stell\\.bobide\\extensions\\local.bob-bazaar-review-0.3.0\\out\\mcp\\server.js"
+    ],
+    "envNames": [
+      "BZR_PATH",
+      "BZR_TEXT_ENCODING"
+    ],
+    "commandExists": true,
+    "scriptExists": true,
+    "inheritedAllowedRootsPresent": false
+  },
+  "workflow": {
+    "file": "C:\\Users\\stell\\source\\repos\\bazaar_test\\trunk\\.bob\\workflows\\bazaar-project-rule-review\\WORKFLOW.md",
+    "invalidLine": 171,
+    "checks": [
+      {
+        "base": "C:\\Users\\stell\\.bobide\\extensions\\local.workflow-register-0.1.0",
+        "original": {
+          "ok": false,
+          "diagnostics": [
+            {
+              "severity": "error",
+              "message": "step 'analyze-changes' field 'maxResultBytes' is ignored for type 'agent'."
+            },
+            {
+              "severity": "info",
+              "message": "workflow-register.bazaar-project-rule-review; schemaVersion=workflow-register/v1; steps=5"
+            }
+          ]
+        },
+        "memoryOnlyLine171Removed": {
+          "ok": true,
+          "diagnostics": [
+            {
+              "severity": "info",
+              "message": "workflow-register.bazaar-project-rule-review; schemaVersion=workflow-register/v1; steps=5"
+            }
+          ]
+        }
+      },
+      {
+        "base": "C:\\Users\\stell\\source\\repos\\bob_builtin_analyze\\extensions\\workflow-register",
+        "original": {
+          "ok": false,
+          "diagnostics": [
+            {
+              "severity": "error",
+              "message": "step 'analyze-changes' field 'maxResultBytes' is ignored for type 'agent'."
+            },
+            {
+              "severity": "info",
+              "message": "workflow-register.bazaar-project-rule-review; schemaVersion=workflow-register/v1; steps=5"
+            }
+          ]
+        },
+        "memoryOnlyLine171Removed": {
+          "ok": true,
+          "diagnostics": [
+            {
+              "severity": "info",
+              "message": "workflow-register.bazaar-project-rule-review; schemaVersion=workflow-register/v1; steps=5"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "mcpProbes": [
+    {
+      "label": "external-node-framed",
+      "framing": "content-length",
+      "reason": "responses-received",
+      "responseIds": [
+        1,
+        2,
+        3
+      ],
+      "serverInfo": {
+        "name": "bob-bazaar-review",
+        "version": "0.3.0"
+      },
+      "toolCount": 16,
+      "toolCall": {
+        "isError": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "Error: allowed roots are not configured; set BOB_BAZAAR_ALLOWED_ROOTS or BOB_BAZAAR_ALLOW_UNRESTRICTED_CWD=1"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "label": "bob-run-as-node-framed",
+      "framing": "content-length",
+      "reason": "responses-received",
+      "responseIds": [
+        1,
+        2,
+        3
+      ],
+      "serverInfo": {
+        "name": "bob-bazaar-review",
+        "version": "0.3.0"
+      },
+      "toolCount": 16,
+      "toolCall": {
+        "isError": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "Error: allowed roots are not configured; set BOB_BAZAAR_ALLOWED_ROOTS or BOB_BAZAAR_ALLOW_UNRESTRICTED_CWD=1"
+          }
+        ]
+      },
+      "stderr": ""
+    },
+    {
+      "label": "external-node-standard-stdio",
+      "framing": "ndjson",
+      "reason": "timeout",
+      "responseIds": [],
+      "stderr": ""
+    }
+  ],
+  "originalFilesUnchanged": {
+    "config": true,
+    "workflow": true
+  }
+}

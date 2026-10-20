@@ -1,0 +1,235 @@
+{
+  "schemaVersion": "bob-startup-real-api-acceptance/v1",
+  "startedAt": "2026-10-20T18:55:12.095Z",
+  "pid": 44220,
+  "app": {
+    "name": "IBM Bob",
+    "vscodeVersion": "1.126.0",
+    "electronPresent": true,
+    "electronVersion": "42.2.0"
+  },
+  "workspace": {
+    "roots": [
+      "c:\\Users\\stell\\source\\repos\\bazaar_test\\trunk"
+    ],
+    "trusted": true
+  },
+  "extensions": [
+    {
+      "id": "IBM.bob-code",
+      "version": "2.2.3",
+      "path": "c:\\Users\\stell\\AppData\\Local\\Programs\\IBM Bob\\resources\\app\\extensions\\bob-code",
+      "active": true,
+      "mainSha256": "f111fce450ee57b16ca9d7c9fa3cebfcf69fea90ca08d28c68da580ee04bf64b"
+    },
+    {
+      "id": "local.workflow-register",
+      "version": "0.1.2",
+      "path": "C:\\Users\\stell\\.bobide\\extensions\\local.workflow-register-0.1.2",
+      "active": true,
+      "contributionOwnerVersion": "0.1.2",
+      "mainSha256": "4b7f345cc0a5fd677dff9173eca46c072961f38806dad2cd58d89dffec09717c"
+    },
+    {
+      "id": "local.bob-bazaar-review",
+      "version": "0.3.2",
+      "path": "C:\\Users\\stell\\.bobide\\extensions\\local.bob-bazaar-review-0.3.2",
+      "active": true,
+      "contributionOwnerVersion": "0.3.2",
+      "mainSha256": "f090920702e9033aa3da0c81e262a294270f7d5a4b238c89b73884003362a63a"
+    },
+    {
+      "id": "local.bob-code-consistency-review",
+      "version": "0.1.0",
+      "path": "C:\\Users\\stell\\.bobide\\extensions\\local.bob-code-consistency-review-0.1.0",
+      "active": true,
+      "contributionOwnerVersion": "0.1.0",
+      "mainSha256": "6b13136625e389b2943c35587e63561789d1c186be2bfb1630866eb1fea79ab8"
+    }
+  ],
+  "publicCommands": [
+    {
+      "id": "workflowRegister.openOperationHub",
+      "registered": true,
+      "visibleInManifest": true
+    },
+    {
+      "id": "workflowRegister.openWorkflowBuilder",
+      "registered": true,
+      "visibleInManifest": true
+    },
+    {
+      "id": "bobBazaar.openReviewGui",
+      "registered": true,
+      "visibleInManifest": true
+    },
+    {
+      "id": "bobBazaar.authorProjectRulesFromDocuments",
+      "registered": true,
+      "visibleInManifest": true
+    },
+    {
+      "id": "bobCodeConsistency.openReviewWizard",
+      "registered": true,
+      "visibleInManifest": true
+    }
+  ],
+  "registration": {
+    "reportFound": true,
+    "count": 2,
+    "sessionCount": 2,
+    "bobVersion": "2.2.3",
+    "sourceRegistered": true,
+    "sourceCapabilitiesAudited": true,
+    "expectedId": "workflow-register.bazaar-project-rule-review",
+    "registeredIds": [
+      "workflow-register.bazaar-project-rule-review",
+      "workflow-register.code-consistency-review"
+    ],
+    "catalog": [
+      {
+        "id": "workflow-register.bazaar-project-rule-review",
+        "contract": "v1",
+        "stepCount": 5,
+        "file": "c:\\Users\\stell\\source\\repos\\bazaar_test\\trunk\\.bob\\workflows\\bazaar-project-rule-review\\WORKFLOW.md"
+      },
+      {
+        "id": "workflow-register.code-consistency-review",
+        "contract": "v1",
+        "stepCount": 13,
+        "file": "c:\\Users\\stell\\source\\repos\\bazaar_test\\trunk\\.bob\\workflows\\code-consistency-review\\WORKFLOW.md"
+      }
+    ]
+  },
+  "mcp": {
+    "configuredActiveServers": [
+      {
+        "name": "bazaar",
+        "workspaceRoot": "c:\\Users\\stell\\source\\repos\\bazaar_test\\trunk",
+        "scope": "workspace",
+        "configPath": "c:\\Users\\stell\\source\\repos\\bazaar_test\\trunk\\.bob\\mcp.json"
+      }
+    ],
+    "logPath": "c:\\Users\\stell\\AppData\\Roaming\\IBM Bob\\logs\\20261021T035432\\window1\\exthost\\IBM.bob-code\\IBM Bob MCP.log",
+    "connection": {
+      "status": "connected",
+      "toolDiscoveryErrors": 0,
+      "events": [
+        {
+          "timestamp": "2026-10-21 03:55:21.792",
+          "event": "Session connected"
+        }
+      ]
+    }
+  },
+  "checks": [
+    {
+      "name": "singleExpectedWorkspace",
+      "passed": true
+    },
+    {
+      "name": "trustedWorkspace",
+      "passed": true
+    },
+    {
+      "name": "IBM.bob-code.activated",
+      "passed": true
+    },
+    {
+      "name": "bobVersion223",
+      "passed": true
+    },
+    {
+      "name": "local.workflow-register.contributionOwnerCoherent",
+      "passed": true
+    },
+    {
+      "name": "local.workflow-register.activated",
+      "passed": true
+    },
+    {
+      "name": "local.workflow-register.installedLocation",
+      "passed": true
+    },
+    {
+      "name": "local.bob-bazaar-review.contributionOwnerCoherent",
+      "passed": true
+    },
+    {
+      "name": "local.bob-bazaar-review.activated",
+      "passed": true
+    },
+    {
+      "name": "local.bob-bazaar-review.installedLocation",
+      "passed": true
+    },
+    {
+      "name": "local.bob-code-consistency-review.contributionOwnerCoherent",
+      "passed": true
+    },
+    {
+      "name": "local.bob-code-consistency-review.activated",
+      "passed": true
+    },
+    {
+      "name": "local.bob-code-consistency-review.installedLocation",
+      "passed": true
+    },
+    {
+      "name": "bobRegisterSourcePublicApi",
+      "passed": true
+    },
+    {
+      "name": "bobMcpMetadataPublicApi",
+      "passed": true
+    },
+    {
+      "name": "workflowListPublicApi",
+      "passed": true
+    },
+    {
+      "name": "publicFiveCommandsRegistered",
+      "passed": true
+    },
+    {
+      "name": "publicFiveManifestEntries",
+      "passed": true
+    },
+    {
+      "name": "bob223SourceApiCompatible",
+      "passed": true
+    },
+    {
+      "name": "registeredCatalogConsistent",
+      "passed": true
+    },
+    {
+      "name": "expectedV1WorkflowRegistered",
+      "passed": true
+    },
+    {
+      "name": "expectedV1Catalog",
+      "passed": true
+    },
+    {
+      "name": "bazaarActiveMetadata",
+      "passed": true
+    },
+    {
+      "name": "bazaarRealClientSessionConnected",
+      "passed": true
+    },
+    {
+      "name": "bazaarNoToolDiscoveryError",
+      "passed": true
+    }
+  ],
+  "limitations": [
+    "No model, task, workflow execution, tool call, authentication API, or user database is accessed.",
+    "Bob getActiveMcpServers lists configuration metadata; connection evidence comes from this Extension Host's MCP log.",
+    "bob-code.hasWorkflows has no supported public getter; successful registration report is retained as the alternative evidence.",
+    "Task execution capabilities and visual button/Command Palette rendering require separate acceptance."
+  ],
+  "finishedAt": "2026-10-20T18:55:25.428Z",
+  "passed": true
+}

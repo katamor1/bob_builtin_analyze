@@ -1,0 +1,13 @@
+{
+  "observedAt": "2026-10-20T19:06:24.930Z",
+  "host": "IBM Bob normal startup",
+  "method": "native accessibility tree",
+  "observed": [
+    "Bob: 操作ハブを開く",
+    "Bob Workflow: ワークフローを作成・編集",
+    "Bob Bazaar Review: レビューを開始",
+    "Bob Bazaar Review: 資料からプロジェクト規約を作成",
+    "Bob Code Consistency Review: 整合プレレビューを開始"
+  ],
+  "passed": true
+}

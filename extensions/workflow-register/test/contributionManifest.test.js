@@ -74,24 +74,29 @@ test('registry range parsing rejects hostile, malformed and inverted closed rang
   assert.deepEqual(parseContributionRegistryRange(range), { min: 1n, max: 99999999999999999999999999999999999999n })
   for (const value of [{ min: 'provider-registry/v0', max: 'provider-registry/v1' }, { min: 'provider-registry/v01', max: 'provider-registry/v1' }, { min: 'provider-registry/v2', max: 'provider-registry/v1' }, { min: 'provider-registry/v1' }, { ...range, extra: true }, { min: 'provider-registry/v' + '1'.repeat(46), max: range.max }]) assert.throws(() => parseContributionRegistryRange(value), errorCode('provider.registry.range_malformed'))
 })
-test('installed contribution manifests match the literal current owner and action inventories', () => {
+test('installed contribution manifests match actual package owners and literal action inventories', async t => {
   api('contributionManifest')
   const expected = [
-    ['workflow-register', '0.1.0', ['workflowRegister.runMechanicalChecks', 'vscode.executeCommand']],
-    ['bob-bazaar-review', '0.3.0', ['bobBazaar.openReviewGui','bobBazaar.collectReviewContext','bobBazaar.loadReviewRules','bobBazaar.captureReviewResult','bobBazaar.openRuleAuthoringGui','bobBazaar.loadRuleSourceIndex','bobBazaar.captureRuleEvidenceSelection','bobBazaar.loadSelectedRuleEvidence','bobBazaar.captureRuleProposal','bobBazaar.openRuleProposalTriageGui','bobBazaar.verifyRuleAuthoringApply']],
-    ['bob-code-consistency-review', '0.1.0', ['bobCodeConsistency.initializeWorkspace','bobCodeConsistency.createReviewInput','bobCodeConsistency.prepareAiReviewInputDraft','bobCodeConsistency.applyAiReviewInputDraft','bobCodeConsistency.prepareAiTraceabilityDraft','bobCodeConsistency.captureAiTraceabilityDraft','bobCodeConsistency.applyAiTraceabilityDraft','bobCodeConsistency.openTraceabilityPrep','bobCodeConsistency.validateTraceabilityCatalog','bobCodeConsistency.createReviewInputFromTraceability','bobCodeConsistency.repairReviewInput','bobCodeConsistency.explainReviewInputDiagnostics','bobCodeConsistency.preprocess','bobCodeConsistency.captureBobOutput','bobCodeConsistency.validateOutput','bobCodeConsistency.triage']]
+    ['workflow-register', ['workflowRegister.runMechanicalChecks', 'vscode.executeCommand']],
+    ['bob-bazaar-review', ['bobBazaar.openReviewGui','bobBazaar.collectReviewContext','bobBazaar.loadReviewRules','bobBazaar.captureReviewResult','bobBazaar.openRuleAuthoringGui','bobBazaar.loadRuleSourceIndex','bobBazaar.captureRuleEvidenceSelection','bobBazaar.loadSelectedRuleEvidence','bobBazaar.captureRuleProposal','bobBazaar.openRuleProposalTriageGui','bobBazaar.verifyRuleAuthoringApply']],
+    ['bob-code-consistency-review', ['bobCodeConsistency.initializeWorkspace','bobCodeConsistency.createReviewInput','bobCodeConsistency.prepareAiReviewInputDraft','bobCodeConsistency.applyAiReviewInputDraft','bobCodeConsistency.prepareAiTraceabilityDraft','bobCodeConsistency.captureAiTraceabilityDraft','bobCodeConsistency.applyAiTraceabilityDraft','bobCodeConsistency.openTraceabilityPrep','bobCodeConsistency.validateTraceabilityCatalog','bobCodeConsistency.createReviewInputFromTraceability','bobCodeConsistency.repairReviewInput','bobCodeConsistency.explainReviewInputDiagnostics','bobCodeConsistency.preprocess','bobCodeConsistency.captureBobOutput','bobCodeConsistency.validateOutput','bobCodeConsistency.triage']]
   ]
   const Ajv = require('ajv/dist/2020').default
   const schema = JSON.parse(fs.readFileSync(path.join(__dirname, '../schema/workflow-contributions.v1.schema.json')))
   const check = new Ajv({ strict: true }).compile(schema)
-  for (const [name, version, ids] of expected) {
+  for (const [name, ids] of expected) await t.test(name, () => {
+    const extensionRoot = path.join(__dirname, '../../', name)
+    const pkg = JSON.parse(fs.readFileSync(path.join(extensionRoot, 'package.json')))
+    const owner = { id: pkg.publisher + '.' + pkg.name, version: pkg.version }
+    const provenance = installed({ ...owner, extensionRoot })
     const file = path.join(__dirname, '../../', name, 'contracts/workflow-contributions.json')
     assert.ok(fs.existsSync(file), 'installed manifest missing: ' + name)
     const m = JSON.parse(fs.readFileSync(file)); assert.equal(check(m), true, JSON.stringify(check.errors))
-    assert.deepEqual(m.owner, { id: 'local.' + name, version }); assert.deepEqual(m.action_providers.map(x => x.id), ids)
-    assert.equal(validate(m, installed({ id: 'local.' + name, version })).owner.version, version)
+    assert.deepEqual({ ...validate(m, provenance).owner }, owner)
+    assert.deepEqual(m.action_providers.map(x => x.id), ids)
+    assert.throws(() => validate({ ...m, owner: { ...m.owner, version: '0.0.0-drift' } }, provenance), errorCode('contribution.provenance.invalid'))
     assert.equal(check({ ...m, unexpected: true }), false)
     for (const badVersion of ['v1.2.3', '^1.2.3', '01.2.3', '1.2.3-01']) assert.equal(check({ ...m, owner: { ...m.owner, version: badVersion } }), false, 'schema accepted noncanonical owner version')
     assert.equal(check({ ...m, owner: { ...m.owner, version: '1.2.3-rc.1+build.9' } }), true)
-  }
+  })
 })

@@ -3,7 +3,9 @@ import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import * as vscode from "vscode"
 import { configureWorkspaceMcpServer } from "../mcp/mcpConfig"
+import { inspectMcpConfig } from "../mcp/mcpConfigHealth"
 import { refreshTemplateFile, type TemplateRefreshOptions, type TemplateRefreshPreview } from "./templateRefresh"
+import { hasLegacyAgentResultLimit, migrateLegacyAgentResultLimits } from "./workflowTemplateCompatibility"
 
 export interface BobWorkspaceStatus {
   initialized: boolean
@@ -68,10 +70,8 @@ export async function getBobWorkspaceStatus(workspaceFolder: vscode.WorkspaceFol
 
   const mcpPath = path.join(root, ".bob", "mcp.json")
   if (await exists(mcpPath)) {
-    const hasServer = await mcpContainsServer(mcpPath, serverName)
-    if (!hasServer && !missing.includes(".bob/mcp.json")) {
-      missing.push(`.bob/mcp.json#mcpServers.${serverName}`)
-    }
+    const issues = await inspectMcpConfig(mcpPath, serverName, root)
+    missing.push(...issues.map(issue => `.bob/mcp.json#${issue}`))
   }
 
   return {
@@ -155,7 +155,8 @@ export async function initializeRuleAuthoringWorkspaceFromTemplates(options: {
   const workflowTarget = path.join(root, workflowRelative)
   if (await exists(workflowSource)) {
     await refreshTemplateFile(workflowSource, workflowTarget, {
-      confirmOverwrite: options.confirmWorkflowRefresh ?? confirmTemplateRefresh
+      confirmOverwrite: options.confirmWorkflowRefresh ?? confirmTemplateRefresh,
+      prepareExistingContent: migrateLegacyAgentResultLimits
     })
   }
   return getRuleAuthoringWorkspaceStatus(options.workspaceFolder)
@@ -192,7 +193,7 @@ async function refreshTemplateFiles(templateRoot: string, workspaceRoot: string,
     const source = path.join(templateRoot, relative.replace(/^\.bob[\\/]/, ""))
     const target = path.join(workspaceRoot, relative)
     if (!(await exists(source))) continue
-    await refreshTemplateFile(source, target, options)
+    await refreshTemplateFile(source, target, { ...options, prepareExistingContent: migrateLegacyAgentResultLimits })
   }
 }
 
@@ -229,6 +230,7 @@ async function workflowTemplateStaleReason(
     if (/^workspaceRequired:\s*true\s*$/m.test(text)) return "workspaceRequired-true"
     if (!/^workspaceRequired:\s*false\s*$/m.test(text)) return "workspaceRequired-missing"
     if (!text.includes(`title: ${expectedTitle}`)) return "template-stale"
+    if (hasLegacyAgentResultLimit(text)) return "agent-result-limit"
     return undefined
   } catch {
     return undefined
@@ -239,16 +241,6 @@ async function exists(filePath: string): Promise<boolean> {
   try {
     await fs.access(filePath)
     return true
-  } catch {
-    return false
-  }
-}
-
-async function mcpContainsServer(mcpPath: string, serverName: string): Promise<boolean> {
-  try {
-    const raw = await fs.readFile(mcpPath, "utf8")
-    const parsed = JSON.parse(raw)
-    return Boolean(parsed?.mcpServers?.[serverName])
   } catch {
     return false
   }

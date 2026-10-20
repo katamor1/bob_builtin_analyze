@@ -2,7 +2,7 @@
   "name": "bob-bazaar-review",
   "displayName": "Bob Bazaar レビュー",
   "description": "IBM Bob 向けの Bazaar レビュー、プロジェクト規約、レビュー実績管理、MCP 連携を提供します。日本語と Shift-JIS 系の Bazaar 出力に対応します。",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "publisher": "local",
   "license": "UNLICENSED",
   "private": true,

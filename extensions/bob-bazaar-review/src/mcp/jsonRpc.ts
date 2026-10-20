@@ -18,9 +18,7 @@ export function respondError(id: JsonRpcMessage["id"], code: number, message: st
 }
 
 function write(message: JsonRpcMessage): void {
-  const payload = Buffer.from(JSON.stringify(message), "utf8")
-  process.stdout.write(`Content-Length: ${payload.byteLength}\r\n\r\n`)
-  process.stdout.write(payload)
+  process.stdout.write(`${JSON.stringify(message)}\n`)
 }
 
 export function formatError(error: unknown): string {
@@ -32,7 +30,7 @@ export function formatError(error: unknown): string {
 
 export class McpStdioReader {
   private buffer = Buffer.alloc(0)
-  private remainingOversizedBodyBytes = 0
+  private discardingOversizedLine = false
 
   constructor(
     private readonly onMessage: (message: JsonRpcMessage) => void | Promise<void>,
@@ -41,39 +39,34 @@ export class McpStdioReader {
   ) {}
 
   push(chunk: Buffer): void {
-    if (this.remainingOversizedBodyBytes > 0) {
-      if (chunk.length <= this.remainingOversizedBodyBytes) {
-        this.remainingOversizedBodyBytes -= chunk.length
-        return
-      }
-      chunk = chunk.slice(this.remainingOversizedBodyBytes)
-      this.remainingOversizedBodyBytes = 0
-    }
-
-    this.buffer = Buffer.concat([this.buffer, chunk])
-
-    while (true) {
-      const headerEnd = this.buffer.indexOf("\r\n\r\n")
-      if (headerEnd === -1) return
-
-      const header = this.buffer.slice(0, headerEnd).toString("utf8")
-      const contentLength = parseContentLength(header)
-      if (contentLength === undefined) {
-        this.buffer = this.buffer.slice(headerEnd + 4)
+    let offset = 0
+    while (offset < chunk.length) {
+      const newline = chunk.indexOf(10, offset)
+      const end = newline === -1 ? chunk.length : newline
+      if (this.discardingOversizedLine) {
+        if (newline === -1) return
+        this.discardingOversizedLine = false
+        offset = newline + 1
         continue
       }
-
-      const bodyStart = headerEnd + 4
-      const bodyEnd = bodyStart + contentLength
+      const part = chunk.subarray(offset, end)
+      const length = this.buffer.length + part.length
+      const lastByte = part.length ? part[part.length - 1] : this.buffer[this.buffer.length - 1]
+      const contentLength = length - (lastByte === 13 ? 1 : 0)
       if (contentLength > this.maxRequestBytes) {
-        this.rejectOversizedRequest(bodyStart, contentLength)
+        this.buffer = Buffer.alloc(0)
+        this.discardingOversizedLine = newline === -1
+        this.onProtocolError(-32000, `Request exceeds maximum ${this.maxRequestBytes} bytes.`)
+        if (newline === -1) return
+        offset = newline + 1
         continue
       }
-      if (this.buffer.length < bodyEnd) return
-
-      const body = this.buffer.slice(bodyStart, bodyEnd).toString("utf8")
-      this.buffer = this.buffer.slice(bodyEnd)
-
+      this.buffer = Buffer.concat([this.buffer, part])
+      if (newline === -1) return
+      const body = this.buffer.subarray(0, contentLength).toString("utf8")
+      this.buffer = Buffer.alloc(0)
+      offset = newline + 1
+      if (!body.trim()) continue
       let message: JsonRpcMessage
       try {
         message = JSON.parse(body)
@@ -88,21 +81,4 @@ export class McpStdioReader {
     }
   }
 
-  private rejectOversizedRequest(bodyStart: number, contentLength: number): void {
-    const availableBodyBytes = Math.max(0, this.buffer.length - bodyStart)
-    const bytesToDiscardNow = Math.min(contentLength, availableBodyBytes)
-    this.buffer = this.buffer.slice(bodyStart + bytesToDiscardNow)
-    this.remainingOversizedBodyBytes = contentLength - bytesToDiscardNow
-    this.onProtocolError(-32000, `Content-Length ${contentLength} exceeds maximum ${this.maxRequestBytes} bytes.`)
-  }
-}
-
-function parseContentLength(header: string): number | undefined {
-  for (const line of header.split(/\r?\n/)) {
-    const match = /^Content-Length:\s*(\d+)$/i.exec(line.trim())
-    if (match) {
-      return Number(match[1])
-    }
-  }
-  return undefined
 }
