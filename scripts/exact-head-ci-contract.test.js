@@ -76,3 +76,9 @@ test('common subject artifact includes the explicitly bounded hidden source dire
  const source=fs.readFileSync(path.join(root,'.github/workflows/extensions-quality.yml'),'utf8'),start=source.indexOf('- name: Upload common immutable subject'),step=source.slice(start,source.indexOf('\n  evidence-portability:',start));
  assert.ok(start>0);assert.match(step,/include-hidden-files: true/);assert.match(step,/if-no-files-found: error/);
 });
+
+for(const id of ['bob-bazaar-review','bob-code-consistency-review'])test(`${id} builds the current compiler before the evidence producer runs`,()=>{
+ const source=fs.readFileSync(path.join(root,'.github/workflows/extensions-quality.yml'),'utf8'),start=source.indexOf(`\n  ${id}:`),remainder=source.slice(start+1),next=remainder.slice(1).search(/\n  [a-z][a-z0-9-]*:/),job=next<0?remainder:remainder.slice(0,next+1);
+ const prepare=job.indexOf('- name: Capture immutable evidence VSIX'),install=job.indexOf('npm ci --prefix extensions/workflow-register'),compile=job.indexOf('npm run compile --prefix extensions/workflow-register');
+ assert.ok(install>0&&compile>install&&prepare>compile,'producer requires the built P4/P7 parser and compiler');
+});

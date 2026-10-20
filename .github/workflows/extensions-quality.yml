@@ -224,6 +224,14 @@ jobs:
       - name: VSIX policy
         run: npm run package:policy
 
+      - name: Install evidence compiler dependencies
+        working-directory: ${{ github.workspace }}
+        run: npm ci --prefix extensions/workflow-register
+
+      - name: Build evidence compiler
+        working-directory: ${{ github.workspace }}
+        run: npm run compile --prefix extensions/workflow-register
+
       - name: Capture immutable evidence VSIX
         working-directory: ${{ github.workspace }}
         run: node tools/workflow-evidence/ci-evidence.mjs prepare "${{ runner.temp }}/evidence-vsix-bob-bazaar-review" "extensions/bob-bazaar-review/bob-bazaar-review-0.3.0.vsix"
@@ -313,6 +321,14 @@ jobs:
 
       - name: VSIX policy
         run: npm run package:policy
+
+      - name: Install evidence compiler dependencies
+        working-directory: ${{ github.workspace }}
+        run: npm ci --prefix extensions/workflow-register
+
+      - name: Build evidence compiler
+        working-directory: ${{ github.workspace }}
+        run: npm run compile --prefix extensions/workflow-register
 
       - name: Capture immutable evidence VSIX
         working-directory: ${{ github.workspace }}
