@@ -1,0 +1,297 @@
+{
+  "baseFilesDigest": "49fe197e298117444e81a9ac16dd3585d0ad866d04632f907fbc88f62080d2bc",
+  "baseMainSha": "3d3d25c296dc798c7eb2fd786625775bca1152f0",
+  "deltas": [
+    {
+      "afterBlobSha": "77696d20327b4fc0e109bd39ce87b6b57568f042",
+      "beforeBlobSha": "d77b923a82c58ea9712585861f7148223e6ebb10",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/contracts/workflow-contributions.json",
+      "sourceItemIds": [
+        "source-a3b4ca6a0b1e4db038b83ee2"
+      ]
+    },
+    {
+      "afterBlobSha": "5a9e79b0c4076a8bee9e69dac16267d51bfe2a28",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/contracts/workflow-discovery-claims.json",
+      "sourceItemIds": [
+        "source-a3b4ca6a0b1e4db038b83ee2"
+      ]
+    },
+    {
+      "afterBlobSha": "42d439e98a786fe954e1aadd759fafe567394378",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/workflowContributionManifest.test.js",
+      "sourceItemIds": [
+        "source-a3b4ca6a0b1e4db038b83ee2"
+      ]
+    },
+    {
+      "afterBlobSha": "27affe2f43aca10cfb0def259a3323c855bfef20",
+      "beforeBlobSha": "75317079b583e027d2fbdde804d6ceee1d2b6dbb",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/contracts/workflow-contributions.json",
+      "sourceItemIds": [
+        "source-12d9b78e71be42e5711771f4",
+        "source-f894324f170cd6b0e3e013d0"
+      ]
+    },
+    {
+      "afterBlobSha": "aa7d3a3ebd6de1cab58610ef44cea64f9bdc6a0f",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/contracts/workflow-discovery-claims.json",
+      "sourceItemIds": [
+        "source-f894324f170cd6b0e3e013d0"
+      ]
+    },
+    {
+      "afterBlobSha": "03275e567f0000a6c7c9b4cf86834ab8aa0eed42",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/workflowContributionManifest.test.js",
+      "sourceItemIds": [
+        "source-12d9b78e71be42e5711771f4",
+        "source-f894324f170cd6b0e3e013d0"
+      ]
+    },
+    {
+      "afterBlobSha": "f8d6a4eb7d893b0cb9852373150d6c04acf77e6e",
+      "beforeBlobSha": "d625d20db939e336975c078516424e6110daae10",
+      "mode": "100644",
+      "path": "extensions/workflow-register/contracts/workflow-contributions.json",
+      "sourceItemIds": [
+        "source-0bd231a3c17b7b56bbbbda21"
+      ]
+    },
+    {
+      "afterBlobSha": "d5b99dde069b52e3a5ebde8d62850affa24958bc",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/contracts/workflow-discovery-claims.json",
+      "sourceItemIds": [
+        "source-0bd231a3c17b7b56bbbbda21"
+      ]
+    },
+    {
+      "afterBlobSha": "293123b5f262631712b63bb391367923ec6514d2",
+      "beforeBlobSha": "8301bc8d96c3a54b7ef604cbf17a6a709db7b24c",
+      "mode": "100644",
+      "path": "extensions/workflow-register/scripts/lib/workflow-contract-v2-environment.js",
+      "sourceItemIds": [
+        "source-2d2e01542f2b8de11ef04afb"
+      ]
+    },
+    {
+      "afterBlobSha": "7395435663c6d32a26bd29dca81f803a839c975a",
+      "beforeBlobSha": "a1ff9ea3085544a5b27d6adce093ef6b0437e20c",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/contributionManifest.test.js",
+      "sourceItemIds": [
+        "source-0bd231a3c17b7b56bbbbda21",
+        "source-94c75d7f2b39527bdd46537b"
+      ]
+    },
+    {
+      "afterBlobSha": "1b51fc8b1f28c371529115e35881d43e82cd11b9",
+      "beforeBlobSha": "9d4a5c85a57d7a01549160d0c4177dae7bf51410",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/workflowContractV2ManifestOwnedCatalog.test.js",
+      "sourceItemIds": [
+        "source-2d2e01542f2b8de11ef04afb"
+      ]
+    }
+  ],
+  "schemaVersion": "bob-builtin-analyze/registry-discovery-source-admission/v1",
+  "sourceCoverageDigest": "100c0c53e6764e08685c81a5f92c0d193e798b675de1c8da8c8b7ea44d3560d9",
+  "toolFiles": [
+    {
+      "blobSha": "692d627f5b9ee7631eb22e7ed7fac87b4ea3a45d",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/README.md"
+    },
+    {
+      "blobSha": "792fe512f7abed984d02b9a3591d4094e702f42c",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/ci-evidence.mjs"
+    },
+    {
+      "blobSha": "99086478f799a735b7221d0cbd442271d5cb5035",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/compare-evidence.mjs"
+    },
+    {
+      "blobSha": "ce3fa2935b424d576f1442952ed7992337519e1b",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/discover-tracked-workflows.mjs"
+    },
+    {
+      "blobSha": "3df2dbe78fa7f33327578ac6574126b6356416f7",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/generate-workflow-contract-report.mjs"
+    },
+    {
+      "blobSha": "cb9c0a3234567d8727302b5336994eac162d44e7",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/lib/ciSubjects.mjs"
+    },
+    {
+      "blobSha": "b8a4a212fa169682cf717d7f9c9ce8339a9e27af",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/lib/cli.mjs"
+    },
+    {
+      "blobSha": "e385cd855e26930a5213cbae7a620eabbc8a836e",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/lib/compileEvidence.mjs"
+    },
+    {
+      "blobSha": "6bdc68c95effe036c905a72e534407bed5d50171",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/lib/contractReport.mjs"
+    },
+    {
+      "blobSha": "e5f2c711901570427fcc313e8b6c6ac0a08b967e",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/lib/contributionCatalog.mjs"
+    },
+    {
+      "blobSha": "5d6fd4cfd6fa8763f7bdb2a2cbe8cbf38ea15403",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/lib/discoveryClaims.mjs"
+    },
+    {
+      "blobSha": "87e777017dcf7583ff51d2ca95f971b4bc2aa974",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/lib/evidenceSubject.mjs"
+    },
+    {
+      "blobSha": "4fe7b5649768c01d019d5df5c29a6b03e8388d39",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/lib/gitSnapshot.mjs"
+    },
+    {
+      "blobSha": "43d4ed85b4d80b46bd14b3f5bd204c46a91ab640",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/lib/primitives.mjs"
+    },
+    {
+      "blobSha": "9732432a1e06a7140509b8b1bf765381b199d9f4",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/lib/publishEvidence.mjs"
+    },
+    {
+      "blobSha": "66668b496f2a19e9704ff4891053b4e9d80eebcd",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/lib/snapshotPackageFileSystem.mjs"
+    },
+    {
+      "blobSha": "58cd0451b9042dbc558e580d86c729ffded93c2a",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/lib/subjectState.mjs"
+    },
+    {
+      "blobSha": "73c37d57bf62b6a70933fa288e075a15bb94aaf7",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/lib/trackedDiscovery.mjs"
+    },
+    {
+      "blobSha": "3df7c2c4eada1d994fe54093ecda498cf28579ad",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/lib/vsixArchive.mjs"
+    },
+    {
+      "blobSha": "eb893364a7b44606fc47f1f5431941d77cb6ea2a",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/lib/vsixCapture.mjs"
+    },
+    {
+      "blobSha": "19b67638153c23e477ce5447beaab9cc0b489d7a",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/native/rename_noreplace.c"
+    },
+    {
+      "blobSha": "24f8c0fe89b9ffdb7138c4aac18802cce9b2cd6e",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/native/rename_noreplace.ps1"
+    },
+    {
+      "blobSha": "e195fa30c58010ecb44ea1510be4a2066ae7a35c",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/schemas/workflow-discovery-catalog.v1.schema.json"
+    },
+    {
+      "blobSha": "06d8b9b9a98ba1930946e6a6739f54a2e563bc51",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/schemas/workflow-discovery-claims.v1.schema.json"
+    },
+    {
+      "blobSha": "b0b249db08cedd345af9e668d41222acb2e29665",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/schemas/workflow-discovery-report.v1.schema.json"
+    },
+    {
+      "blobSha": "6f57b8f9b02edea18c1d8a1d59cb0f6823ebc626",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/test/ciEvidence.test.mjs"
+    },
+    {
+      "blobSha": "6f03191e7069e4676b5920f6cef15bf474af1ea5",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/test/cli.test.mjs"
+    },
+    {
+      "blobSha": "dc16165283568cc447a57546adb9a1282773d095",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/test/compileEvidence.test.mjs"
+    },
+    {
+      "blobSha": "f21b4d037715f01197d49eb26ebebd808e8806dc",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/test/contractReport.test.mjs"
+    },
+    {
+      "blobSha": "10a212ba24f677dc67a62aa6b63647bdfa861550",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/test/contributionCatalog.test.mjs"
+    },
+    {
+      "blobSha": "42e347acee74e71f7bb42c6d3cde76c12338a01f",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/test/evidenceSubject.test.mjs"
+    },
+    {
+      "blobSha": "5b0a2c05b84914ac6f442a64eea4b963515fb1b4",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/test/fixtures/ci-collections.json"
+    },
+    {
+      "blobSha": "5e61513a4a8842b9ba2e08037680c8833b9be255",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/test/primitives.test.mjs"
+    },
+    {
+      "blobSha": "3f51e8db2829b809b5cfc33f1f9a144b0fa906b5",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/test/publication.test.mjs"
+    },
+    {
+      "blobSha": "50ccfc3e266d2564d9d6186c66f1471146496874",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/test/testSupport.mjs"
+    },
+    {
+      "blobSha": "252ff9bde0072d09dd4bb9368624fa2c50dd283f",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/test/trackedDiscovery.test.mjs"
+    },
+    {
+      "blobSha": "923d293a75735aafc34f8ef11790f09e91156586",
+      "mode": "100644",
+      "path": "tools/workflow-evidence/test/vsixArchive.test.mjs"
+    }
+  ]
+}

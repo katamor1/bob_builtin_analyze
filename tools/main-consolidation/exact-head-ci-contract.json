@@ -64,6 +64,30 @@
           "runner": "ubuntu-latest",
           "pullRequest": "success",
           "workflowDispatch": "skipped"
+        },
+        {
+          "name": "Workflow evidence subject",
+          "runner": "ubuntu-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        },
+        {
+          "name": "Workflow evidence / ubuntu-latest",
+          "runner": "ubuntu-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        },
+        {
+          "name": "Workflow evidence / windows-latest",
+          "runner": "windows-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        },
+        {
+          "name": "Workflow evidence byte parity",
+          "runner": "ubuntu-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
         }
       ]
     },

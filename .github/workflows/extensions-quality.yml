@@ -4,6 +4,10 @@ run-name: ${{ github.event_name == 'workflow_dispatch' && format('wave0a-{0}-{1}
 on:
   pull_request:
     paths:
+      - "tools/workflow-evidence/**"
+      - "extensions/*/contracts/workflow-discovery-claims.json"
+      - "extensions/*/contracts/workflow-contributions.json"
+      - ".gitattributes"
       - "extensions/workflow-register/**"
       - "extensions/bob-bazaar-review/**"
       - "extensions/bob-code-consistency-review/**"
@@ -22,6 +26,10 @@ on:
     branches:
       - main
     paths:
+      - "tools/workflow-evidence/**"
+      - "extensions/*/contracts/workflow-discovery-claims.json"
+      - "extensions/*/contracts/workflow-contributions.json"
+      - ".gitattributes"
       - "extensions/workflow-register/**"
       - "extensions/bob-bazaar-review/**"
       - "extensions/bob-code-consistency-review/**"
@@ -123,6 +131,18 @@ jobs:
       - name: VSIX policy
         run: npm run package:policy
 
+      - name: Capture immutable evidence VSIX
+        working-directory: ${{ github.workspace }}
+        run: node tools/workflow-evidence/ci-evidence.mjs prepare "${{ runner.temp }}/evidence-vsix-workflow-register" "extensions/workflow-register/workflow-register-0.1.0.vsix"
+
+      - name: Upload immutable evidence VSIX
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evidence-vsix-workflow-register
+          path: ${{ runner.temp }}/evidence-vsix-workflow-register
+          if-no-files-found: error
+          compression-level: 0
+
       - name: Install pinned local VS Code test runtime
         run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
 
@@ -204,6 +224,18 @@ jobs:
       - name: VSIX policy
         run: npm run package:policy
 
+      - name: Capture immutable evidence VSIX
+        working-directory: ${{ github.workspace }}
+        run: node tools/workflow-evidence/ci-evidence.mjs prepare "${{ runner.temp }}/evidence-vsix-bob-bazaar-review" "extensions/bob-bazaar-review/bob-bazaar-review-0.3.0.vsix"
+
+      - name: Upload immutable evidence VSIX
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evidence-vsix-bob-bazaar-review
+          path: ${{ runner.temp }}/evidence-vsix-bob-bazaar-review
+          if-no-files-found: error
+          compression-level: 0
+
       - name: VSIX metrics
         run: npm run package:metrics
 
@@ -281,6 +313,18 @@ jobs:
 
       - name: VSIX policy
         run: npm run package:policy
+
+      - name: Capture immutable evidence VSIX
+        working-directory: ${{ github.workspace }}
+        run: node tools/workflow-evidence/ci-evidence.mjs prepare "${{ runner.temp }}/evidence-vsix-bob-code-consistency-review" "extensions/bob-code-consistency-review/bob-code-consistency-review-0.1.0.vsix"
+
+      - name: Upload immutable evidence VSIX
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evidence-vsix-bob-code-consistency-review
+          path: ${{ runner.temp }}/evidence-vsix-bob-code-consistency-review
+          if-no-files-found: error
+          compression-level: 0
 
       - name: Install pinned local VS Code test runtime
         run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
@@ -530,3 +574,144 @@ jobs:
                 body
               });
             }
+
+  evidence-subject:
+    name: Workflow evidence subject
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [workflow-register, bob-bazaar-review, bob-code-consistency-review]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify checked-out commit
+        working-directory: ${{ github.workspace }}
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}
+          DISPATCH_HEAD_SHA: ${{ inputs.expectedHeadSha }}
+          DISPATCH_NONCE: ${{ inputs.dispatchNonce }}
+        run: node scripts/verify-ci-head.js
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install compiler dependencies
+        run: npm ci --prefix extensions/workflow-register
+
+      - name: Compile current P4 and P7
+        run: npm run compile --prefix extensions/workflow-register
+
+      - name: Download actual VSIX subjects
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: evidence-vsix-*
+          path: .workflow-evidence-inputs
+
+      - name: Prepare common immutable subject
+        run: node tools/workflow-evidence/ci-evidence.mjs prepare .workflow-evidence-subject --bundles .workflow-evidence-inputs/evidence-vsix-workflow-register .workflow-evidence-inputs/evidence-vsix-bob-bazaar-review .workflow-evidence-inputs/evidence-vsix-bob-code-consistency-review
+
+      - name: Upload common immutable subject
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: workflow-evidence-subject
+          path: .workflow-evidence-subject/
+          include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 0
+
+  evidence-portability:
+    name: Workflow evidence / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    needs: [evidence-subject]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify checked-out commit
+        working-directory: ${{ github.workspace }}
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}
+          DISPATCH_HEAD_SHA: ${{ inputs.expectedHeadSha }}
+          DISPATCH_NONCE: ${{ inputs.dispatchNonce }}
+        run: node scripts/verify-ci-head.js
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install compiler dependencies
+        run: npm ci --prefix extensions/workflow-register
+
+      - name: Compile current P4 and P7
+        run: npm run compile --prefix extensions/workflow-register
+
+      - name: Download common immutable subject
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: workflow-evidence-subject
+          path: .workflow-evidence-subject
+
+      - name: Test bounded workflow evidence
+        run: node --test --test-concurrency=2 tools/workflow-evidence/test/*.test.mjs
+
+      - name: Generate evidence from actual source and common VSIX
+        run: node tools/workflow-evidence/ci-evidence.mjs generate .workflow-evidence-subject workflow-evidence-output
+
+      - name: Upload OS evidence and external native receipts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: workflow-evidence-${{ matrix.os }}
+          path: workflow-evidence-output/
+          include-hidden-files: true
+          if-no-files-found: error
+
+  evidence-byte-parity:
+    name: Workflow evidence byte parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [evidence-portability]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify checked-out commit
+        working-directory: ${{ github.workspace }}
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}
+          DISPATCH_HEAD_SHA: ${{ inputs.expectedHeadSha }}
+          DISPATCH_NONCE: ${{ inputs.dispatchNonce }}
+        run: node scripts/verify-ci-head.js
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install compiler dependencies
+        run: npm ci --prefix extensions/workflow-register
+
+      - name: Compile current P4 and P7
+        run: npm run compile --prefix extensions/workflow-register
+
+      - name: Download both OS artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: workflow-evidence-*-latest
+          path: .workflow-evidence-comparison
+
+      - name: Compare all four artifacts and source VSIX bindings
+        run: node tools/workflow-evidence/compare-evidence.mjs .workflow-evidence-comparison/workflow-evidence-ubuntu-latest .workflow-evidence-comparison/workflow-evidence-windows-latest

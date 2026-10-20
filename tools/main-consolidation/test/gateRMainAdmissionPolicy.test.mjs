@@ -61,3 +61,14 @@ test('R1 admission and active schemas validate the actual candidate and reject f
 });
 
 test('R2 admission seals the entire 1126-file current-main shipping baseline and all fifteen families',()=>{const a=admission();assert.equal(a.schemaVersion,'workflow-gate-r-main-admission/v2');assert.equal(a.baseMainSha,'abdedeb23fe133c2b541c8cc2fa7d35f2e8b5688');assert.equal(a.baseFiles.length,1126);assert.equal(a.activeTestFamilies.length,15);assert.equal(a.capabilityId,'WF2-R2-INVOKE');});
+
+import {readdirSync} from 'node:fs';
+import {REGISTRY_DISCOVERY_TOOL_PATHS} from '../registryDiscoveryAdmissionPolicy.mjs';
+test('Discovery layers literal root tools after unchanged Owner57 and verifies actual source bytes',()=>{
+ const root=new URL('../../../',import.meta.url),actual=[];
+ function scan(relative){for(const entry of readdirSync(new URL(relative+'/',root),{withFileTypes:true})){assert.equal(entry.isSymbolicLink(),false);const p=relative+'/'+entry.name;if(entry.isDirectory())scan(p);else actual.push(p);}}
+ scan('tools/workflow-evidence');assert.deepEqual(actual.sort(),REGISTRY_DISCOVERY_TOOL_PATHS);
+ const owner=policy.gateROwnerMainFiles(),current=policy.gateRCurrentMainFiles();assert.equal(owner.length,policy.gateRExpectedMainFiles().length+28);assert.ok(current.length>owner.length);
+ assert.equal(JSON.parse(readFileSync(new URL('../registry-bridge-source-admission.json',import.meta.url))).deltas.length,57);
+ policy.validateGateRMainRepository();
+});
