@@ -24,3 +24,15 @@ test('evidence_authority_cannot_be_rehydrated_or_crossed',async()=>{
 test('empty_explicit_collections_have_an_owned_environment_digest_and_empty_p7_manifest',async()=>{
  await available();const f=await makeEvidenceRepository({v2Packages:0});const r=await run(f,`const s=await captureWorkflowEvidenceSubject(request),c=buildWorkflowContributionCatalog(s),d=discoverTrackedWorkflows(s,c),compiled=await compileWorkflowEvidence(s,d);console.log(JSON.stringify({packages:compiled.packages.length,environmentDigest:compiled.environmentDigest}));`);assert.equal(r.packages,0);assert.match(r.environmentDigest,/^sha256:[0-9a-f]{64}$/);
 });
+
+test('mixed_owned_and_outside_owner_publications_cannot_silently_omit_an_explicit_collection',async()=>{
+ await available();const f=await makeEvidenceRepository();const r=await run(f,`
+ const {execFileSync}=require('node:child_process'),{canonicalBytes}=await import(${JSON.stringify(url('primitives'))});
+ const controls=JSON.parse(await fs.readFile(request.collectionsPath,'utf8'));await fs.cp(controls.collections[0],'.bob/published',{recursive:true});controls.collections.push('.bob/published');await fs.writeFile(request.collectionsPath,canonicalBytes(controls));
+ execFileSync('git',['add','--','.bob/published',request.collectionsPath],{stdio:'ignore'});execFileSync('git',['-c','user.name=fixture','-c','user.email=evidence@example.invalid','commit','-m','mixed explicit publications'],{stdio:'ignore'});request.commitSha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+ const native=await require('./scripts/compile-workflow-contract-v2-packages.js').main(['--root',process.cwd(),'--provider-catalog',request.providerCatalogPath,'--collections',request.collectionsPath,'--manifest','mixed-native-manifest.json']);assert.equal(native.packages.length,2);
+ const subject=await captureWorkflowEvidenceSubject(request),{generateEvidenceBytes}=await import(${JSON.stringify(url('contractReport'))});
+ await assert.rejects(()=>generateEvidenceBytes(subject),error=>error.code==='evidence.discovery.unclassified'&&error.diagnostics.some(row=>row.path==='.bob/published/minimal/current.json'));
+ console.log(JSON.stringify({nativePackages:native.packages.length,rejectedUnclassifiedPublication:true}));`);
+ assert.equal(r.nativePackages,2);assert.equal(r.rejectedUnclassifiedPublication,true);
+});

@@ -109,7 +109,7 @@
   "sourceCoverageDigest": "100c0c53e6764e08685c81a5f92c0d193e798b675de1c8da8c8b7ea44d3560d9",
   "toolFiles": [
     {
-      "blobSha": "692d627f5b9ee7631eb22e7ed7fac87b4ea3a45d",
+      "blobSha": "2370f49cff71f74b528aac860465c233b86cedf8",
       "mode": "100644",
       "path": "tools/workflow-evidence/README.md"
     },
@@ -194,7 +194,7 @@
       "path": "tools/workflow-evidence/lib/subjectState.mjs"
     },
     {
-      "blobSha": "73c37d57bf62b6a70933fa288e075a15bb94aaf7",
+      "blobSha": "4f6e29287135eee4e3fafbf7853390da02eb4977",
       "mode": "100644",
       "path": "tools/workflow-evidence/lib/trackedDiscovery.mjs"
     },
@@ -244,7 +244,7 @@
       "path": "tools/workflow-evidence/test/cli.test.mjs"
     },
     {
-      "blobSha": "dc16165283568cc447a57546adb9a1282773d095",
+      "blobSha": "72367c97b92010404206619d706ca0cfc8f8ac15",
       "mode": "100644",
       "path": "tools/workflow-evidence/test/compileEvidence.test.mjs"
     },

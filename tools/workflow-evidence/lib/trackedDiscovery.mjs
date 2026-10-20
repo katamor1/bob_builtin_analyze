@@ -14,6 +14,7 @@ export function discoverTrackedWorkflows(subject,catalog){
  for(const collection of collections)for(const row of git.metadata){
   if(!row.path.startsWith(collection+'/')||!row.path.endsWith('/current.json'))continue;
   const remainder=row.path.slice(collection.length+1),segments=remainder.split('/');if(segments.length!==2)continue;
+  candidates.add(row.path);if(candidates.size>LIMITS.rows)reject('evidence.limit.exceeded');
   const pointer=git.readJson(row.path),keys=pointer&&typeof pointer==='object'&&!Array.isArray(pointer)?Object.keys(pointer).sort().join(','):'';
   let workflowPath;
   if(keys==='generation,packageDigest,schemaVersion,workflowId'&&pointer.schemaVersion==='workflow-package-pointer/v1'&&pointer.workflowId===segments[0]&&/^sha256:[0-9a-f]{64}$/.test(pointer.generation)&&pointer.generation===pointer.packageDigest)workflowPath=collection+'/'+segments[0]+'/versions/'+workflowPackageGenerationDirectoryName(pointer.generation)+'/workflow.yaml';
