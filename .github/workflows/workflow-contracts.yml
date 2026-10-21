@@ -4,6 +4,10 @@ run-name: ${{ github.event_name == 'workflow_dispatch' && format('wave0a-{0}-{1}
 on:
   pull_request:
     paths:
+      - "tools/workflow-evidence/**"
+      - "extensions/*/contracts/workflow-discovery-claims.json"
+      - "extensions/*/contracts/workflow-contributions.json"
+      - ".gitattributes"
       - ".bob/workflows/**/WORKFLOW.md"
       - ".bob/template-library/**/WORKFLOW.md"
       - "extensions/workflow-register/samples/**/WORKFLOW.md"
@@ -32,6 +36,10 @@ on:
     branches:
       - main
     paths:
+      - "tools/workflow-evidence/**"
+      - "extensions/*/contracts/workflow-discovery-claims.json"
+      - "extensions/*/contracts/workflow-contributions.json"
+      - ".gitattributes"
       - ".bob/workflows/**/WORKFLOW.md"
       - ".bob/template-library/**/WORKFLOW.md"
       - "extensions/workflow-register/samples/**/WORKFLOW.md"

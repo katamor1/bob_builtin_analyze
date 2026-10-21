@@ -1,0 +1,171 @@
+{
+  "acceptedMainSha": "90f926e0045405625f1f40d20a41346a94d1981a",
+  "deltas": [
+    {
+      "afterBlobSha": "641acd094845fc18b074193bf00ea1f2f9bf4fdf",
+      "beforeBlobSha": "d77b923a82c58ea9712585861f7148223e6ebb10",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/contracts/workflow-contributions.json"
+    },
+    {
+      "afterBlobSha": "08d23c1990a980cf1dd1b05281d948ea880be1b7",
+      "beforeBlobSha": "b3a9321520baf2a305eb1b07e5724a08bff2d49c",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/package-lock.json"
+    },
+    {
+      "afterBlobSha": "96235c33f13a4f6759df82e3d820171662ddf60d",
+      "beforeBlobSha": "5a2c441203b8ccfaf22e8acd64558e895f07c540",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/package.json"
+    },
+    {
+      "afterBlobSha": "e5c35c5387fbe90ee6f5388c17f2f4f3870abbec",
+      "beforeBlobSha": "32ef64ad2372290dcf7bc97ef9db66e1d340c55a",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/mcp/jsonRpc.ts"
+    },
+    {
+      "afterBlobSha": "514bd9c527ee7a27cbe9e99f20db0a04e7467e25",
+      "beforeBlobSha": "9b7a89e45dceb0f428cf4ce9b833ed8c83614001",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/mcp/mcpConfig.ts"
+    },
+    {
+      "afterBlobSha": "3d85a5cf5cb4c2615390b196a12fa59f3e6daa9f",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/mcp/mcpConfigHealth.ts"
+    },
+    {
+      "afterBlobSha": "3e80f19abb4800be880f2f6a9f85c53e7c2a41ef",
+      "beforeBlobSha": "6d6730f938d38f1b586d1800544a8f0b38d74c12",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/workspace/bobWorkspaceInit.ts"
+    },
+    {
+      "afterBlobSha": "760a2e5ea567f2c3e5a8319992b7c7fad35c35fe",
+      "beforeBlobSha": "e212dbb7dab16d7d092605ec9b1c8a4170335909",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/workspace/templateRefresh.ts"
+    },
+    {
+      "afterBlobSha": "65b9f2cfec9effd88ebf8b6364c010dc6b9a40ec",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/workspace/workflowTemplateCompatibility.ts"
+    },
+    {
+      "afterBlobSha": "d040d28b8d353506566a2c59390297a919db9f98",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/bobWorkspaceMcpHealth.test.js"
+    },
+    {
+      "afterBlobSha": "a3dab8d1fcb8e7953c831a94df9c3ca93d1aeae2",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/bobWorkspaceWorkflowMigration.test.js"
+    },
+    {
+      "afterBlobSha": "937519e207ecaf55714f88f2c80ad55995818079",
+      "beforeBlobSha": "8660b935bd8d1879d2f925f93578fdfc0dc1bd5e",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/mcpAllowedRoots.test.js"
+    },
+    {
+      "afterBlobSha": "827481599c4b2a11f3fb91b6f4890130f48b2a9f",
+      "beforeBlobSha": "c849d22c9557fdfa5c94ff9b907cffe262ddc6fa",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/mcpConfig.test.js"
+    },
+    {
+      "afterBlobSha": "65dd4e2452bd2eefef00cb3bd8be7e1fd0e3cd23",
+      "beforeBlobSha": "d5141e65f87cb9d3db2ab467cb0b2b3cd809035c",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/mcpRequestLimit.test.js"
+    },
+    {
+      "afterBlobSha": "929ad2e0c54dd800b62fe0f6e1bfe9793dfeb1f8",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/mcpStdioInterop.test.js"
+    },
+    {
+      "afterBlobSha": "3a25fc6b353ed7acb7f4184b791201ee9aa33591",
+      "beforeBlobSha": "b55e2676ba8708b8533dd4e8e41a85c57821a2f8",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/mcpWriteTools.test.js"
+    },
+    {
+      "afterBlobSha": "79526335e382692bc9f00a37863001a4f011a8c8",
+      "beforeBlobSha": "d625d20db939e336975c078516424e6110daae10",
+      "mode": "100644",
+      "path": "extensions/workflow-register/contracts/workflow-contributions.json"
+    },
+    {
+      "afterBlobSha": "ef905ff62397414226766439ce2a4e20ce29017d",
+      "beforeBlobSha": "d249459ded2c00932772f51096b20c5bdec5eda3",
+      "mode": "100644",
+      "path": "extensions/workflow-register/package-lock.json"
+    },
+    {
+      "afterBlobSha": "dea2045aafb19c0fad81d8e0a71bfab65a081dfc",
+      "beforeBlobSha": "cd7dfc8d2da94afa3177f51f33393ffa8f99eb1d",
+      "mode": "100644",
+      "path": "extensions/workflow-register/package.json"
+    },
+    {
+      "afterBlobSha": "b52f5b788a26a64c2c677ef4d8318deea5e9e6b7",
+      "beforeBlobSha": "b314f556d958f1911c78adcedde25d72544c8026",
+      "mode": "100644",
+      "path": "extensions/workflow-register/scripts/recompress-vsix.js"
+    },
+    {
+      "afterBlobSha": "c946832ae365cf191c59541afa56f733fac6e372",
+      "beforeBlobSha": "379e8e496a41604fb09402440fcb5fcca54df59b",
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/workflowRegistrationService.ts"
+    },
+    {
+      "afterBlobSha": "b006995e263d1e1f2ccaae873d6bd61418a57b88",
+      "beforeBlobSha": "a1ff9ea3085544a5b27d6adce093ef6b0437e20c",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/contributionManifest.test.js"
+    },
+    {
+      "afterBlobSha": "207c4afb1b22fd5bd8121c20fdfde936b3b96b8a",
+      "beforeBlobSha": "238f59f28e926043d8438c134a0e4514c60d079e",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/providerRegistryDisposal.test.js"
+    },
+    {
+      "afterBlobSha": "79b4df9a947a22591e4974ec24a0503d4eec1305",
+      "beforeBlobSha": "8803969af90e618861c5c233cc231b6b0cbd79cc",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/providerRegistryRuntimeTestSupport.js"
+    },
+    {
+      "afterBlobSha": "dd5e199e86825f580fcac877c1b0a94816f2d806",
+      "beforeBlobSha": "7216d17a96fa2d0d3f62fca0a47108d76c3c21df",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/threeExtensionProviderLifecycle.test.js"
+    },
+    {
+      "afterBlobSha": "486f0b82a74a3f5db619a54a4298575044e51a23",
+      "beforeBlobSha": "1b86f651026169c884424b5b837e2f401b477398",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/vsixCompression.test.js"
+    },
+    {
+      "afterBlobSha": "64d8c5003b0358d4ac0c3892eb15fcf16c841db8",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/workflowRegistrationDiagnostics.test.js"
+    }
+  ],
+  "ownerFilesDigest": "49fe197e298117444e81a9ac16dd3585d0ad866d04632f907fbc88f62080d2bc",
+  "parentMainSha": "3d3d25c296dc798c7eb2fd786625775bca1152f0",
+  "resultFilesDigest": "62005465003f0b5e1f3bcc292722b2e0f677b28e2b2f1d648d80242b6a51e420",
+  "schemaVersion": "bob-builtin-analyze/registry-discovery-upstream-main-admission/v1"
+}

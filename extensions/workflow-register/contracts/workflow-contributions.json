@@ -43,5 +43,10 @@
     }
   ],
   "workflow_templates": [],
-  "schemas": []
+  "schemas": [
+    {
+      "id": "workflowRegister.contributionManifestSchema",
+      "path": "schema/workflow-contributions.v1.schema.json"
+    }
+  ]
 }

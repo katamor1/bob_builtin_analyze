@@ -63,6 +63,14 @@ const fsRealpath = fs.realpath
 const workflowProviderRegistryRegister = ActionRegistryConstructor.prototype.registerWorkflowProviderContract
 const workflowProviderRegistrySnapshot = ActionRegistryConstructor.prototype.snapshotWorkflowProviderCatalog
 
+const uint8ArrayPrototype = Uint8Array.prototype
+const uint8ArrayByteLength = objectGetOwnPropertyDescriptor(objectGetPrototypeOf(uint8ArrayPrototype), "byteLength").get
+const uint8ArraySet = uint8ArrayPrototype.set
+const bufferPrototype = Buffer.prototype
+const isUint8Array = utilTypes.isUint8Array
+const ENVIRONMENT_BYTES_INPUT_FIELDS = objectFreeze(["providerCatalogBytes"])
+const COLLECTION_BYTES_INPUT_FIELDS = objectFreeze(["collectionsBytes"])
+
 const ENVIRONMENT_INPUT_FIELDS = objectFreeze(["repositoryRoot", "providerCatalogPath"])
 const COLLECTION_INPUT_FIELDS = objectFreeze(["repositoryRoot", "collectionsPath"])
 const CATALOG_FIELDS = objectFreeze(["schemaVersion", "providers"])
@@ -75,11 +83,13 @@ const PROVIDER_FIELDS = objectFreeze([
 async function createWorkflowContractV2EvidenceEnvironment(input) {
   const request = snapshotExactRecord(input, ENVIRONMENT_INPUT_FIELDS, "Workflow evidence environment input")
   const repositoryRoot = await canonicalRepositoryRoot(request.repositoryRoot)
-  const document = await readCanonicalJsonFile(
-    repositoryRoot,
-    request.providerCatalogPath,
-    "Workflow provider catalog"
-  )
+  const bytes = await readCanonicalJsonBytesFile(repositoryRoot, request.providerCatalogPath, "Workflow provider catalog")
+  return createWorkflowContractV2EvidenceEnvironmentFromBytes({ providerCatalogBytes: bytes })
+}
+
+function createWorkflowContractV2EvidenceEnvironmentFromBytes(input) {
+  const request = snapshotExactRecord(input, ENVIRONMENT_BYTES_INPUT_FIELDS, "Workflow evidence environment bytes input")
+  const document = readCanonicalJsonBytes(request.providerCatalogBytes, "Workflow provider catalog")
   const root = snapshotExactRecord(document, CATALOG_FIELDS, "Workflow provider catalog")
   if (root.schemaVersion !== CATALOG_SCHEMA_VERSION) {
     throw new TypeError("Workflow provider catalog schema version is invalid.")
@@ -119,11 +129,13 @@ async function createWorkflowContractV2EvidenceEnvironment(input) {
 async function readWorkflowContractV2Collections(input) {
   const request = snapshotExactRecord(input, COLLECTION_INPUT_FIELDS, "Workflow collections input")
   const repositoryRoot = await canonicalRepositoryRoot(request.repositoryRoot)
-  const document = await readCanonicalJsonFile(
-    repositoryRoot,
-    request.collectionsPath,
-    "Workflow collection list"
-  )
+  const bytes = await readCanonicalJsonBytesFile(repositoryRoot, request.collectionsPath, "Workflow collection list")
+  return readWorkflowContractV2CollectionsFromBytes({ collectionsBytes: bytes })
+}
+
+function readWorkflowContractV2CollectionsFromBytes(input) {
+  const request = snapshotExactRecord(input, COLLECTION_BYTES_INPUT_FIELDS, "Workflow collections bytes input")
+  const document = readCanonicalJsonBytes(request.collectionsBytes, "Workflow collection list")
   const root = snapshotExactRecord(document, COLLECTION_LIST_FIELDS, "Workflow collection list")
   if (root.schemaVersion !== COLLECTIONS_SCHEMA_VERSION) {
     throw new TypeError("Workflow collection list schema version is invalid.")
@@ -138,7 +150,7 @@ async function readWorkflowContractV2Collections(input) {
   return objectFreeze(collections)
 }
 
-async function readCanonicalJsonFile(repositoryRoot, repositoryRelativeFile, label) {
+async function readCanonicalJsonBytesFile(repositoryRoot, repositoryRelativeFile, label) {
   const relative = repositoryRelativePath(repositoryRelativeFile, `${label} path`)
   const beforePath = await inspectDirectRepositoryPath(repositoryRoot, relative, "file", label)
   const lexical = beforePath.path
@@ -184,6 +196,21 @@ async function readCanonicalJsonFile(repositoryRoot, repositoryRelativeFile, lab
     throw new TypeError(`${label} changed while it was being read.`)
   }
 
+  return bytes
+}
+
+async function readCanonicalJsonFile(repositoryRoot, repositoryRelativeFile, label) {
+  return readCanonicalJsonBytes(await readCanonicalJsonBytesFile(repositoryRoot, repositoryRelativeFile, label), label)
+}
+
+function readCanonicalJsonBytes(input, label) {
+  if (isProxy(input) || !isUint8Array(input)) throw new TypeError("Canonical control bytes must be a plain byte array.")
+  const prototype = objectGetPrototypeOf(input)
+  if (prototype !== bufferPrototype && prototype !== uint8ArrayPrototype) throw new TypeError("Canonical control bytes have an invalid prototype.")
+  const size = reflectApply(uint8ArrayByteLength, input, [])
+  if (size > MAX_CONTROL_BYTES) throw new TypeError("Canonical control bytes are too large.")
+  const bytes = reflectApply(bufferAlloc, BufferConstructor, [size])
+  reflectApply(uint8ArraySet, bytes, [input])
   const parsed = parseStrictJsonCaptured(bytes, label)
   const canonical = reflectApply(bufferConcat, BufferConstructor, [[
     canonicalJsonBytesCaptured(parsed),
@@ -416,10 +443,12 @@ module.exports = {
   COLLECTIONS_SCHEMA_VERSION,
   canonicalRepositoryRoot,
   createWorkflowContractV2EvidenceEnvironment,
+  createWorkflowContractV2EvidenceEnvironmentFromBytes,
   inspectDirectRepositoryPath,
   portablePathKey,
   readCanonicalJsonFile,
   readWorkflowContractV2Collections,
+  readWorkflowContractV2CollectionsFromBytes,
   repositoryRelativePath,
   resolveWithinRepository
 }

@@ -150,3 +150,15 @@ test("control file read rejects a different opened inode before reading", async 
     assert.equal(closes, 2, "both mismatched descriptors must close")
   } finally { fsp.open = originalOpen; delete require.cache[helper] }
 })
+test('bytes environment and collection factories share the existing owned canonical boundary',async t=>{
+ const s=subject();assert.equal(typeof s.createWorkflowContractV2EvidenceEnvironmentFromBytes,'function','captured provider bytes factory is missing');assert.equal(typeof s.readWorkflowContractV2CollectionsFromBytes,'function','captured collection bytes factory is missing');
+ const document={schemaVersion:'workflow-provider-catalog-source/v1',providers:[declaration('unused.collect')]},bytes=canonical(document),root=repository(t,document.providers),fromBytes=s.createWorkflowContractV2EvidenceEnvironmentFromBytes({providerCatalogBytes:bytes}),fromFile=await environment(s,root);bytes.fill(0);assert.deepEqual(compile(fromBytes).plan,compile(fromFile).plan);assert.equal(require('../out/core/contractV2/compiledPlan.js').isCompiledWorkflowPlanLeasable(compile(fromBytes)),false);const collections=s.readWorkflowContractV2CollectionsFromBytes({collectionsBytes:canonical({schemaVersion:'workflow-contract-v2-collections/v1',collections:['collections/a']})});assert.deepEqual(collections,['collections/a']);assert.equal(Object.isFrozen(collections),true);
+});
+
+test('bytes controls reject hostile inputs and preserve canonical LF and count limits',()=>{
+ const s=subject();assert.equal(typeof s.createWorkflowContractV2EvidenceEnvironmentFromBytes,'function','captured provider bytes factory is missing');const valid=canonical({schemaVersion:'workflow-provider-catalog-source/v1',providers:[]});
+ for(const bytes of [valid.subarray(0,valid.length-1),Buffer.from(valid.toString().replace(/\n/g,'\r\n')),Buffer.concat([Buffer.from([239,187,191]),valid]),canonical({schemaVersion:'workflow-provider-catalog/v2',providers:[]}),canonical({schemaVersion:'workflow-provider-catalog-source/v1',providers:[declaration(),declaration()]}),Buffer.alloc(8*1024*1024+1,32)])assert.throws(()=>s.createWorkflowContractV2EvidenceEnvironmentFromBytes({providerCatalogBytes:bytes}));
+ let getters=0;const request={};Object.defineProperty(request,'providerCatalogBytes',{enumerable:true,get(){getters++;return valid;}});assert.throws(()=>s.createWorkflowContractV2EvidenceEnvironmentFromBytes(request));assert.equal(getters,0);assert.throws(()=>s.createWorkflowContractV2EvidenceEnvironmentFromBytes(new Proxy({providerCatalogBytes:valid},{})));assert.throws(()=>s.createWorkflowContractV2EvidenceEnvironmentFromBytes({providerCatalogBytes:valid,lookup(){}}));
+ const hostile=Buffer.from(valid);Object.defineProperty(hostile,'length',{get(){getters++;return 1;}});s.createWorkflowContractV2EvidenceEnvironmentFromBytes({providerCatalogBytes:hostile});assert.equal(getters,0);
+ assert.throws(()=>s.readWorkflowContractV2CollectionsFromBytes({collectionsBytes:canonical({schemaVersion:'workflow-contract-v2-collections/v1',collections:Array.from({length:257},(_,i)=>'collections/a'+i)})}));
+});

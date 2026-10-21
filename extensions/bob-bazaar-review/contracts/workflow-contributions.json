@@ -56,6 +56,20 @@
   ],
   "preflight_checks": [],
   "result_sinks": [],
-  "workflow_templates": [],
-  "schemas": []
+  "workflow_templates": [
+    {
+      "id": "bobBazaarReview.projectRuleAuthoringTemplate",
+      "path": "templates/.bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md"
+    },
+    {
+      "id": "bobBazaarReview.projectRuleReviewTemplate",
+      "path": "templates/.bob/workflows/bazaar-project-rule-review/WORKFLOW.md"
+    }
+  ],
+  "schemas": [
+    {
+      "id": "bobBazaarReview.reviewResultSchema",
+      "path": "templates/.bob/review/review-result.schema.json"
+    }
+  ]
 }

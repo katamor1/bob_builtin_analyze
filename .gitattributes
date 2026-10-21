@@ -49,3 +49,62 @@ docs/release-evidence/reg-bridge-owner-version-lifecycle-completion-2026-10-19.j
 
 # Gate R source admission is sealed as exact canonical LF bytes.
 tools/main-consolidation/registry-bridge-source-admission.json text eol=lf
+
+# Discovery evidence assets and closed schemas use exact LF bytes.
+.bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md text eol=lf
+.bob/workflows/bazaar-project-rule-review/WORKFLOW.md text eol=lf
+.bob/workflows/code-consistency-review/WORKFLOW.md text eol=lf
+extensions/bob-bazaar-review/contracts/workflow-contributions.json text eol=lf
+extensions/bob-bazaar-review/contracts/workflow-discovery-claims.json text eol=lf
+extensions/bob-bazaar-review/templates/.bob/review/review-result.schema.json text eol=lf
+extensions/bob-bazaar-review/templates/.bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md text eol=lf
+extensions/bob-bazaar-review/templates/.bob/workflows/bazaar-project-rule-review/WORKFLOW.md text eol=lf
+extensions/bob-code-consistency-review/contracts/workflow-contributions.json text eol=lf
+extensions/bob-code-consistency-review/contracts/workflow-discovery-claims.json text eol=lf
+extensions/bob-code-consistency-review/resources/schemas/review-input.schema.json text eol=lf
+extensions/bob-code-consistency-review/templates/.bob/workflows/code-consistency-review/WORKFLOW.md text eol=lf
+extensions/workflow-register/contracts/workflow-contributions.json text eol=lf
+extensions/workflow-register/contracts/workflow-discovery-claims.json text eol=lf
+extensions/workflow-register/schema/workflow-contributions.v1.schema.json text eol=lf
+tools/workflow-evidence/schemas/workflow-discovery-catalog.v1.schema.json text eol=lf
+tools/workflow-evidence/schemas/workflow-discovery-claims.v1.schema.json text eol=lf
+tools/workflow-evidence/schemas/workflow-discovery-report.v1.schema.json text eol=lf
+
+# Literal Discovery source and portable CI controls.
+tools/workflow-evidence/README.md text eol=lf
+tools/workflow-evidence/ci-evidence.mjs text eol=lf
+tools/workflow-evidence/compare-evidence.mjs text eol=lf
+tools/workflow-evidence/discover-tracked-workflows.mjs text eol=lf
+tools/workflow-evidence/generate-workflow-contract-report.mjs text eol=lf
+tools/workflow-evidence/lib/ciSubjects.mjs text eol=lf
+tools/workflow-evidence/lib/cli.mjs text eol=lf
+tools/workflow-evidence/lib/compileEvidence.mjs text eol=lf
+tools/workflow-evidence/lib/contractReport.mjs text eol=lf
+tools/workflow-evidence/lib/contributionCatalog.mjs text eol=lf
+tools/workflow-evidence/lib/discoveryClaims.mjs text eol=lf
+tools/workflow-evidence/lib/evidenceSubject.mjs text eol=lf
+tools/workflow-evidence/lib/gitSnapshot.mjs text eol=lf
+tools/workflow-evidence/lib/primitives.mjs text eol=lf
+tools/workflow-evidence/lib/publishEvidence.mjs text eol=lf
+tools/workflow-evidence/lib/snapshotPackageFileSystem.mjs text eol=lf
+tools/workflow-evidence/lib/subjectState.mjs text eol=lf
+tools/workflow-evidence/lib/trackedDiscovery.mjs text eol=lf
+tools/workflow-evidence/lib/vsixArchive.mjs text eol=lf
+tools/workflow-evidence/lib/vsixCapture.mjs text eol=lf
+tools/workflow-evidence/native/rename_noreplace.c text eol=lf
+tools/workflow-evidence/native/rename_noreplace.ps1 text eol=lf
+tools/workflow-evidence/test/ciEvidence.test.mjs text eol=lf
+tools/workflow-evidence/test/cli.test.mjs text eol=lf
+tools/workflow-evidence/test/compileEvidence.test.mjs text eol=lf
+tools/workflow-evidence/test/contractReport.test.mjs text eol=lf
+tools/workflow-evidence/test/contributionCatalog.test.mjs text eol=lf
+tools/workflow-evidence/test/evidenceSubject.test.mjs text eol=lf
+tools/workflow-evidence/test/fixtures/ci-collections.json text eol=lf
+tools/workflow-evidence/test/primitives.test.mjs text eol=lf
+tools/workflow-evidence/test/publication.test.mjs text eol=lf
+tools/workflow-evidence/test/testSupport.mjs text eol=lf
+tools/workflow-evidence/test/trackedDiscovery.test.mjs text eol=lf
+tools/workflow-evidence/test/vsixArchive.test.mjs text eol=lf
+docs/release-evidence/reg-bridge-discovery-source-coverage-2026-10-20.json text eol=lf
+tools/main-consolidation/registry-discovery-source-admission.json text eol=lf
+tools/main-consolidation/registry-discovery-upstream-main-admission.json text eol=lf

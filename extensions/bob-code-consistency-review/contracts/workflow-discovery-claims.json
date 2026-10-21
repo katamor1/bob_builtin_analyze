@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "workflow-discovery-claims/v1",
+  "owner": {
+    "id": "local.bob-code-consistency-review",
+    "version": "0.1.0"
+  },
+  "scopes": [
+    {
+      "prefix": "templates/.bob/workflows/",
+      "role": "template"
+    }
+  ],
+  "exclusions": [],
+  "externalCommands": [],
+  "mirrors": [
+    {
+      "source": "templates/.bob/workflows/code-consistency-review/WORKFLOW.md",
+      "destination": ".bob/workflows/code-consistency-review/WORKFLOW.md"
+    }
+  ]
+}
