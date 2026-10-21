@@ -122,6 +122,15 @@ jobs:
       - name: Production dependency audit
         run: npm run audit:prod
 
+      - name: Build companion provider bridges
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          npm ci --prefix extensions/bob-bazaar-review
+          npm run compile --prefix extensions/bob-bazaar-review
+          npm ci --prefix extensions/bob-code-consistency-review
+          npm run compile --prefix extensions/bob-code-consistency-review
+
       - name: Unit tests
         run: npm test
 
@@ -446,6 +455,16 @@ jobs:
 
       - name: Source policy
         run: npm run source:policy
+
+      - name: Build companion provider bridges
+        if: matrix.extension == 'workflow-register'
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          npm ci --prefix extensions/bob-bazaar-review
+          npm run compile --prefix extensions/bob-bazaar-review
+          npm ci --prefix extensions/bob-code-consistency-review
+          npm run compile --prefix extensions/bob-code-consistency-review
 
       - name: Unit tests
         run: npm test

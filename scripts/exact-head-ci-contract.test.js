@@ -82,3 +82,13 @@ for(const id of ['bob-bazaar-review','bob-code-consistency-review'])test(`${id} 
  const prepare=job.indexOf('- name: Capture immutable evidence VSIX'),install=job.indexOf('npm ci --prefix extensions/workflow-register'),compile=job.indexOf('npm run compile --prefix extensions/workflow-register');
  assert.ok(install>0&&compile>install&&prepare>compile,'producer requires the built P4/P7 parser and compiler');
 });
+
+for(const id of ['workflow-register','windows-smoke'])test(`${id} builds both companion bridges before the workflow lifecycle tests`,()=>{
+ const source=fs.readFileSync(path.join(root,'.github/workflows/extensions-quality.yml'),'utf8'),start=source.indexOf(`\n  ${id}:`),remainder=source.slice(start+1),next=remainder.slice(1).search(/\n  [a-z][a-z0-9-]*:/),job=next<0?remainder:remainder.slice(0,next+1);
+ const tests=job.indexOf('- name: Unit tests'),preflight=job.indexOf('- name: Build companion provider bridges');
+ assert.ok(preflight>job.indexOf('- name: Verify checked-out commit')&&tests>preflight,'clean workflow tests require both compiled companion bridges');
+ const step=job.slice(preflight,job.indexOf('\n      - name:',preflight+1));
+ assert.match(step,/working-directory: \$\{\{ github.workspace \}\}/);assert.match(step,/shell: bash/);assert.doesNotMatch(step,/continue-on-error|\|\|\s*true/);
+ if(id==='windows-smoke')assert.match(step,/if: matrix.extension == 'workflow-register'/);else assert.doesNotMatch(step,/\n\s+if:/);
+ for(const companion of ['bob-bazaar-review','bob-code-consistency-review']){const install=step.indexOf('npm ci --prefix extensions/'+companion),compile=step.indexOf('npm run compile --prefix extensions/'+companion);assert.ok(install>0&&compile>install,'missing built companion: '+companion);}
+});
