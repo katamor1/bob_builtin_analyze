@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {gateRExpectedMainFiles} from '../gateRMainAdmissionPolicy.mjs';
+import {gateRUpstreamMainFiles,gateRExpectedMainFiles} from '../gateRMainAdmissionPolicy.mjs';
 import {applyRegistryBridgeSourceAdmission} from '../registryBridgeAdmissionPolicy.mjs';
 const root=new URL('../../../',import.meta.url),read=p=>readFileSync(new URL(p,root)),json=p=>JSON.parse(read(p)),hash=b=>createHash('sha256').update(b).digest('hex');
-const owner=()=>applyRegistryBridgeSourceAdmission(read('tools/main-consolidation/registry-bridge-source-admission.json'),gateRExpectedMainFiles());
+const owner=()=>gateRUpstreamMainFiles();
 async function api(){const p=await import('../registryDiscoveryAdmissionPolicy.mjs').catch(()=>({}));assert.equal(typeof p.applyRegistryDiscoverySourceAdmission,'function','literal Discovery admission is missing');return p;}
 const admission=()=>json('tools/main-consolidation/registry-discovery-source-admission.json');
 test('discovery_admission_is_additive_literal_and_remainder_complete',async()=>{

@@ -7,22 +7,11 @@ const { test } = require("node:test")
 const { extensionRoot } = require("./helpers/sourceReader")
 
 function mcpFrame(message) {
-  const body = Buffer.from(JSON.stringify(message), "utf8")
-  return Buffer.concat([
-    Buffer.from(`Content-Length: ${body.byteLength}\r\n\r\n`, "utf8"),
-    body
-  ])
+  return Buffer.from(JSON.stringify(message) + "\n", "utf8")
 }
 
 function readMcpMessage(output) {
-  const separator = output.indexOf("\r\n\r\n")
-  assert.notEqual(separator, -1, `MCP response header not found in: ${output.toString("utf8")}`)
-  const header = output.slice(0, separator).toString("utf8")
-  const match = /^Content-Length:\s*(\d+)$/im.exec(header)
-  assert.ok(match, `Content-Length not found in: ${header}`)
-  const bodyStart = separator + 4
-  const bodyEnd = bodyStart + Number(match[1])
-  return JSON.parse(output.slice(bodyStart, bodyEnd).toString("utf8"))
+  return JSON.parse(output.toString("utf8").trim().split("\n")[0])
 }
 
 function runServer(request, env = {}) {

@@ -1,0 +1,24 @@
+{
+  "time": "2026-10-20T14:24:56.219Z",
+  "configPath": "C:\\Users\\stell\\source\\repos\\bazaar_test\\trunk\\.bob\\mcp.json",
+  "extensionVersion": "0.3.1",
+  "electron": "42.2.0",
+  "node": "24.15.0",
+  "command": "C:\\Users\\stell\\AppData\\Local\\Programs\\IBM Bob\\IBM Bob.exe",
+  "serverPath": "C:\\Users\\stell\\.bobide\\extensions\\local.bob-bazaar-review-0.3.1\\out\\mcp\\server.js",
+  "envNames": [
+    "ELECTRON_RUN_AS_NODE",
+    "BZR_PATH",
+    "BZR_TEXT_ENCODING",
+    "BOB_BAZAAR_ALLOWED_ROOTS"
+  ],
+  "allowedRoots": "C:/Users/stell/source/repos/bazaar_test/trunk",
+  "unrelatedSettingsPreserved": true,
+  "regenerationIdempotent": true,
+  "configSha256": "3bcea4f5464454858eb8a9de3e7bcd63197b961831ae9f7f540294c2deee05a1",
+  "issues": [],
+  "backups": [
+    "mcp.json.bak-2026-10-20T14-24-56-168Z",
+    "mcp.json.bak-2026-10-20T14-24-56-196Z"
+  ]
+}

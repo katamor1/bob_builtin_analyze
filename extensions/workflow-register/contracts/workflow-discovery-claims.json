@@ -2,7 +2,7 @@
   "schemaVersion": "workflow-discovery-claims/v1",
   "owner": {
     "id": "local.workflow-register",
-    "version": "0.1.0"
+    "version": "0.1.2"
   },
   "scopes": [
     {

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { applyRegistryBridgeSourceAdmission } from './registryBridgeAdmissionPolicy.mjs';
 import {applyRegistryDiscoverySourceAdmission,validateRegistryDiscoveryCoverage} from './registryDiscoveryAdmissionPolicy.mjs';
+import {applyRegistryDiscoveryUpstreamAdmission} from './registryDiscoveryUpstreamAdmissionPolicy.mjs';
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
@@ -289,7 +290,8 @@ export function readGateRMainAdmission() {
 }
 export function gateRExpectedMainFiles(){const value=readGateRMainAdmission(),files=new Map(value.baseFiles.map(f=>[f.path,f]));for(const row of value.deltas)files.set(row.path,{path:row.path,mode:row.mode,blobSha:row.afterBlobSha});return [...files.values()].sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);}
 export function gateROwnerMainFiles(){return applyRegistryBridgeSourceAdmission(readGateRContainedFile(root,'tools/main-consolidation/registry-bridge-source-admission.json'),gateRExpectedMainFiles());}
-export function gateRCurrentMainFiles(){validateRegistryDiscoveryCoverage(readGateRContainedFile(root,'docs/release-evidence/reg-bridge-discovery-source-coverage-2026-10-20.json'));return applyRegistryDiscoverySourceAdmission(readGateRContainedFile(root,'tools/main-consolidation/registry-discovery-source-admission.json'),gateROwnerMainFiles());}
+export function gateRUpstreamMainFiles(){return applyRegistryDiscoveryUpstreamAdmission(readGateRContainedFile(root,'tools/main-consolidation/registry-discovery-upstream-main-admission.json'),gateROwnerMainFiles());}
+export function gateRCurrentMainFiles(){validateRegistryDiscoveryCoverage(readGateRContainedFile(root,'docs/release-evidence/reg-bridge-discovery-source-coverage-2026-10-20.json'));return applyRegistryDiscoverySourceAdmission(readGateRContainedFile(root,'tools/main-consolidation/registry-discovery-source-admission.json'),gateRUpstreamMainFiles());}
 export function validateGateRMainRepositoryFiles(input) {
  gateRCanonicalJson(input);if(!Array.isArray(input))fail('source files array');gateRPathRows(input,'source files');
  if(!gateRCanonicalJson(input).equals(gateRCanonicalJson(gateRCurrentMainFiles())))fail('unselected source/shipping change or blob drift');return true;

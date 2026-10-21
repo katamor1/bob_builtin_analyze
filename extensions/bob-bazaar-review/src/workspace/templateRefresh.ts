@@ -16,17 +16,21 @@ export interface TemplateRefreshPreview {
 
 export interface TemplateRefreshOptions {
   confirmOverwrite?: (preview: TemplateRefreshPreview) => Promise<boolean> | boolean
+  prepareExistingContent?: (current: string, template: string) => string
 }
 
 const MAX_DIFF_PREVIEW_CHARS = 12000
 const MAX_DIFF_PREVIEW_CHANGED_LINES = 160
 
 export async function refreshTemplateFile(source: string, target: string, options: TemplateRefreshOptions = {}): Promise<TemplateRefreshResult> {
-  const sourceContent = await fs.readFile(source)
+  let sourceContent = await fs.readFile(source)
   await fs.mkdir(path.dirname(target), { recursive: true })
 
   if (await exists(target)) {
     const targetContent = await fs.readFile(target)
+    if (options.prepareExistingContent) {
+      sourceContent = Buffer.from(options.prepareExistingContent(targetContent.toString("utf8"), sourceContent.toString("utf8")), "utf8")
+    }
     if (sourceContent.equals(targetContent)) {
       return { refreshed: false }
     }

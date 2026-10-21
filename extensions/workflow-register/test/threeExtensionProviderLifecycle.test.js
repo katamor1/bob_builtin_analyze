@@ -4,9 +4,10 @@ const consistency = require('../../bob-code-consistency-review/test/providerRegi
 const { ActionRegistry } = require('../out/core/actionRegistry')
 const { ProviderRegistryHost } = require('../out/api/providerRegistryApi')
 const { registerWorkflowRegisterBuiltInContributions } = require('../out/builtInContributions')
+const ownPackage = require('../package.json')
 
 test('three extensions converge across host restart and late completion', async t => {
-  const self = { id: 'local.workflow-register', version: '0.1.0', extensionRoot: path.resolve(__dirname, '..') }
+  const self = { id: 'local.workflow-register', version: ownPackage.version, extensionRoot: path.resolve(__dirname, '..') }
   const installed = new Map([self, ...[bazaar, consistency].map(x => ({ id: x.id, version: x.installed.packageJSON.version, extensionRoot: x.installed.extensionPath }))].map(x => [x.id, x]))
   const effects = { action: 0, bob: 0, model: 0 }, listeners = new Set()
   const makeHost = () => {

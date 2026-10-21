@@ -56,10 +56,16 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
   }
 
   if (loaded.workflows.length === 0) {
+    const validationFailed = loaded.diagnostics.some(line => /^- (?:error|fail):/.test(line))
+    if (validationFailed) {
+      lines.unshift("- Bob registration API was not called: no workflows passed strict validation.")
+    }
     await deactivateRegisteredSource(input.previousSource, lines)
     await vscode.commands.executeCommand("setContext", "bob-code.hasWorkflows", false)
     return {
-      result: { summary: "No .bob workflows were found.", lines },
+      result: { summary: validationFailed
+        ? "ワークフローは検証で除外されました。理由とファイル位置を診断で確認してください。"
+        : "No .bob workflows were found.", lines },
       coreWorkflows,
       registeredSource: undefined,
       registeredIds: new Set(),

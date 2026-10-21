@@ -1,0 +1,147 @@
+{
+  "recordedAt": "2026-10-20T19:02:59.751Z",
+  "app": {
+    "name": "IBM Bob",
+    "bobVersion": "2.2.3",
+    "normalStartup": true,
+    "developmentRunnerLoaded": false
+  },
+  "bundle": {
+    "path": "C:\\Users\\stell\\AppData\\Local\\Programs\\IBM Bob\\resources\\app\\extensions\\bob-code\\dist\\extension.js",
+    "sha256": "f111fce450ee57b16ca9d7c9fa3cebfcf69fea90ca08d28c68da580ee04bf64b"
+  },
+  "sourceChecks": {
+    "hostNameUsesVscodeAppName": true,
+    "ibmBobEnablesThirdPartyDisable": true,
+    "publicRegisterSourceDoesNotExposeFirstPartyFlag": true,
+    "disabledSourcesFilterWorkflows": true
+  },
+  "sourcePolicy": {
+    "status": "blocked-by-host",
+    "sourceId": "workflow-register",
+    "logPath": "C:\\Users\\stell\\AppData\\Roaming\\IBM Bob\\logs\\20261021T035846\\window1\\exthost\\IBM.bob-code\\IBM Bob.log",
+    "events": [
+      {
+        "timestamp": "2026-10-21 03:59:27.963",
+        "line": 25,
+        "sourceId": "workflow-register",
+        "event": "third-party source disabled"
+      }
+    ]
+  },
+  "registration": {
+    "succeeded": true,
+    "events": [
+      {
+        "timestamp": "2026-10-21 03:59:27.924",
+        "line": 23,
+        "id": "workflow-register.bazaar-project-rule-review"
+      },
+      {
+        "timestamp": "2026-10-21 03:59:27.925",
+        "line": 24,
+        "id": "workflow-register.code-consistency-review"
+      },
+      {
+        "timestamp": "2026-10-21 03:59:29.464",
+        "line": 28,
+        "id": "workflow-register.bazaar-project-rule-review"
+      },
+      {
+        "timestamp": "2026-10-21 03:59:29.464",
+        "line": 29,
+        "id": "workflow-register.code-consistency-review"
+      },
+      {
+        "timestamp": "2026-10-21 03:59:29.964",
+        "line": 36,
+        "id": "workflow-register.bazaar-project-rule-review"
+      },
+      {
+        "timestamp": "2026-10-21 03:59:29.965",
+        "line": 37,
+        "id": "workflow-register.code-consistency-review"
+      },
+      {
+        "timestamp": "2026-10-21 03:59:41.707",
+        "line": 48,
+        "id": "workflow-register.bazaar-project-rule-review"
+      },
+      {
+        "timestamp": "2026-10-21 03:59:41.707",
+        "line": 49,
+        "id": "workflow-register.code-consistency-review"
+      },
+      {
+        "timestamp": "2026-10-21 04:00:11.699",
+        "line": 51,
+        "id": "workflow-register.bazaar-project-rule-review"
+      },
+      {
+        "timestamp": "2026-10-21 04:00:11.699",
+        "line": 52,
+        "id": "workflow-register.code-consistency-review"
+      },
+      {
+        "timestamp": "2026-10-21 04:01:11.867",
+        "line": 54,
+        "id": "workflow-register.bazaar-project-rule-review"
+      },
+      {
+        "timestamp": "2026-10-21 04:01:11.867",
+        "line": 55,
+        "id": "workflow-register.code-consistency-review"
+      }
+    ]
+  },
+  "mcp": {
+    "status": "connected",
+    "logPath": "C:\\Users\\stell\\AppData\\Roaming\\IBM Bob\\logs\\20261021T035846\\window1\\exthost\\IBM.bob-code\\IBM Bob MCP.log",
+    "events": [
+      {
+        "timestamp": "2026-10-21 03:59:27.222",
+        "line": 6,
+        "event": "Session connected"
+      }
+    ]
+  },
+  "ui": {
+    "method": "Native Windows accessibility tree and foreground screenshot inspection",
+    "publicPaletteCommandsObserved": [
+      "Bob: 操作ハブを開く",
+      "Bob Workflow: ワークフローを作成・編集",
+      "Bob Bazaar Review: レビューを開始",
+      "Bob Bazaar Review: 資料からプロジェクト規約を作成",
+      "Bob Code Consistency Review: 整合プレレビューを開始"
+    ],
+    "operationHub": {
+      "opened": true,
+      "workflowCount": 2,
+      "labels": [
+        "Bazaar プロジェクト規約レビュー",
+        "コード整合プレレビュー"
+      ],
+      "startControlsVisible": true
+    },
+    "bobNativeWorkflowButton": {
+      "stable": false,
+      "transientlyObservedImmediatelyAfterRegistration": true,
+      "absentAfterSettling": true
+    },
+    "workflowExecutionTested": false
+  },
+  "acceptance": {
+    "mcp": "passed",
+    "publicCommands": "passed",
+    "definitionValidationAndRegistration": "passed",
+    "nativeWorkflowAvailability": "blocked-by-host",
+    "fullyResolved": false
+  },
+  "unchangedControls": [
+    "Bob product bundle",
+    "host name",
+    "source identity and entitlement policy",
+    "workspace trust",
+    "MCP auto approval and write tools"
+  ]
+}

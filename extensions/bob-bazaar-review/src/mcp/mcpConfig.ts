@@ -34,6 +34,7 @@ export async function configureWorkspaceMcpServer(options: McpServerConfigOption
     command: process.execPath,
     args: [serverPath],
     env: {
+      ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
       BZR_PATH: options.bzrPath,
       BZR_TEXT_ENCODING: options.textEncoding ?? "auto",
       BOB_BAZAAR_ALLOWED_ROOTS: allowedRoots.join(path.delimiter)

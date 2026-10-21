@@ -4,6 +4,27 @@ const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
 
+test("Electron extension host generates a Node-mode launch rather than opening another editor", async () => {
+  const { configureWorkspaceMcpServer } = require("../out/mcp/mcpConfig")
+  const descriptor = Object.getOwnPropertyDescriptor(process.versions, "electron")
+  Object.defineProperty(process.versions, "electron", { value: "40.0.0", configurable: true })
+  try {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "bob mcp 日本語-"))
+    const result = await configureWorkspaceMcpServer({
+      workspaceFolder: { uri: { fsPath: root } },
+      extensionContext: { asAbsolutePath: relative => path.join(root, "extension with spaces", relative) },
+      serverName: "bazaar", bzrPath: "bzr"
+    })
+    const config = JSON.parse(await fs.readFile(result.configPath, "utf8"))
+    assert.equal(config.mcpServers.bazaar.env.ELECTRON_RUN_AS_NODE, "1")
+    assert.equal(config.mcpServers.bazaar.command, process.execPath)
+    assert.deepEqual(config.mcpServers.bazaar.args, [path.join(root, "extension with spaces", "out", "mcp", "server.js")])
+  } finally {
+    if (descriptor) Object.defineProperty(process.versions, "electron", descriptor)
+    else delete process.versions.electron
+  }
+})
+
 test("configureWorkspaceMcpServer writes the configured Bazaar text encoding", async () => {
   const { configureWorkspaceMcpServer } = require("../out/mcp/mcpConfig")
   const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-bazaar-mcp-"))

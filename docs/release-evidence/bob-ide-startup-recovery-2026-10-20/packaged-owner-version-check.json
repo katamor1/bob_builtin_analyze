@@ -1,0 +1,20 @@
+[
+  {
+    "file": "extensions/workflow-register/workflow-register-0.1.2.vsix",
+    "version": "0.1.2",
+    "owner": {
+      "id": "local.workflow-register",
+      "version": "0.1.2"
+    },
+    "driftRejected": true
+  },
+  {
+    "file": "extensions/bob-bazaar-review/bob-bazaar-review-0.3.2.vsix",
+    "version": "0.3.2",
+    "owner": {
+      "id": "local.bob-bazaar-review",
+      "version": "0.3.2"
+    },
+    "driftRejected": true
+  }
+]

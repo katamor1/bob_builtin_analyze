@@ -1,8 +1,8 @@
 import {gateRInputData,gateRCanonicalJson,gateRDigest,gateRPathRows} from './gateRData.mjs';
 const fail=reason=>{throw new TypeError('Registry Discovery source admission: '+reason)};
-export const REGISTRY_DISCOVERY_SOURCE_ADMISSION_SHA256='203db658f3979fcae0863f391f8a5d93f25d330f3af8d1aa173d6230e41d77e5';
+export const REGISTRY_DISCOVERY_SOURCE_ADMISSION_SHA256='b71330b67c04c70bbfca5c1ee5df62b6b9ad4b2e8c25e745c3a4c375917a5bc5';
 export const REGISTRY_DISCOVERY_SOURCE_COVERAGE_SHA256='100c0c53e6764e08685c81a5f92c0d193e798b675de1c8da8c8b7ea44d3560d9';
-const BASE_FILES_DIGEST='49fe197e298117444e81a9ac16dd3585d0ad866d04632f907fbc88f62080d2bc';
+const BASE_FILES_DIGEST='62005465003f0b5e1f3bcc292722b2e0f677b28e2b2f1d648d80242b6a51e420';
 export const REGISTRY_DISCOVERY_TOOL_PATHS=Object.freeze([
   "tools/workflow-evidence/README.md",
   "tools/workflow-evidence/ci-evidence.mjs",
@@ -117,7 +117,7 @@ const exact=(v,keys)=>{if(!v||Array.isArray(v)||typeof v!=='object'||Object.keys
 export function validateRegistryDiscoveryCoverage(input){const c=gateRInputData(input,'Discovery source coverage');if(gateRDigest(gateRCanonicalJson(c))!==REGISTRY_DISCOVERY_SOURCE_COVERAGE_SHA256||c.items.length!==27||new Set(c.items.map(x=>x.sourceItemId)).size!==27||c.remainderClosure.total!==675||c.remainderClosure.items.length!==675||c.remainderClosure.unassigned!==0||c.formalProgressChanged!==false)fail('source coverage or remainder');return true;}
 export function applyRegistryDiscoverySourceAdmission(input,ownerExpectedFiles){
  const a=gateRInputData(input,'Discovery source admission');exact(a,['schemaVersion','baseMainSha','baseFilesDigest','deltas','toolFiles','sourceCoverageDigest']);
- if(a.schemaVersion!=='bob-builtin-analyze/registry-discovery-source-admission/v1'||a.baseMainSha!=='3d3d25c296dc798c7eb2fd786625775bca1152f0'||a.baseFilesDigest!==BASE_FILES_DIGEST||gateRDigest(gateRCanonicalJson(ownerExpectedFiles))!==BASE_FILES_DIGEST)fail('unchanged Owner baseline');
+ if(a.schemaVersion!=='bob-builtin-analyze/registry-discovery-source-admission/v1'||a.baseMainSha!=='90f926e0045405625f1f40d20a41346a94d1981a'||a.baseFilesDigest!==BASE_FILES_DIGEST||gateRDigest(gateRCanonicalJson(ownerExpectedFiles))!==BASE_FILES_DIGEST)fail('unchanged Owner baseline');
  if(!Array.isArray(a.deltas)||!Array.isArray(a.toolFiles))fail('source rows');gateRPathRows(a.deltas,'Discovery deltas');gateRPathRows(a.toolFiles,'Discovery tools');
  if(!gateRCanonicalJson(a.deltas.map(({path,sourceItemIds})=>({path,sourceItemIds}))).equals(gateRCanonicalJson(admitted))||!gateRCanonicalJson(a.toolFiles.map(x=>x.path)).equals(gateRCanonicalJson(REGISTRY_DISCOVERY_TOOL_PATHS)))fail('literal source paths');
  const result=new Map(ownerExpectedFiles.map(x=>[x.path,x]));

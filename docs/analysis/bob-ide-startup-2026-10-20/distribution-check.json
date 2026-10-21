@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-20",
+  "repositoryCommit": "3d3d25c296dc798c7eb2fd786625775bca1152f0",
+  "method": "SHA-256 comparison of every extension/out/**/*.js ZIP entry with installed file",
+  "extensions": [
+    {
+      "id": "local.workflow-register",
+      "version": "0.1.0",
+      "vsixSha256": "e22b43a9be86ddd535405dd95eaa6017579a9406969c2bb0f44d640deca5fe50",
+      "javascriptEntries": 300,
+      "installedMatches": 300,
+      "mismatches": 0
+    },
+    {
+      "id": "local.bob-bazaar-review",
+      "version": "0.3.0",
+      "vsixSha256": "23dbda34d445058b0214ac66d75c676fb8ea09b856be24349c82902e9f2eaeb6",
+      "javascriptEntries": 114,
+      "installedMatches": 114,
+      "mismatches": 0
+    },
+    {
+      "id": "local.bob-code-consistency-review",
+      "version": "0.1.0",
+      "vsixSha256": "5c4fd457b00b310fddd7916f5dd9bbee8230a929fb6ac539d31dde840d309b39",
+      "javascriptEntries": 100,
+      "installedMatches": 100,
+      "mismatches": 0
+    }
+  ]
+}

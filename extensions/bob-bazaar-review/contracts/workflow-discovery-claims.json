@@ -2,7 +2,7 @@
   "schemaVersion": "workflow-discovery-claims/v1",
   "owner": {
     "id": "local.bob-bazaar-review",
-    "version": "0.3.0"
+    "version": "0.3.2"
   },
   "scopes": [
     {

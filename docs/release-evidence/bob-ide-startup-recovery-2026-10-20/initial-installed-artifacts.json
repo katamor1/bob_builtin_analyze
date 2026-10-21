@@ -1,0 +1,32 @@
+[
+  {
+    "Extension": "workflow-register",
+    "Version": "0.1.1",
+    "VsixPath": "C:\\Users\\stell\\source\\repos\\bob_builtin_analyze\\extensions\\workflow-register\\workflow-register-0.1.1.vsix",
+    "VsixBytes": 1197546,
+    "VsixSha256": "73C2C42F66BE55779CB0BECFF3E66685206A3EEB800595A519BA4B100A7269C7",
+    "JsEntries": 300,
+    "InstalledEqual": 300,
+    "Mismatches": []
+  },
+  {
+    "Extension": "bob-bazaar-review",
+    "Version": "0.3.1",
+    "VsixPath": "C:\\Users\\stell\\source\\repos\\bob_builtin_analyze\\extensions\\bob-bazaar-review\\bob-bazaar-review-0.3.1.vsix",
+    "VsixBytes": 3757104,
+    "VsixSha256": "A5FE93EF8BA17A8F729BCFD20CF07AB2AA2D93454191E5EBCF95CB861D0212CA",
+    "JsEntries": 116,
+    "InstalledEqual": 116,
+    "Mismatches": []
+  },
+  {
+    "Extension": "bob-code-consistency-review",
+    "Version": "0.1.0",
+    "VsixPath": "C:\\Users\\stell\\source\\repos\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\bob-code-consistency-review-0.1.0.vsix",
+    "VsixBytes": 3704259,
+    "VsixSha256": "5C4FD457B00B310FDDD7916F5DD9BBEE8230A929FB6AC539D31DDE840D309B39",
+    "JsEntries": 100,
+    "InstalledEqual": 100,
+    "Mismatches": []
+  }
+]

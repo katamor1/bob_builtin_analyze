@@ -1,0 +1,109 @@
+TAP version 13
+# Subtest: Command Palette exposes only the two approved Bazaar entry points
+ok 1 - Command Palette exposes only the two approved Bazaar entry points
+  ---
+  duration_ms: 5.6892
+  type: 'test'
+  ...
+# Subtest: MCP server rejects cwd outside configured allowed roots
+not ok 2 - MCP server rejects cwd outside configured allowed roots
+  ---
+  duration_ms: 619.3868
+  type: 'test'
+  location: 'C:\\Users\\stell\\source\\repos\\bob_builtin_analyze\\extensions\\bob-bazaar-review\\test\\mcpAllowedRoots.test.js:28:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /cwd is outside allowed roots/. Input:
+
+    "Error: EPERM: operation not permitted, realpath 'C:\\Users\\stell\\source\\repos\\bob_builtin_analyze\\.superpowers\\tmp\\bob-startup-20261020\\bob-bazaar-mcp-outside-ller70'"
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: "Error: EPERM: operation not permitted, realpath 'C:\\Users\\stell\\source\\repos\\bob_builtin_analyze\\.superpowers\\tmp\\bob-startup-20261020\\bob-bazaar-mcp-outside-ller70'"
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\stell\source\repos\bob_builtin_analyze\extensions\bob-bazaar-review\test\mcpAllowedRoots.test.js:55:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: MCP server rejects cwd when allowed roots are not configured
+ok 3 - MCP server rejects cwd when allowed roots are not configured
+  ---
+  duration_ms: 407.976
+  type: 'test'
+  ...
+# Subtest: MCP server accepts cwd inside configured allowed roots
+not ok 4 - MCP server accepts cwd inside configured allowed roots
+  ---
+  duration_ms: 422.1754
+  type: 'test'
+  location: 'C:\\Users\\stell\\source\\repos\\bob_builtin_analyze\\extensions\\bob-bazaar-review\\test\\mcpAllowedRoots.test.js:87:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+
+    + true
+    - undefined
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  actual: true
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\stell\source\repos\bob_builtin_analyze\extensions\bob-bazaar-review\test\mcpAllowedRoots.test.js:114:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: configureWorkspaceMcpServer writes the configured Bazaar text encoding
+ok 5 - configureWorkspaceMcpServer writes the configured Bazaar text encoding
+  ---
+  duration_ms: 34.2439
+  type: 'test'
+  ...
+# Subtest: configureWorkspaceMcpServer allows a split Bazaar repository root
+ok 6 - configureWorkspaceMcpServer allows a split Bazaar repository root
+  ---
+  duration_ms: 14.4413
+  type: 'test'
+  ...
+# Subtest: configureWorkspaceMcpServer rejects invalid server names
+ok 7 - configureWorkspaceMcpServer rejects invalid server names
+  ---
+  duration_ms: 4.6621
+  type: 'test'
+  ...
+# Subtest: configureWorkspaceMcpServer backs up existing config and writes atomically
+ok 8 - configureWorkspaceMcpServer backs up existing config and writes atomically
+  ---
+  duration_ms: 37.6957
+  type: 'test'
+  ...
+# Subtest: MCP stdio reader rejects requests over the configured byte limit
+ok 9 - MCP stdio reader rejects requests over the configured byte limit
+  ---
+  duration_ms: 579.861
+  type: 'test'
+  ...
+# Subtest: MCP stdio reader returns a JSON-RPC parse error for invalid JSON bodies
+ok 10 - MCP stdio reader returns a JSON-RPC parse error for invalid JSON bodies
+  ---
+  duration_ms: 381.3285
+  type: 'test'
+  ...
+# Subtest: MCP tools/call validates params before dispatching to tools
+ok 11 - MCP tools/call validates params before dispatching to tools
+  ---
+  duration_ms: 381.0686
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 9
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1861.1964

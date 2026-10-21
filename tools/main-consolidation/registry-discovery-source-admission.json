@@ -1,10 +1,10 @@
 {
-  "baseFilesDigest": "49fe197e298117444e81a9ac16dd3585d0ad866d04632f907fbc88f62080d2bc",
-  "baseMainSha": "3d3d25c296dc798c7eb2fd786625775bca1152f0",
+  "baseFilesDigest": "62005465003f0b5e1f3bcc292722b2e0f677b28e2b2f1d648d80242b6a51e420",
+  "baseMainSha": "90f926e0045405625f1f40d20a41346a94d1981a",
   "deltas": [
     {
-      "afterBlobSha": "77696d20327b4fc0e109bd39ce87b6b57568f042",
-      "beforeBlobSha": "d77b923a82c58ea9712585861f7148223e6ebb10",
+      "afterBlobSha": "e66efc0330b48199cd03e9987a097152ab1eb354",
+      "beforeBlobSha": "641acd094845fc18b074193bf00ea1f2f9bf4fdf",
       "mode": "100644",
       "path": "extensions/bob-bazaar-review/contracts/workflow-contributions.json",
       "sourceItemIds": [
@@ -12,7 +12,7 @@
       ]
     },
     {
-      "afterBlobSha": "5a9e79b0c4076a8bee9e69dac16267d51bfe2a28",
+      "afterBlobSha": "c377eb78b651bc638215c249f36fd7838a1f5bc2",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "extensions/bob-bazaar-review/contracts/workflow-discovery-claims.json",
@@ -59,8 +59,8 @@
       ]
     },
     {
-      "afterBlobSha": "f8d6a4eb7d893b0cb9852373150d6c04acf77e6e",
-      "beforeBlobSha": "d625d20db939e336975c078516424e6110daae10",
+      "afterBlobSha": "8eafa0400911504ab3c9b332d7cd1c76c94648c0",
+      "beforeBlobSha": "79526335e382692bc9f00a37863001a4f011a8c8",
       "mode": "100644",
       "path": "extensions/workflow-register/contracts/workflow-contributions.json",
       "sourceItemIds": [
@@ -68,7 +68,7 @@
       ]
     },
     {
-      "afterBlobSha": "d5b99dde069b52e3a5ebde8d62850affa24958bc",
+      "afterBlobSha": "224078231d3ca88f0a9a38f9fecd181d9b06ab42",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "extensions/workflow-register/contracts/workflow-discovery-claims.json",
@@ -86,8 +86,8 @@
       ]
     },
     {
-      "afterBlobSha": "7395435663c6d32a26bd29dca81f803a839c975a",
-      "beforeBlobSha": "a1ff9ea3085544a5b27d6adce093ef6b0437e20c",
+      "afterBlobSha": "deeb4fd85008528281e1b7f4e6fd31d6f1c3ae60",
+      "beforeBlobSha": "b006995e263d1e1f2ccaae873d6bd61418a57b88",
       "mode": "100644",
       "path": "extensions/workflow-register/test/contributionManifest.test.js",
       "sourceItemIds": [

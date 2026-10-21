@@ -1,0 +1,49 @@
+{
+  "recordedAt": "2026-10-20T19:13:17.362Z",
+  "purpose": "User-requested current-state integration into local main",
+  "sourceBranch": "codex/bob-startup-recovery",
+  "targetBranch": "main",
+  "baseCommit": "3d3d25c296dc798c7eb2fd786625775bca1152f0",
+  "mode": "local-fast-forward",
+  "pushIncluded": false,
+  "compilation": {
+    "bazaar": "passed",
+    "workflowRegister": "passed"
+  },
+  "relatedTests": {
+    "bazaar": {
+      "tests": 48,
+      "pass": 48,
+      "fail": 0,
+      "skipped": 0
+    },
+    "workflowRegister": {
+      "tests": 109,
+      "pass": 109,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  "existingLimitations": [
+    "Bob 2.2.3 disables the custom workflow source after registration; native workflow button is not restored.",
+    "The full workflow suite has one historical Gate R source snapshot admission failure; seal remains unchanged."
+  ],
+  "scope": "Startup recovery code, investigation, plan and acceptance evidence only",
+  "selectedFilesBeforeThisRecord": 52,
+  "textLogNormalization": [
+    {
+      "file": "docs/analysis/bob-ide-startup-2026-10-20/bazaar-tests.log",
+      "change": "Remove spaces from blank lines only; raw output retained locally",
+      "rawSha256": "2a0be29b50dc5bcabe60a8346bcca09f3f54fce3631702aaa18a14916d69ddc0",
+      "committedSha256": "f061979777a9872fe88df65a3a7e7007c0c442dddbfba22ad6f0bdc5390b2564",
+      "rawLocalCopy": ".superpowers\\tmp\\bob-startup-20261020\\raw-analysis-logs\\bazaar-tests.log"
+    },
+    {
+      "file": "docs/analysis/bob-ide-startup-2026-10-20/workflow-tests.log",
+      "change": "Remove spaces from blank lines only; raw output retained locally",
+      "rawSha256": "2f4bbd6ed2c499e1cbe8d45c64897d72af606b094f9253e15eaef91f88aaa17f",
+      "committedSha256": "1c97c6e4084e4ec76be7fd1e8a7fbedab399b5c9e52e92106a126a26b2492f07",
+      "rawLocalCopy": ".superpowers\\tmp\\bob-startup-20261020\\raw-analysis-logs\\workflow-tests.log"
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "recordedAt": "2026-10-20T19:02:59.816Z",
+  "branch": "codex/bob-startup-recovery",
+  "baseCommit": "3d3d25c296dc798c7eb2fd786625775bca1152f0",
+  "tests": [
+    {
+      "component": "bob-bazaar-review",
+      "scope": "full suite after functional fixes, before final owner metadata correction",
+      "tests": 778,
+      "passed": 777,
+      "failed": 0,
+      "skipped": 1,
+      "log": ".superpowers/sdd/2026-10-20-bob-ide-startup-recovery/bazaar-final-suite.log"
+    },
+    {
+      "component": "workflow-register",
+      "scope": "full suite before final owner metadata correction",
+      "tests": 2265,
+      "passed": 2263,
+      "failed": 1,
+      "skipped": 1,
+      "failedTest": "Gate R hosted R1 and R2 suites pass with measured inactive product wiring",
+      "failureReason": "Historical shipping source snapshot admission rejects intentional source blob changes",
+      "sealChanged": false,
+      "log": ".superpowers/tmp/bob-startup-20261020/workflow-register-npm-test-host.log"
+    },
+    {
+      "component": "three extensions",
+      "scope": "owner version coherence and related provider lifecycle after final metadata correction",
+      "tests": 129,
+      "passed": 129,
+      "failed": 0,
+      "skipped": 0,
+      "breakdown": {
+        "workflowRegister": 88,
+        "bazaar": 21,
+        "consistency": 20
+      }
+    }
+  ],
+  "review": {
+    "critical": 0,
+    "important": 1,
+    "importantFixed": "Surviving old MCP server script is now rejected by readiness; RED/GREEN regression added",
+    "additionalFixed": "Junction workspace roots are normalized to actual paths; RED/GREEN regression added"
+  },
+  "packaging": {
+    "workflowRegister": {
+      "version": "0.1.2",
+      "policyPassed": true,
+      "bytes": 1197547,
+      "maximumBytes": 1200000
+    },
+    "bazaar": {
+      "version": "0.3.2",
+      "policyPassed": true
+    },
+    "packageOwnerDriftRejected": true
+  },
+  "runtime": {
+    "mcp": "passed",
+    "publicCommands": "passed",
+    "definitionValidationAndRegistration": "passed",
+    "nativeWorkflowAvailability": "blocked-by-host",
+    "fullyResolved": false
+  }
+}
