@@ -38,8 +38,10 @@ export async function runInRepository(root,modulePath,args=[]){
  catch(e){return{code:e.code??1,stdout:e.stdout??'',stderr:e.stderr??''};}
 }
 
+export async function temporaryDirectory(prefix){return fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()),prefix));}
+
 export async function makeEvidenceRepository({v2Packages=1}={}){
- const root=await fs.mkdtemp(path.join(os.tmpdir(),'workflow-evidence-'));
+ const root=await temporaryDirectory('workflow-evidence-');
  const write=async(relative,bytes)=>{const p=path.join(root,relative);await fs.mkdir(path.dirname(p),{recursive:true});await fs.writeFile(p,bytes);};
  const canonical=value=>Buffer.from(JSON.stringify(value)+'\n');
  const archives=[];

@@ -1,6 +1,6 @@
 import {gateRInputData,gateRCanonicalJson,gateRDigest,gateRPathRows} from './gateRData.mjs';
 const fail=reason=>{throw new TypeError('Registry Discovery source admission: '+reason)};
-export const REGISTRY_DISCOVERY_SOURCE_ADMISSION_SHA256='b71330b67c04c70bbfca5c1ee5df62b6b9ad4b2e8c25e745c3a4c375917a5bc5';
+export const REGISTRY_DISCOVERY_SOURCE_ADMISSION_SHA256='c3a311ce9fb9948532234a0460b8643a93c1149bb1a10f92a737e1b71d6fd816';
 export const REGISTRY_DISCOVERY_SOURCE_COVERAGE_SHA256='100c0c53e6764e08685c81a5f92c0d193e798b675de1c8da8c8b7ea44d3560d9';
 const BASE_FILES_DIGEST='62005465003f0b5e1f3bcc292722b2e0f677b28e2b2f1d648d80242b6a51e420';
 export const REGISTRY_DISCOVERY_TOOL_PATHS=Object.freeze([

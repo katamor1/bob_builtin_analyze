@@ -9,6 +9,13 @@ const exec=promisify(execFile),url=name=>new URL(`../lib/${name}.mjs`,import.met
 const git=async(root,args,input)=>{if(input===undefined)return(await exec('git',args,{cwd:root,windowsHide:true,maxBuffer:40*1024*1024})).stdout.trim();const {spawn}=await import('node:child_process');return new Promise((resolve,reject)=>{const child=spawn('git',args,{cwd:root,windowsHide:true}),out=[],err=[];child.stdout.on('data',b=>out.push(b));child.stderr.on('data',b=>err.push(b));child.on('error',reject);child.on('close',code=>code?reject(Error(Buffer.concat(err).toString())):resolve(Buffer.concat(out).toString().trim()));child.stdin.end(input);});};
 const importSubject=()=>import('../lib/evidenceSubject.mjs').catch(()=>({}));
 
+test('fixtures_resolve_an_aliased_temp_parent_without_weakening_input_alias_rejection',async()=>{
+ const os=await import('node:os'),base=await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()),'workflow-evidence-temp-alias-')),actual=path.join(base,'physical'),alias=path.join(base,'alias');
+ await fs.mkdir(actual);await fs.symlink(actual,alias,process.platform==='win32'?'junction':'dir');
+ const code=`import assert from 'node:assert/strict';import fs from 'node:fs/promises';import os from 'node:os';import path from 'node:path';os.tmpdir=()=>${JSON.stringify(alias)};const support=await import(${JSON.stringify(new URL('./testSupport.mjs',import.meta.url).href)});const fixture=await support.makeEvidenceRepository({v2Packages:0});assert.equal(fixture.root,await fs.realpath(fixture.root),'fixture must have a physical temp parent');const temporary=await support.temporaryDirectory('workflow-evidence-publication-');assert.equal(temporary,await fs.realpath(temporary));process.chdir(fixture.root);const request={...fixture};delete request.root;const {captureWorkflowEvidenceSubject}=await import(${JSON.stringify(url('evidenceSubject'))});await captureWorkflowEvidenceSubject(request);const first=request.vsixSubjects[0],aliased=path.join(${JSON.stringify(alias)},path.relative(${JSON.stringify(actual)},first.path));await assert.rejects(()=>captureWorkflowEvidenceSubject({...request,vsixSubjects:[{...first,path:aliased},...request.vsixSubjects.slice(1)]}),{code:'evidence.capture.changed'});`;
+ const r=await runInRepository(base,'--input-type=module',['--eval',code]);assert.equal(r.code,0,r.stderr);
+});
+
 test('capture_is_stable_after_return_and_rejects_inflight_replacement',async()=>{
  const module=await importSubject();assert.equal(typeof module.captureWorkflowEvidenceSubject,'function','opaque evidence capture is missing');
  const fixture=await makeEvidenceRepository();

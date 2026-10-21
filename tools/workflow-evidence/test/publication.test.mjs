@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
-import {runInRepository} from './testSupport.mjs';
+import {runInRepository,temporaryDirectory} from './testSupport.mjs';
 const moduleUrl=new URL('../lib/publishEvidence.mjs',import.meta.url).href,keys=['catalog.json','discovery.json','report.json','compiled-plan-manifest.json'];
 const files=()=>Object.fromEntries(keys.map((name,index)=>[name,Buffer.from(`{"fixture":${index}}\n`)]));
 async function api(){const m=await import('../lib/publishEvidence.mjs').catch(()=>({}));assert.equal(typeof m.publishEvidenceDirectory,'function','atomic evidence publisher is missing');return m;}
-const temp=()=>fs.mkdtemp(path.join(os.tmpdir(),'workflow-evidence-publication-'));
+const temp=()=>temporaryDirectory('workflow-evidence-publication-');
 
 test('publication_is_atomic_no_replace_under_collision_and_late_failure: complete and readonly check',async()=>{
  const {publishEvidenceDirectory}=await api(),parent=await temp(),outputDirectory=path.join(parent,'result'),payload=files();const receipt=await publishEvidenceDirectory({outputDirectory,files:payload,check:false});assert.equal(receipt.state,'published');assert.deepEqual((await fs.readdir(outputDirectory)).sort(),[...keys].sort());for(const key of keys)assert.deepEqual(await fs.readFile(path.join(outputDirectory,key)),payload[key]);const checked=await publishEvidenceDirectory({outputDirectory,files:payload,check:true});assert.equal(checked.state,'checked');await fs.appendFile(path.join(outputDirectory,'report.json'),'x');await assert.rejects(()=>publishEvidenceDirectory({outputDirectory,files:payload,check:true}));

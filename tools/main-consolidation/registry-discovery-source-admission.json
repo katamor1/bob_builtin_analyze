@@ -259,7 +259,7 @@
       "path": "tools/workflow-evidence/test/contributionCatalog.test.mjs"
     },
     {
-      "blobSha": "42e347acee74e71f7bb42c6d3cde76c12338a01f",
+      "blobSha": "18bbf025afd38f819e2cdfe2623e939f0e6d43cd",
       "mode": "100644",
       "path": "tools/workflow-evidence/test/evidenceSubject.test.mjs"
     },
@@ -274,12 +274,12 @@
       "path": "tools/workflow-evidence/test/primitives.test.mjs"
     },
     {
-      "blobSha": "3f51e8db2829b809b5cfc33f1f9a144b0fa906b5",
+      "blobSha": "ad0a1cec7ca5f35854285517d9c8adfb82adde3c",
       "mode": "100644",
       "path": "tools/workflow-evidence/test/publication.test.mjs"
     },
     {
-      "blobSha": "50ccfc3e266d2564d9d6186c66f1471146496874",
+      "blobSha": "64cf3450c00501b034ab0c206ba0cf62d2a902b9",
       "mode": "100644",
       "path": "tools/workflow-evidence/test/testSupport.mjs"
     },
