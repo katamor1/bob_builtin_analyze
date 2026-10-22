@@ -17,7 +17,8 @@ const COMPLETION_REGISTRY = Object.freeze([
   Object.freeze({sha256:'983a10ba98a58811b86550866bca5e6b7b0f6d32966a12c84195e77d3c584d22',evidenceSha256:'189be15fbbdf93ecc4fcaa96cfc8969b8c8affe1590d2b0969a1efbd95a0c041',reference:Object.freeze({boundaryId:'GATE-R-ARCHIVE-INVENTORY',sha256:'983a10ba98a58811b86550866bca5e6b7b0f6d32966a12c84195e77d3c584d22',state:'VERIFIED',acceptedMainSha:'e11b217651b790308d823b689b000c7f7c048a8d'})}),
   Object.freeze({sha256:'e1583bebaea4bcc2909bfd0db320cc6c633d136176d767c0958802db22eaf5fd',evidenceSha256:'22d29779b8cfa73466206495014e89dbd4e4657453bfda96d1b6e8cb4c630583',reference:Object.freeze({boundaryId:'WF2-R1-PROVENANCE',sha256:'e1583bebaea4bcc2909bfd0db320cc6c633d136176d767c0958802db22eaf5fd',state:'VERIFIED',acceptedMainSha:'bd3347814284daadebefaa0ab6ab2187690ff348'})}),
   Object.freeze({sha256:'6782c1e797fcf7d76090e39a1afd735f3449efe59a9d521c375d4c360e0de04c',evidenceSha256:'0a5920718eb49bf26fa09e5180320006ba1c97abbb808af07f940b4abf0ea129',reference:Object.freeze({boundaryId:'WF2-R2-INVOKE',sha256:'6782c1e797fcf7d76090e39a1afd735f3449efe59a9d521c375d4c360e0de04c',state:'VERIFIED',acceptedMainSha:'a58d5c74be087917093921c26d57c603a3d1c0d5'})}),
-  Object.freeze({sha256:'af004f545e7f88dbb4d53df7c81460bf153a40bd56627758aaf8c5f02e59f57c',evidenceSha256:'f859e6fd4e8fbedf43c7d2e33a1f08a9bfd889997d96a1c140478e772d3ee8ea',reference:Object.freeze({boundaryId:'REG-BRIDGE-OWNER-VERSION-LIFECYCLE',sha256:'af004f545e7f88dbb4d53df7c81460bf153a40bd56627758aaf8c5f02e59f57c',state:'VERIFIED',acceptedMainSha:'4f76cbf7a303e8c7b3a0b73055bfa247cc0f1895'})})
+  Object.freeze({sha256:'af004f545e7f88dbb4d53df7c81460bf153a40bd56627758aaf8c5f02e59f57c',evidenceSha256:'f859e6fd4e8fbedf43c7d2e33a1f08a9bfd889997d96a1c140478e772d3ee8ea',reference:Object.freeze({boundaryId:'REG-BRIDGE-OWNER-VERSION-LIFECYCLE',sha256:'af004f545e7f88dbb4d53df7c81460bf153a40bd56627758aaf8c5f02e59f57c',state:'VERIFIED',acceptedMainSha:'4f76cbf7a303e8c7b3a0b73055bfa247cc0f1895'})}),
+  Object.freeze({sha256:'84af4a7937314e940277ef5965367818ab1cccdbe46b1f18d8edd41fd8b01e0e',evidenceSha256:'16adb142459f056553a7f8cd2f7cf5e9d1d11323a9a880fdc5055268f45bc24f',reference:Object.freeze({boundaryId:'REG-BRIDGE-DISCOVERY-EVIDENCE',sha256:'84af4a7937314e940277ef5965367818ab1cccdbe46b1f18d8edd41fd8b01e0e',state:'VERIFIED',acceptedMainSha:'8410356cfe623b9c1e54528c7e52344669b6d5de'})})
 ])
 const GATE_R_COMPLETION_SCOPES = Object.freeze(['GATE-R-ARCHIVE-INVENTORY','GATE-R-ACTIVE-MANIFEST','GATE-R-VALIDATOR','GATE-R-RUNNER'])
 const hashes = record => Object.fromEntries(record.externalEvidence.map(row=>[row.id,{bytes:row.bytes,sha256:row.sha256}]))
@@ -53,6 +54,82 @@ function validateOwnerLifecycleCompletion(record) {
  if(Object.values(record.activeRuntime.productWiring).some(value=>value!==0)||record.activeRuntime.gateRResult.runtimeSuitesExecuted!==15||record.activeRuntime.gateRResult.runtimeActivation!==false||record.runtimeActivation!==false||record.automaticCleanup!==false||record.finalProgramUat!=='not_run')throw new TypeError('owner lifecycle inactive limits')
 }
 
+// One historical source observation, captured after real CI and physical byte
+// readback. These facts grant no runtime, filesystem or execution authority.
+const DISCOVERY_SOURCE_HEAD='6f2624523df4d59a941be39666ab651b4a153370'
+const DISCOVERY_ACCEPTED_MAIN='8410356cfe623b9c1e54528c7e52344669b6d5de'
+const DISCOVERY_ACCEPTED_TREE='6e6c1af52131a4b3eddd9491f5658e71adfb8903'
+const DISCOVERY_REQUIRED_REFERENCES=Object.freeze(['WAVE-0A-CONTROL-PLANE','WAVE-0B-SELECTION-LEDGER','WF2-P4-COMPILER','WF2-P5-PLANSTORE','WF2-P6-ENTRYPOINT','WF2-P7-MANIFEST','WORKFLOW-B-GATE-P','GATE-R-ARCHIVE-INVENTORY','WF2-R1-PROVENANCE','WF2-R2-INVOKE','REG-BRIDGE-OWNER-VERSION-LIFECYCLE','REG-BRIDGE-DISCOVERY-EVIDENCE'])
+const DISCOVERY_CI_JOBS=Object.freeze({
+ 'extensions-quality':['workflow-register','bob-bazaar-review','bob-code-consistency-review','Windows / workflow-register','Windows / bob-bazaar-review','Windows / bob-code-consistency-review','Real-machine environment contracts','Extension source metrics','Workflow evidence subject','Workflow evidence / ubuntu-latest','Workflow evidence / windows-latest','Workflow evidence byte parity'],
+ 'workflow-contracts':['Strict workflow validation'],
+ 'code-consistency-review-scaffold':['Validate scaffold','Validate VS Code extension'],
+ 'three-extension-ui-contracts':['UI and documentation contracts']
+})
+function validateDiscoveryCompletion(record) {
+ const fail=reason=>{throw new TypeError('Discovery completion: '+reason)}
+ exactKeys(record,['acceptedMainSha','acceptedTreeSha','activeRuntime','automaticCleanup','boundaryId','ci','discovery','externalEvidence','finalProgramUat','installedUat','limits','local','mergeParents','mutationAuthority','packages','preservation','pullRequestNumber','repository','review','runtimeActivation','schemaVersion','source','sourceHeadSha','state'],'Discovery completion')
+ if(record.schemaVersion!=='bob-builtin-analyze/reg-bridge-discovery-evidence-completion/v1'||record.state!=='VERIFIED'||record.sourceHeadSha!==DISCOVERY_SOURCE_HEAD||record.acceptedMainSha!==DISCOVERY_ACCEPTED_MAIN||record.acceptedTreeSha!==DISCOVERY_ACCEPTED_TREE||record.pullRequestNumber!==196)fail('source D1 identity')
+ same(record.mergeParents,['90f926e0045405625f1f40d20a41346a94d1981a',DISCOVERY_SOURCE_HEAD],'Discovery normal merge parents')
+ const source=record.source
+ if(source.selectedSourceItems!==27||source.sourceAdmissionDeltas!==11||source.literalRootToolFiles!==37||source.remainderItems!==675||source.unassigned!==0||source.metadataIsNotSourceSubject!==true)fail('selected source or complete remainder')
+ if(source.ownerAdmissionSha256!=='1665c66acd04a535b08116e639f5119b98e03609d9bb4d5f8efacc9bba37b5a4'||source.discoveryAdmissionSha256!=='c3a311ce9fb9948532234a0460b8643a93c1149bb1a10f92a737e1b71d6fd816'||source.sourceCoverageSha256!=='100c0c53e6764e08685c81a5f92c0d193e798b675de1c8da8c8b7ea44d3560d9'||source.upstreamMainSha!=='90f926e0045405625f1f40d20a41346a94d1981a'||source.upstreamDeltas!==27)fail('immutable source layers')
+ const external=record.externalEvidence
+ if(!Array.isArray(external)||external.length!==123||new Set(external.map(x=>x.id)).size!==external.length)fail('physical evidence collection')
+ const key=row=>[row.path,row.sha256,row.bytes].join('\0'),observed=new Set()
+ const bare=row=>{exactKeys(row,['path','bytes','sha256'],'Discovery byte binding');if(typeof row.path!=='string'||!row.path||!Number.isSafeInteger(row.bytes)||row.bytes<=0||row.bytes>67108864)fail('evidence path or byte count');hash256(row.sha256)}
+ for(const row of external){exactKeys(row,['id','path','bytes','sha256'],'Discovery external evidence');if(typeof row.id!=='string'||!row.id)fail('evidence identity');const b={path:row.path,bytes:row.bytes,sha256:row.sha256};bare(b);observed.add(key(b))}
+ const bound=row=>{bare(row);if(!observed.has(key(row)))fail('binding is not an actual captured byte observation')}
+ exactKeys(record.discovery,['sourceCoverage','remainderClosure','subject','catalog','discovery','compiledManifest','report','crossPlatform'],'Discovery evidence joins')
+ for(const row of Object.values(record.discovery))bound(row)
+ if(record.discovery.sourceCoverage.sha256!==source.sourceCoverageSha256)fail('coverage byte binding')
+ const ci=record.ci
+ exactKeys(ci,['mode','allRequiredGatesSucceeded','waiver','candidate','actualMain'],'Discovery actual CI')
+ if(ci.mode!=='actual_exact_head_success'||ci.allRequiredGatesSucceeded!==true||ci.waiver!==null)fail('real CI required; no inherited waiver')
+ for(const [scope,head,event,expectedSuccess]of [[ci.candidate,DISCOVERY_SOURCE_HEAD,'pull_request',16],[ci.actualMain,DISCOVERY_ACCEPTED_MAIN,'push',15]]){
+  if(scope.state!=='PASSED'||scope.mode!=='actual_exact_head_success'||scope.head!==head||scope.event!==event||scope.requiredJobs!==expectedSuccess||scope.workflows.length!==4)fail('CI source or required count')
+  same(scope.workflows.map(x=>x.id),Object.keys(DISCOVERY_CI_JOBS),'Discovery four CI workflows')
+  let successes=0,skips=0
+  for(const workflow of scope.workflows){
+   if(workflow.head!==head||workflow.event!==event||workflow.conclusion!=='success'||!Number.isSafeInteger(workflow.runId)||workflow.runId<=0||!Number.isSafeInteger(workflow.attempt)||workflow.attempt<1)fail('actual workflow run')
+   bound(workflow.raw);same(workflow.jobs.map(x=>x.name),DISCOVERY_CI_JOBS[workflow.id],'Discovery required job names')
+   for(const job of workflow.jobs){
+    if(!Number.isSafeInteger(job.jobId)||job.jobId<=0)fail('actual job identity')
+    if(event==='push'&&job.name==='Extension source metrics'){
+     if(job.conclusion!=='skipped'||job.runnerId||job.checkout!==null||job.log!==null||job.skipReason!=='unchanged_metrics_job_is_pull_request_only')fail('only the unchanged main metrics skip is allowed');skips++;continue
+    }
+    if(job.conclusion!=='success'||!Number.isSafeInteger(job.runnerId)||job.runnerId<=0)fail('required job did not execute successfully')
+    exactKeys(job.checkout,['event','expectedHeadSha','actualHeadSha'],'Discovery actual checkout marker')
+    if(job.checkout.event!==event||job.checkout.expectedHeadSha!==head||job.checkout.actualHeadSha!==head)fail('exact checkout head')
+    bound(job.log);successes++
+   }
+  }
+  if(successes!==expectedSuccess||skips!==(event==='push'?1:0))fail('required job or expected skip totals')
+ }
+ if(ci.actualMain.successfulJobs!==15||ci.actualMain.skippedJobs!==1||ci.actualMain.contractRows!==16)fail('main observed totals')
+ exactKeys(record.packages,['workflowRegister','bazaar','consistency'],'Discovery packages')
+ for(const [name,id,version,cap]of [['workflowRegister','local.workflow-register','0.1.2',1200000],['bazaar','local.bob-bazaar-review','0.3.2',12000000],['consistency','local.bob-code-consistency-review','0.1.0',11000000]]){
+  const pkg=record.packages[name];bound(pkg.vsix)
+  if(pkg.id!==id||pkg.version!==version||pkg.sourceHeadSha!==DISCOVERY_ACCEPTED_MAIN||pkg.sourceTreeSha!==DISCOVERY_ACCEPTED_TREE||pkg.capBytes!==cap||pkg.vsix.bytes>cap||pkg.headroomBytes!==cap-pkg.vsix.bytes)fail('actual main VSIX identity or capacity')
+ }
+ const compact=record.packages.workflowRegister.compaction;bound(compact.proof)
+ if(compact.configuredTargets!==113||compact.independentAstProofCount!==111||compact.allPresentTargetsCovered!==true)fail('actual compaction coverage')
+ same(compact.absentConfiguredTargets,['extension/out/webview/templateCustomizationStudioPanel.js','extension/out/commands/runControlView.js'],'configured but unshipped compaction paths')
+ const installed=record.installedUat
+ if(installed.state!=='PASSED'||installed.sourceHeadSha!==DISCOVERY_ACCEPTED_MAIN||installed.sourceTreeSha!==DISCOVERY_ACCEPTED_TREE||installed.nativeHostExit!==0||installed.nativeDeactivatePromiseAwaited!==true||installed.cleanupZero!==true||installed.operationHubOpened!==true||installed.noWorktreeRuntimeLoaded!==true||installed.instrumentedBoundaries!==7)fail('same-hash native installed proof')
+ same(installed.requiredCases.map(x=>x.id),['three_actual_activations','operation_hub','awaited_native_deactivation','registry_cleanup','five_inactive_effects'],'native installed cases')
+ if(installed.requiredCases.some(x=>x.status!=='pass')||installed.guiVisualOperator!=='not_run'||installed.liveBobModel!=='not_run')fail('installed proof limits')
+ for(const row of [installed.hostReport,installed.nativeResult,installed.probeSource,installed.byteBindings])bound(row)
+ const runtime=record.activeRuntime
+ if(runtime.evidenceSourceHeadSha!==DISCOVERY_SOURCE_HEAD||runtime.evidenceSourceTreeSha!==DISCOVERY_ACCEPTED_TREE||runtime.runtimeActivation!==false||runtime.gateRResult.runtimeActivation!==false||runtime.gateRResult.runtimeSuitesExecuted!==15)fail('inactive runtime source')
+ for(const name of ['providerDispatches','bobDispatches','v2ProductLeaseAcquisitions','v2ProductRunDirectoryCreations','v2ProductArtifactStages'])if(runtime.gateRResult[name]!==0||runtime.productWiring[name]!==0)fail('product effects must remain zero')
+ const review=record.review
+ if(review.oneFreshSourceReview!==true||review.finalSourceHeadSha!==DISCOVERY_SOURCE_HEAD||review.critical!==0||review.important!==1||review.importantFixedByObservedTdd!==1||review.minor!==0||review.secondReview!==false||review.additionalCiFixesVerifiedByTdd!==2)fail('source review closure')
+ const preservation=record.preservation;bound(preservation.manifest)
+ if(preservation.files!==122||preservation.allHashesVerified!==true||preservation.primaryMainRef!==DISCOVERY_ACCEPTED_MAIN||preservation.primaryCheckoutMoved!==false||preservation.protectedContentsRead!==false||preservation.untrackedPreserved!==15)fail('retained evidence and concurrent user work')
+ if(record.local.allQualityGatesPassed!==true||record.local.fullRoot.passed!==262||record.local.affectedRoot.passed!==169||record.runtimeActivation!==false||record.automaticCleanup!==false||record.mutationAuthority!==false||record.finalProgramUat!=='not_run')fail('local gates or inactive limits')
+}
+
 export function validateCompletionObservation(record,{programIndex,evidenceDigests}) {
   validateProgramIndex(programIndex)
   // This is a read-only recovery import, pinned after actual CI/log/archive/ref
@@ -73,6 +150,7 @@ export function validateCompletionObservation(record,{programIndex,evidenceDiges
     }
   }
   if(record.boundaryId==='REG-BRIDGE-OWNER-VERSION-LIFECYCLE')validateOwnerLifecycleCompletion(record)
+  if(record.boundaryId==='REG-BRIDGE-DISCOVERY-EVIDENCE')validateDiscoveryCompletion(record)
   const registration=COMPLETION_REGISTRY.find(entry=>entry.sha256===recordDigest)
   if(!registration) throw new TypeError('unregistered completion observation')
   if(digest(evidenceDigests)!==registration.evidenceSha256) throw new TypeError('actual evidence digest registry mismatch')
@@ -93,6 +171,10 @@ function projectReferences(programIndex,decisions,completionReferences) {
     const descriptor=programIndex.programAtomicSlices.find(row=>row.sliceId==='GATE-R-ARCHIVE-INVENTORY')
     same(descriptor.ownedScope,GATE_R_COMPLETION_SCOPES,'closed Gate R composite catalog scopes')
     for(const id of GATE_R_COMPLETION_SCOPES) verifiedCapabilityIds.add(id)
+  }
+  if(verifiedIds.has('REG-BRIDGE-DISCOVERY-EVIDENCE')) {
+    for(const id of DISCOVERY_REQUIRED_REFERENCES)if(!verifiedIds.has(id))throw new TypeError('safe prefix requires every accepted gate and closed Discovery remainder')
+    verifiedIds.add('WORKFLOW-C-SAFE-PREFIX');verifiedCapabilityIds.add('WORKFLOW-C-SAFE-PREFIX')
   }
   return {schemaVersion:'bob-builtin-analyze/feature-integration-status/v1',programIndexSha256:digest(programIndex),selectionLedgerSha256:LEDGER_SHA256,completionReferences:structuredClone(completionReferences),acceptedMainSha:completionReferences.at(-1)?.acceptedMainSha??null,boundaries:programIndex.planBoundaries.map(boundary=>({id:boundary.id,state:verifiedIds.has(boundary.id)?'VERIFIED':'planned'})),slices:programIndex.programAtomicSlices.map(slice=>({sliceId:slice.sliceId,ordinal:slice.ordinal,boundaryId:slice.boundaryId,state:verifiedIds.has(slice.sliceId)?'VERIFIED':'planned',observedActivationStatus:'inactive',immediatePredecessor:structuredClone(slice.immediatePredecessor)})),capabilities:decisions.map(cap=>({...cap,executionState:verifiedCapabilityIds.has(cap.id)?'VERIFIED':cap.disposition==='selected'||cap.disposition==='conditional'?'planned':'not_applicable',observedActivationStatus:'inactive'})),gateP:structuredClone(programIndex.downstreamProtocolPolicy.gateP),activeSliceIds:[],nextSliceId:wave0aVerified?programIndex.programAtomicSlices.find(slice=>!verifiedIds.has(slice.sliceId))?.sliceId??null:null,automaticCleanup:false,mutationAuthority:false,limits:'Historical observation only. Local implementation is not VERIFIED. Descriptor derivation is not human approval or execution permission.'}
 }
