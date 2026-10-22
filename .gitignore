@@ -29,3 +29,6 @@
 
 # WF2-P6 owned Windows verification temporary root
 /.t/
+
+/packages/processing-budget-runtime/node_modules
+/packages/processing-budget-runtime/out

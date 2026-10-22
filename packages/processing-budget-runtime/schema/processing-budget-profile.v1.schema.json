@@ -1,0 +1,102 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/processing-budget-profile.v1.schema.json",
+  "title": "Processing budget profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "limits"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "processing-budget-profile/v1"
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "single_document_bytes",
+        "total_document_bytes",
+        "document_count",
+        "sheets_per_workbook",
+        "total_sheets",
+        "rows_per_sheet",
+        "total_rows",
+        "changed_files",
+        "raw_diff_bytes",
+        "document_excerpt_bytes",
+        "bob_input_bytes",
+        "managed_artifact_bytes",
+        "total_operation_input_bytes"
+      ],
+      "properties": {
+        "single_document_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 52428800
+        },
+        "total_document_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 268435456
+        },
+        "document_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1024
+        },
+        "sheets_per_workbook": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "total_sheets": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "rows_per_sheet": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5000
+        },
+        "total_rows": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 250000
+        },
+        "changed_files": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20000
+        },
+        "raw_diff_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10485760
+        },
+        "document_excerpt_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8388608
+        },
+        "bob_input_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8388608
+        },
+        "managed_artifact_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 67108864
+        },
+        "total_operation_input_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 268435456
+        }
+      }
+    }
+  }
+}
