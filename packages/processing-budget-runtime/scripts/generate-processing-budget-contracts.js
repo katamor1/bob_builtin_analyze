@@ -56,8 +56,8 @@ function readDefinition() {
     "categories"
   ], "definition")
   if (record.schema_version !== "processing-budget-definition/v1") fail("definition schema_version is invalid")
-  const profileSchemaVersion = nonEmptyString(record.profile_schema_version, "profile_schema_version", /^processing-budget-profile\/v[1-9][0-9]*$/u)
-  const ledgerReportSchemaVersion = nonEmptyString(record.ledger_report_schema_version, "ledger_report_schema_version", /^processing-budget-ledger-report\/v[1-9][0-9]*$/u)
+  const profileSchemaVersion = nonEmptyString(record.profile_schema_version, "profile_schema_version", /^processing-budget-profile\/v1$/u)
+  const ledgerReportSchemaVersion = nonEmptyString(record.ledger_report_schema_version, "ledger_report_schema_version", /^processing-budget-ledger-report\/v1$/u)
   const mebibyteBytes = safeInteger(record.mebibyte_bytes, "mebibyte_bytes")
   if (mebibyteBytes !== 1_048_576) fail("mebibyte_bytes must be exactly 1,048,576")
   if (!Array.isArray(record.categories) || record.categories.length !== 13) fail("categories must contain exactly 13 entries")

@@ -1,0 +1,242 @@
+{
+  "baseMainSha": "aa25f00f98c41c5aebdb30c68cdc967a1d205ab5",
+  "baseTreeSha": "fc869e3735b5ddcad3dcf7e6892e290888656716",
+  "controlRows": [
+    {
+      "blobSha": "fafb2d8d7fed959065559e3b05bce758e292426f",
+      "mode": "100644",
+      "path": ".gitattributes"
+    },
+    {
+      "blobSha": "b922e6d08e6ec862bae02f63ac56dbfbe2f7c965",
+      "mode": "100644",
+      "path": "docs/release-evidence/proc-t13-ledger-source-coverage-2026-10-23.json"
+    },
+    {
+      "blobSha": "6b7da725baa4dcf1ef4ccdb4f0be9106e0e2d6ce",
+      "mode": "100644",
+      "path": "scripts/exact-head-ci-contract.test.js"
+    },
+    {
+      "blobSha": "908e7937a995d67380602c343bfa6893d0d7d372",
+      "mode": "100644",
+      "path": "tools/main-consolidation/exact-head-ci-contract.json"
+    },
+    {
+      "blobSha": "5c8c7b473b9f8219d949b9ebef5ac1fec08fe779",
+      "mode": "100644",
+      "path": "tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs"
+    }
+  ],
+  "schemaVersion": "bob-builtin-analyze/processing-budget-source-admission/v1",
+  "sourceCoverageDigest": "a85e14013887aa28bf07c3c9c86c92761d9376ccd89a4a904a45d147b9b6a0f8",
+  "sourceRows": [
+    {
+      "afterBlobSha": "634f8bd94657f944c94cb2b9992624df3cf8d063",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": ".github/workflows/processing-budget-runtime.yml",
+      "sourceItemIds": [
+        "source-9f42d0f519b0985a176778aa"
+      ]
+    },
+    {
+      "afterBlobSha": "8578de44866397499f92f598ece8122869b9c55d",
+      "beforeBlobSha": "559ab5d8e7ebce6384822e49d71d60b8ca7ee36f",
+      "mode": "100644",
+      "path": ".gitignore",
+      "sourceItemIds": [
+        "source-5df63668a86d46592ab24aa5"
+      ]
+    },
+    {
+      "afterBlobSha": "09af2a1b2c7186793805ab3f89b89972027d7d05",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/README.md",
+      "sourceItemIds": [
+        "source-a8286a3ff1ab7a81e19604a5"
+      ]
+    },
+    {
+      "afterBlobSha": "c214ebbe61e7574544549fb2905fa93032807462",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/contracts/processing-budget-definition.v1.json",
+      "sourceItemIds": [
+        "source-dbf0e78300057ea404011413"
+      ]
+    },
+    {
+      "afterBlobSha": "57007a558a51b2dfe26bfe065cbf37bd1d94ec42",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/package-lock.json",
+      "sourceItemIds": [
+        "source-e050742b7b51a7e281552c43"
+      ]
+    },
+    {
+      "afterBlobSha": "b3d67a460a1203f5e4a24d5242e595103c615176",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/package.json",
+      "sourceItemIds": [
+        "source-2dc2cff4c648616a169fa711"
+      ]
+    },
+    {
+      "afterBlobSha": "5b4fd485f969411791d2bf1aa14216bc9c184699",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/schema/processing-budget-profile.v1.schema.json",
+      "sourceItemIds": [
+        "source-df3ef033dd61514f10966848"
+      ]
+    },
+    {
+      "afterBlobSha": "ec6e707f9e8a34f77ad2b8d99f8cd68189018b66",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/scripts/generate-processing-budget-contracts.js",
+      "sourceItemIds": [
+        "source-116ffcb1708dfab88771d924"
+      ]
+    },
+    {
+      "afterBlobSha": "51cdd750e659e42842b1bf1c4967c0073913fb23",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/generatedProcessingBudgetDefinition.ts",
+      "sourceItemIds": [
+        "source-0ddab8f0a7385edb664ff6c5"
+      ]
+    },
+    {
+      "afterBlobSha": "190dddd4831b25b0a8c8151016c8f35fd2ea8e67",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/index.ts",
+      "sourceItemIds": [
+        "source-6ea58dc2902ca040cae5f75f"
+      ]
+    },
+    {
+      "afterBlobSha": "3a92cd23f89f930779e4cefdf3ca3fe622257df9",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/processingBudgetError.ts",
+      "sourceItemIds": [
+        "source-5320828c1887a20eaf46dd64"
+      ]
+    },
+    {
+      "afterBlobSha": "2433e7ded92150083f55973ceb40b0a07d26ca15",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/processingBudgetLedger.ts",
+      "sourceItemIds": [
+        "source-bc5ca26554439a83438dd5e7"
+      ]
+    },
+    {
+      "afterBlobSha": "0a21275333b65268193f20dacc432328cfcfb385",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/processingBudgetProfile.ts",
+      "sourceItemIds": [
+        "source-80994c711887d22f843b9eff"
+      ]
+    },
+    {
+      "afterBlobSha": "e78c6b11f3effdf72fa7e11e0a7fdf21fc0a00c0",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/fixtures/bob-bazaar-review-consumer.ts",
+      "sourceItemIds": [
+        "source-1af7f2371abe4195022a0223"
+      ]
+    },
+    {
+      "afterBlobSha": "fbf6a2f4398efc53138dda675e3874c098202a8a",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/fixtures/bob-code-consistency-review-consumer.ts",
+      "sourceItemIds": [
+        "source-c87b9592a9003fb1046dad54"
+      ]
+    },
+    {
+      "afterBlobSha": "080e9d7e42b0b67b298ed20ddc9e575f9219bc47",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/fixtures/tsconfig.json",
+      "sourceItemIds": [
+        "source-b6f88ff9b6c95adcacaded9e"
+      ]
+    },
+    {
+      "afterBlobSha": "fbf6a2f4398efc53138dda675e3874c098202a8a",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/fixtures/workflow-register-consumer.ts",
+      "sourceItemIds": [
+        "source-75bd0042a5f39793d323ed37"
+      ]
+    },
+    {
+      "afterBlobSha": "2b617b2245112dba48397d65547ecddfb908cbe9",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/helpers.js",
+      "sourceItemIds": [
+        "source-5a8f885cd31ff13f1f53864a"
+      ]
+    },
+    {
+      "afterBlobSha": "1f3da0c84baacee836da0d671aef37c34a18668d",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/packageContract.test.js",
+      "sourceItemIds": [
+        "source-60f1d8d32af58e3c1772b1d1"
+      ]
+    },
+    {
+      "afterBlobSha": "a2773c07ff8a218d21d3ae4f802e9e4e5131c9e2",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/processingBudgetContracts.test.js",
+      "sourceItemIds": [
+        "source-1bed1bc5c87559b5e30af777"
+      ]
+    },
+    {
+      "afterBlobSha": "7599f45b04cdbb1090daaa8878cd3159da40170b",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/processingBudgetDefinition.test.js",
+      "sourceItemIds": [
+        "source-2a80aed4ccf00e64fa21313e"
+      ]
+    },
+    {
+      "afterBlobSha": "2f263bf8c52826027b2c54581d13a9aed618a871",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/processingBudgetLedger.test.js",
+      "sourceItemIds": [
+        "source-db81d68332957cd43752ade9"
+      ]
+    },
+    {
+      "afterBlobSha": "03459330c00af5c445a858d932413f5b6bc8b36f",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/tsconfig.json",
+      "sourceItemIds": [
+        "source-3f97c2ee47589e0c7df351d0"
+      ]
+    }
+  ]
+}

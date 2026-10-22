@@ -45,6 +45,7 @@ test('generated_contracts_reject_drift_and_invalid_definition',()=>{
  const imported=cp.spawnSync(process.execPath,['-e',`require(${JSON.stringify(path.join(root,script))})`],{cwd:root,encoding:'utf8'});
  assert.equal(imported.status,0);assert.equal(imported.stdout,'');
  const invalid=[d=>{d.unknown=1},d=>{d.categories[0].default=-1},d=>{d.categories[0].absolute_maximum=Number.MAX_SAFE_INTEGER+1},d=>{d.categories[1].aggregate_into='single_document_bytes'},d=>{d.categories[1].aggregate_into='raw_diff_bytes';d.categories[8].aggregate_into='total_document_bytes';d.categories[1].default=1;d.categories[1].absolute_maximum=1},d=>{d.categories[0].unit='count'},d=>{d.categories[0].aggregate_into='absent'},d=>{d.categories[0].default=999999999},d=>{d.categories[0].extra=true},d=>{d.categories[1].id=d.categories[0].id}];
+ invalid.push(d=>{d.profile_schema_version='processing-budget-profile/v2'},d=>{d.ledger_report_schema_version='processing-budget-ledger-report/v2'},d=>{d.categories[0].scope='global'},d=>{d.categories[0].aggregate_into=null},d=>{for(const c of d.categories){c.default=1;c.absolute_maximum=1}d.categories[1].aggregate_into='raw_diff_bytes';d.categories[8].aggregate_into='total_document_bytes'});
  for(const mutate of invalid){const d=JSON.parse(raw);mutate(d);fs.writeFileSync(path.join(root,definition),JSON.stringify(d));assert.notEqual(run().status,0);}
  fs.writeFileSync(path.join(root,definition),Buffer.from([0xff]));assert.notEqual(run().status,0);
 });
