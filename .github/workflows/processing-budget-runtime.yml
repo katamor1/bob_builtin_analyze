@@ -1,0 +1,127 @@
+name: processing-budget-runtime
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('wave0a-{0}-{1}', inputs.expectedHeadSha, inputs.dispatchNonce) || github.event.pull_request.title || github.event.head_commit.message || github.workflow }}
+
+on:
+  pull_request:
+    paths:
+      - "packages/processing-budget-runtime/**"
+      - "tools/main-consolidation/processingBudgetAdmissionPolicy.mjs"
+      - "tools/main-consolidation/processing-budget-source-admission.json"
+      - "tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs"
+      - "docs/release-evidence/proc-t13-ledger-source-coverage-2026-10-23.json"
+      - "tools/main-consolidation/exact-head-ci-contract.json"
+      - "scripts/exact-head-ci-contract.test.js"
+      - ".gitattributes"
+      - ".github/workflows/processing-budget-runtime.yml"
+      - "scripts/verify-ci-head*.js"
+      - "extensions/bob-bazaar-review/src/ruleAuthoring/ruleAuthoringLimits.ts"
+  push:
+    branches: [main]
+    paths:
+      - "packages/processing-budget-runtime/**"
+      - "tools/main-consolidation/processingBudgetAdmissionPolicy.mjs"
+      - "tools/main-consolidation/processing-budget-source-admission.json"
+      - "tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs"
+      - "docs/release-evidence/proc-t13-ledger-source-coverage-2026-10-23.json"
+      - "tools/main-consolidation/exact-head-ci-contract.json"
+      - "scripts/exact-head-ci-contract.test.js"
+      - ".gitattributes"
+      - ".github/workflows/processing-budget-runtime.yml"
+      - "scripts/verify-ci-head*.js"
+      - "extensions/bob-bazaar-review/src/ruleAuthoring/ruleAuthoringLimits.ts"
+  workflow_dispatch:
+    inputs:
+      expectedHeadSha:
+        description: Full commit SHA to check out and verify
+        required: true
+        type: string
+      dispatchNonce:
+        description: Machine-generated 32-character lowercase hex correlation ID
+        required: true
+        type: string
+
+concurrency:
+  group: processing-budget-runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Processing budget / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify checked-out commit
+        working-directory: ${{ github.workspace }}
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}
+          DISPATCH_HEAD_SHA: ${{ inputs.expectedHeadSha }}
+          DISPATCH_NONCE: ${{ inputs.dispatchNonce }}
+        run: node scripts/verify-ci-head.js
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Prepare physical evidence root
+        run: |
+          node <<'NODE'
+          const fs=require('node:fs'),path=require('node:path');
+          const base=path.join(fs.realpathSync(process.env.RUNNER_TEMP),'bob-processing-budget-runtime');
+          fs.mkdirSync(base,{recursive:true});
+          const root=fs.mkdtempSync(path.join(base,'evidence-'));
+          fs.appendFileSync(process.env.GITHUB_ENV,'PROCESSING_BUDGET_ARTIFACT_ROOT='+fs.realpathSync(root)+'\n');
+          fs.appendFileSync(process.env.GITHUB_ENV,'npm_config_cache='+path.join(fs.realpathSync(root),'npm-cache')+'\n');
+          NODE
+
+      - name: Install standalone package
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix packages/processing-budget-runtime
+
+      - name: Test standalone package and installed consumers
+        run: npm test --prefix packages/processing-budget-runtime
+
+      - name: Build current Bazaar parity inputs
+        run: |
+          npm ci --prefix extensions/bob-bazaar-review
+          npm run compile --prefix extensions/bob-bazaar-review
+
+      - name: Verify literal admission and current product limits
+        run: node --test tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs scripts/exact-head-ci-contract.test.js
+
+      - name: Bind actual installed package evidence
+        id: evidence
+        env:
+          MATRIX_OS: ${{ matrix.os }}
+        run: |
+          node <<'NODE'
+          const fs=require('node:fs'),cp=require('node:child_process');
+          const h=require('./packages/processing-budget-runtime/test/helpers.js');
+          const head=cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+          const tree=cp.execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim();
+          if(head!==process.env.CI_VERIFIED_HEAD_SHA)throw Error('guard identity changed');
+          const proof=h.packAndInstall(h.packageRoot,h.freshArtifactRoot('ci-pack'));
+          const output=h.publishCiArtifacts({head,tree,os:process.env.MATRIX_OS,proof,outputRoot:h.freshArtifactRoot('ci-publication')});
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,'path='+output+'\n');
+          NODE
+
+      - name: Upload installed runtime evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: processing-budget-runtime-${{ matrix.os }}
+          path: ${{ steps.evidence.outputs.path }}
+          if-no-files-found: error

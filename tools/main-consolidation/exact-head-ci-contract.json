@@ -132,6 +132,24 @@
           "workflowDispatch": "success"
         }
       ]
+    },
+    {
+      "id": "processing-budget-runtime",
+      "path": ".github/workflows/processing-budget-runtime.yml",
+      "jobs": [
+        {
+          "name": "Processing budget / ubuntu-latest",
+          "runner": "ubuntu-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        },
+        {
+          "name": "Processing budget / windows-latest",
+          "runner": "windows-latest",
+          "pullRequest": "success",
+          "workflowDispatch": "success"
+        }
+      ]
     }
   ]
 }

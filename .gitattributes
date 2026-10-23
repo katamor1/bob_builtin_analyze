@@ -109,3 +109,13 @@ docs/release-evidence/reg-bridge-discovery-source-coverage-2026-10-20.json text 
 tools/main-consolidation/registry-discovery-source-admission.json text eol=lf
 tools/main-consolidation/registry-discovery-upstream-main-admission.json text eol=lf
 docs/release-evidence/reg-bridge-discovery-evidence-completion-2026-10-20.json text eol=lf
+
+# Processing budget contracts and completion use canonical LF bytes.
+packages/processing-budget-runtime/contracts/processing-budget-definition.v1.json text eol=lf
+packages/processing-budget-runtime/src/generatedProcessingBudgetDefinition.ts text eol=lf
+packages/processing-budget-runtime/schema/processing-budget-profile.v1.schema.json text eol=lf
+docs/release-evidence/proc-t13-ledger-completion-2026-10-23.json text eol=lf
+
+# Preserve the historical Discovery baseline byte identities across checkouts.
+tools/main-consolidation/registry-discovery-source-admission.json text eol=lf
+tools/main-consolidation/registry-discovery-upstream-main-admission.json text eol=lf

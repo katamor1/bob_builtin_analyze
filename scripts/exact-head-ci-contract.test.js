@@ -10,7 +10,8 @@ const workflows = {
   "extensions-quality": ["workflow-register", "bob-bazaar-review", "bob-code-consistency-review", "windows-smoke", "real-machine-environment-contracts", "extension-metrics", "evidence-subject", "evidence-portability", "evidence-byte-parity"],
   "workflow-contracts": ["validate"],
   "code-consistency-review-scaffold": ["validate-scaffold", "validate-extension"],
-  "three-extension-ui-contracts": ["contracts"]
+  "three-extension-ui-contracts": ["contracts"],
+  "processing-budget-runtime": ["test"]
 }
 const headExpression = "${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}"
 
@@ -54,19 +55,19 @@ test("CI evidence contract preserves the 12 original and four evidence PR jobs a
   assert.equal(contract.verificationStep, "Verify checked-out commit")
   assert.deepEqual(contract.workflows.map(row => row.id), Object.keys(workflows))
   const jobs = contract.workflows.flatMap(row => row.jobs)
-  assert.equal(jobs.length, 16)
-  assert.equal(new Set(jobs.map(job => job.name)).size, 16)
+  assert.equal(jobs.length, 18)
+  assert.equal(new Set(jobs.map(job => job.name)).size, 18)
   assert.ok(jobs.every(job => job.pullRequest === "success"))
   assert.deepEqual(jobs.filter(job => job.workflowDispatch === "skipped").map(job => job.name), ["Extension source metrics"])
-  assert.equal(jobs.filter(job => job.workflowDispatch === "success").length, 15)
+  assert.equal(jobs.filter(job => job.workflowDispatch === "success").length, 17)
 })
 
 const originalJobs = [{"name":"workflow-register","runner":"ubuntu-latest","pullRequest":"success","workflowDispatch":"success"},{"name":"bob-bazaar-review","runner":"ubuntu-latest","pullRequest":"success","workflowDispatch":"success"},{"name":"bob-code-consistency-review","runner":"ubuntu-latest","pullRequest":"success","workflowDispatch":"success"},{"name":"Windows / workflow-register","runner":"windows-latest","pullRequest":"success","workflowDispatch":"success"},{"name":"Windows / bob-bazaar-review","runner":"windows-latest","pullRequest":"success","workflowDispatch":"success"},{"name":"Windows / bob-code-consistency-review","runner":"windows-latest","pullRequest":"success","workflowDispatch":"success"},{"name":"Real-machine environment contracts","runner":"windows-latest","pullRequest":"success","workflowDispatch":"success"},{"name":"Extension source metrics","runner":"ubuntu-latest","pullRequest":"success","workflowDispatch":"skipped"},{"name":"Strict workflow validation","runner":"ubuntu-latest","pullRequest":"success","workflowDispatch":"success"},{"name":"Validate scaffold","runner":"ubuntu-latest","pullRequest":"success","workflowDispatch":"success"},{"name":"Validate VS Code extension","runner":"ubuntu-latest","pullRequest":"success","workflowDispatch":"success"},{"name":"UI and documentation contracts","runner":"ubuntu-latest","pullRequest":"success","workflowDispatch":"success"}]
 test('exact_head_adds_four_required_evidence_jobs_without_relaxation',()=>{
  const c=JSON.parse(fs.readFileSync(path.join(root,'tools/main-consolidation/exact-head-ci-contract.json'),'utf8')),jobs=c.workflows.flatMap(x=>x.jobs);
  const added=['Workflow evidence subject','Workflow evidence / ubuntu-latest','Workflow evidence / windows-latest','Workflow evidence byte parity'];
- assert.deepEqual(jobs.filter(x=>!added.includes(x.name)),originalJobs);
- assert.equal(jobs.length,16);assert.equal(jobs.filter(x=>x.pullRequest==='success').length,16);assert.equal(jobs.filter(x=>x.workflowDispatch==='success').length,15);
+ assert.deepEqual(jobs.filter(x=>!added.includes(x.name)&&!x.name.startsWith("Processing budget / ")),originalJobs);
+ assert.equal(jobs.length,18);assert.equal(jobs.filter(x=>x.pullRequest==='success').length,18);assert.equal(jobs.filter(x=>x.workflowDispatch==='success').length,17);
  assert.deepEqual(jobs.filter(x=>x.workflowDispatch==='skipped').map(x=>x.name),['Extension source metrics']);
  const source=fs.readFileSync(path.join(root,'.github/workflows/extensions-quality.yml'),'utf8');
  for(const id of ['evidence-subject','evidence-portability','evidence-byte-parity']){const start=source.indexOf(`\n  ${id}:`);assert.ok(start>=0);const remainder=source.slice(start+1),end=remainder.slice(1).search(/\n  [a-z][a-z0-9-]*:/),job=end<0?remainder:remainder.slice(0,end+1),guard=job.indexOf('- name: Verify checked-out commit');assert.ok(guard>0);for(const marker of ['- name: Setup Node.js','uses: actions/download-artifact','uses: actions/upload-artifact']){const index=job.indexOf(marker);if(index>=0)assert.ok(index>guard);}assert.doesNotMatch(job,/continue-on-error/);}
@@ -92,3 +93,5 @@ for(const id of ['workflow-register','windows-smoke'])test(`${id} builds both co
  if(id==='windows-smoke')assert.match(step,/if: matrix.extension == 'workflow-register'/);else assert.doesNotMatch(step,/\n\s+if:/);
  for(const companion of ['bob-bazaar-review','bob-code-consistency-review']){const install=step.indexOf('npm ci --prefix extensions/'+companion),compile=step.indexOf('npm run compile --prefix extensions/'+companion);assert.ok(install>0&&compile>install,'missing built companion: '+companion);}
 });
+
+ test("processing budget adds exactly two required matrix jobs",()=>{const c=JSON.parse(fs.readFileSync(path.join(root,"tools/main-consolidation/exact-head-ci-contract.json"),"utf8"));assert.equal(c.workflows.length,5);assert.equal(c.workflows.flatMap(x=>x.jobs).length,18);assert.deepEqual(c.workflows[4].jobs.map(x=>x.name),["Processing budget / ubuntu-latest","Processing budget / windows-latest"]);});
