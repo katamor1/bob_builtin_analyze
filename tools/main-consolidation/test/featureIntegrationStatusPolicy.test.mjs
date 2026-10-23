@@ -631,7 +631,7 @@ test('generator_consumes_r1_once_and_rejects_r1_byte_drift',async()=>{
  let reads=0,output
  await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}})
  assert.equal(reads,1,'generator must read accepted R1 completion once')
- assert.equal(output.completionReferences.length,12);assert.equal(output.slices.find(r=>r.sliceId==='WF2-R1-PROVENANCE').state,'VERIFIED');assert.equal(output.nextSliceId,'PROC-T13-LEDGER')
+ assert.equal(output.completionReferences.length,13);assert.equal(output.slices.find(r=>r.sliceId==='WF2-R1-PROVENANCE').state,'VERIFIED');assert.equal(output.nextSliceId,'PROC-T14-BOUNDED-DOC')
  for(const suffix of [Buffer.from('\n'),Buffer.from('\r\n'),Buffer.from(' ')]){
   await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?Buffer.concat([readFileSync(p),suffix]):readFileSync(p),writeStdout:()=>assert.fail('R1 byte drift must never emit projection')}))
  }
@@ -702,7 +702,7 @@ test('rejects_r2_as_conditional_or_runtime_activation_authority',()=>{
 
 test('generator_reads_literal_r2_once_and_refuses_missing_or_noncanonical_bytes',async()=>{
  const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/wf2-r2-completion-2026-10-18.json',import.meta.url));let reads=0,output
- await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,12);assert.equal(output.nextSliceId,'PROC-T13-LEDGER')
+ await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,13);assert.equal(output.nextSliceId,'PROC-T14-BOUNDED-DOC')
  await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>{if(p===target)throw new Error('missing R2');return readFileSync(p)},writeStdout:()=>assert.fail('missing R2 must not emit')}))
  for(const changed of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replace(/\n/g,'\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?changed:readFileSync(p),writeStdout:()=>assert.fail('R2 byte drift must not emit')}))
 })
@@ -770,7 +770,7 @@ test('owner lifecycle rejects old-prefix changes nonprefix collections and later
 test('owner generator reads one literal LF completion and rejects missing or noncanonical bytes',async()=>{
  const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/reg-bridge-owner-version-lifecycle-completion-2026-10-19.json',import.meta.url));let reads=0,output
  await runGenerator(['--print'],{readFile:async file=>{if(file===target)reads++;return readFileSync(file)},writeStdout:bytes=>{output=JSON.parse(bytes)}})
- assert.equal(reads,1);assert.equal(output.completionReferences.length,12);assert.equal(output.nextSliceId,'PROC-T13-LEDGER')
+ assert.equal(reads,1);assert.equal(output.completionReferences.length,13);assert.equal(output.nextSliceId,'PROC-T14-BOUNDED-DOC')
  await assert.rejects(()=>runGenerator(['--print'],{readFile:async file=>{if(file===target)throw Error('missing owner completion');return readFileSync(file)},writeStdout:()=>assert.fail('missing owner must not emit')}))
  for(const bytes of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replace(/\n/g,'\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async file=>file===target?bytes:readFileSync(file),writeStdout:()=>assert.fail('owner byte drift must not emit')}))
 })
@@ -843,11 +843,58 @@ test('discovery_rejects_json_claims_metadata_subject_and_actual_evidence_tamper'
 test('discovery_generator_reads_literal_canonical_source_completion',async()=>{
  const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/reg-bridge-discovery-evidence-completion-2026-10-20.json',import.meta.url));let reads=0,output
  await runGenerator(['--print'],{readFile:async file=>{if(file===target)reads++;return readFileSync(file)},writeStdout:bytes=>{output=JSON.parse(bytes)}})
- assert.equal(reads,1);assert.equal(output.completionReferences.length,12);assert.equal(output.acceptedMainSha,discoveryExpected.main);assert.equal(output.nextSliceId,'PROC-T13-LEDGER')
+ assert.equal(reads,1);assert.equal(output.completionReferences.length,13);assert.equal(output.acceptedMainSha,t13Main);assert.equal(output.nextSliceId,'PROC-T14-BOUNDED-DOC')
  await assert.rejects(()=>runGenerator(['--print'],{readFile:async file=>{if(file===target)throw Error('missing Discovery completion');return readFileSync(file)},writeStdout:()=>assert.fail('missing completion emitted')}))
  for(const bytes of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replace(/\n/g,'\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async file=>file===target?bytes:readFileSync(file),writeStdout:()=>assert.fail('noncanonical Discovery emitted')}))
 })
 test('discovery_literal_lf_survives_real_index_checkout',async()=>{
  const {mkdtempSync,realpathSync}=await import('node:fs'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),{execFileSync}=await import('node:child_process'),root=fileURLToPath(new URL('../../../',import.meta.url)),temp=mkdtempSync(join(realpathSync(tmpdir()),'discovery-completion-lf-')),relative='docs/release-evidence/reg-bridge-discovery-evidence-completion-2026-10-20.json'
+ execFileSync('git',['-c','core.autocrlf=true','checkout-index','--prefix='+temp.replaceAll('\\','/')+'/','--',relative],{cwd:root,windowsHide:true,maxBuffer:8*1024*1024});const checked=readFileSync(join(temp,relative)),indexed=execFileSync('git',['show',':'+relative],{cwd:root,windowsHide:true,maxBuffer:8*1024*1024});assert.ok(checked.equals(indexed));assert.equal(checked.at(-1),10);assert.equal(checked.includes(13),false)
+})
+
+// T13 records one accepted standalone source slice; it grants no runtime authority.
+const t13Completion=()=>json('../../../docs/release-evidence/proc-t13-ledger-completion-2026-10-23.json')
+const throughT13=()=>{const c=throughDiscovery();c.completionObservations.push(t13Completion());return c}
+const t13Source='f71cd8e345b2dbbe02c1e40d5b4008b4da84ef38',t13Main='4ca80105eceb75f9192f8a94d5203a8883c05a26',t13Tree='6fb9efb6ae16814ca5d0354507a2e6984198e6c5'
+const t13PreviousTwelve=[{"acceptedMainSha":"ec136225bf2737a2f2c8053dce69d3acb6f4be3d","boundaryId":"WAVE-0A-CONTROL-PLANE","sha256":"440528d404edf754f0480306526307088054dee7d1b72506370d8c22872cc99b","state":"VERIFIED"},{"acceptedMainSha":"b8876b2714d74bd8bbe686b66d17f2f76467f041","boundaryId":"WAVE-0B-SELECTION-LEDGER","sha256":"df2f2dbfeef64c65fafcf9834998c914949b5c19ba539dccd8dfcd8dac9a91ae","state":"VERIFIED"},{"acceptedMainSha":"925c50f10e114ac5613135dab7b7439ab3dba0de","boundaryId":"WF2-P4-COMPILER","sha256":"16c1144e7b27cf0edc91fe63f202fa9cb2cce40eafbd1ce9e07af6664fd81081","state":"VERIFIED"},{"acceptedMainSha":"90c678d3d33ae61a5523f2d9cf8057538028dd4b","boundaryId":"WF2-P5-PLANSTORE","sha256":"50edb7589256b8154477db5970c0f3960dc3513d6c887ec7564b4efb58638532","state":"VERIFIED"},{"acceptedMainSha":"c5f9fcff29a787cc4f02140800556257bf05c547","boundaryId":"WF2-P6-ENTRYPOINT","sha256":"0a8f01068b306f387e3e72d185024ab5ab0ce4f04f68b8afe3a4471956937399","state":"VERIFIED"},{"acceptedMainSha":"36c80d9b71b5c3825a9dfcb21ed666e94c54f303","boundaryId":"WF2-P7-MANIFEST","sha256":"fe7fc94423170da5ec8838c45cf9636953e16766a70a445064195445a566507e","state":"VERIFIED"},{"acceptedMainSha":"36c80d9b71b5c3825a9dfcb21ed666e94c54f303","boundaryId":"WORKFLOW-B-GATE-P","sha256":"cc316f2c59dcdd37db17c20561067249b235ad84043906d89b547e2c3f965a44","state":"VERIFIED"},{"acceptedMainSha":"e11b217651b790308d823b689b000c7f7c048a8d","boundaryId":"GATE-R-ARCHIVE-INVENTORY","sha256":"983a10ba98a58811b86550866bca5e6b7b0f6d32966a12c84195e77d3c584d22","state":"VERIFIED"},{"acceptedMainSha":"bd3347814284daadebefaa0ab6ab2187690ff348","boundaryId":"WF2-R1-PROVENANCE","sha256":"e1583bebaea4bcc2909bfd0db320cc6c633d136176d767c0958802db22eaf5fd","state":"VERIFIED"},{"acceptedMainSha":"a58d5c74be087917093921c26d57c603a3d1c0d5","boundaryId":"WF2-R2-INVOKE","sha256":"6782c1e797fcf7d76090e39a1afd735f3449efe59a9d521c375d4c360e0de04c","state":"VERIFIED"},{"acceptedMainSha":"4f76cbf7a303e8c7b3a0b73055bfa247cc0f1895","boundaryId":"REG-BRIDGE-OWNER-VERSION-LIFECYCLE","sha256":"af004f545e7f88dbb4d53df7c81460bf153a40bd56627758aaf8c5f02e59f57c","state":"VERIFIED"},{"acceptedMainSha":"8410356cfe623b9c1e54528c7e52344669b6d5de","boundaryId":"REG-BRIDGE-DISCOVERY-EVIDENCE","sha256":"84af4a7937314e940277ef5965367818ab1cccdbe46b1f18d8edd41fd8b01e0e","state":"VERIFIED"}]
+
+test('t13_completion_preserves_twelve_reference_prefix',()=>{
+ const c=throughT13(),p=projectIntegrationStatus(c),old=projectIntegrationStatus(throughDiscovery())
+ assert.deepEqual(p.completionReferences.slice(0,12),t13PreviousTwelve);assert.equal(p.completionReferences.length,13);assert.equal(p.slices.length,20);assert.equal(p.slices.filter(x=>x.state==='VERIFIED').length,11)
+ assert.equal(p.nextSliceId,'PROC-T14-BOUNDED-DOC');assert.equal(p.acceptedMainSha,t13Main);assert.equal(p.slices[10].sliceId,'PROC-T13-LEDGER');assert.equal(p.slices[10].state,'VERIFIED')
+ for(let i=0;i<20;i++)if(i!==10)assert.deepEqual(p.slices[i],old.slices[i]);assert.deepEqual(p.boundaries,old.boundaries);assert.deepEqual(p.activeSliceIds,[])
+})
+
+test('t13_completion_binds_source_not_metadata',()=>{
+ const r=t13Completion();validateCompletionObservation(r,{programIndex:buildProgramIndex(),evidenceDigests:digests(r)})
+ assert.equal(r.sourceHeadSha,t13Source);assert.equal(r.acceptedMainSha,t13Main);assert.equal(r.acceptedTreeSha,t13Tree);assert.deepEqual(r.mergeParents,['aa25f00f98c41c5aebdb30c68cdc967a1d205ab5',t13Source]);assert.equal(r.pullRequestNumber,198)
+ assert.equal(r.source.selectedSourceItems,23);assert.equal(r.source.remainderItems,675);assert.equal(r.source.unassigned,0);assert.equal(r.source.categories,13);assert.equal(r.source.targetMaxUtf8Bytes,256);assert.equal(r.source.packedPayloadFiles,19);assert.equal(r.source.installedTypeConsumers,3)
+ assert.equal(r.ci.waiver,null);assert.equal(r.ci.candidate.successfulJobs,18);assert.equal(r.ci.actualMain.successfulJobs,17);assert.equal(r.ci.actualMain.skippedJobs,1);assert.equal(r.ci.candidate.workflows.length,5);assert.equal(r.ci.actualMain.workflows.length,5)
+ for(const mutate of [x=>x.sourceHeadSha=t13Main,x=>x.acceptedMainSha='b'.repeat(40),x=>x.acceptedTreeSha='0'.repeat(40),x=>x.mergeParents.reverse(),x=>x.boundaryId='PROCESSING-FOUNDATION',x=>x.pullRequestNumber++]){const bad=structuredClone(r);mutate(bad);assert.throws(()=>validateCompletionObservation(bad,{programIndex:buildProgramIndex(),evidenceDigests:digests(bad)}),TypeError)}
+})
+
+test('t13_rejects_missing_or_forged_package_ci_and_parity',()=>{
+ const original=t13Completion();validateCompletionObservation(original,{programIndex:buildProgramIndex(),evidenceDigests:digests(original)})
+ const mutations=[r=>delete r.processingBudget.packaging,r=>delete r.processingBudget.crossPlatform,r=>r.processingBudget.currentProductParity.sha256='0'.repeat(64),r=>r.processingBudget.definition.bytes=0,r=>r.processingBudget.extra=r.processingBudget.ledger,r=>r.source.categories=12,r=>r.source.targetMaxUtf8Bytes=255,r=>r.source.packedPayloadFiles=18,r=>r.source.installedTypeConsumers=2,r=>r.source.selectedSourceItems=22,r=>r.source.unassigned=1,r=>r.source.productionDependencies=1,r=>r.source.packagingInputsUnchanged=false,r=>r.source.changedProductPaths=1,r=>r.ci.waiver={inheritedFromDiscovery:true},r=>r.ci.allRequiredGatesSucceeded=false,r=>r.ci.candidate.workflows.pop(),r=>r.ci.candidate.workflows[0].jobs[0].checkout.actualHeadSha='0'.repeat(40),r=>r.ci.candidate.workflows[4].jobs.pop(),r=>r.ci.actualMain.workflows[4].jobs[0].log.bytes++,r=>r.ci.actualMain.workflows[0].jobs.find(j=>j.name==='Extension source metrics').conclusion='success',r=>r.packages.workflowRegister.vsix.sha256='0'.repeat(64),r=>r.packages.bazaar.sourceHeadSha=r.sourceHeadSha,r=>r.externalEvidence.pop(),r=>r.externalEvidence.push(r.externalEvidence[0]),r=>r.preservation.allHashesVerified=false,r=>r.review.secondReview=true]
+ for(const mutate of mutations){const r=structuredClone(original);mutate(r);assert.throws(()=>validateCompletionObservation(r,{programIndex:buildProgramIndex(),evidenceDigests:digests(r)}),TypeError)}
+ const actual=digests(original);actual[original.externalEvidence[0].id].bytes++;assert.throws(()=>validateCompletionObservation(original,{programIndex:buildProgramIndex(),evidenceDigests:actual}),TypeError)
+})
+
+test('t13_does_not_complete_processing_foundation_or_activate_runtime',()=>{
+ const p=projectIntegrationStatus(throughT13());assert.equal(p.boundaries.find(x=>x.id==='PROCESSING-FOUNDATION').state,'planned');assert.equal(p.boundaries.find(x=>x.id==='WORKFLOW-C-SAFE-PREFIX').state,'VERIFIED');assert.deepEqual(p.activeSliceIds,[]);assert.ok(p.slices.every(x=>x.observedActivationStatus==='inactive'))
+ const r=t13Completion();assert.deepEqual(r.installedUat,{state:'not_required',executed:false,reason:'unchanged_extension_source_and_packaging_inputs',changedProductPaths:0,historicalCompletionSha256:'84af4a7937314e940277ef5965367818ab1cccdbe46b1f18d8edd41fd8b01e0e'});assert.equal(r.finalProgramUat,'not_run')
+ for(const mutate of [x=>x.runtimeActivation=true,x=>x.mutationAuthority=true,x=>x.automaticCleanup=true,x=>x.finalProgramUat='passed',x=>x.installedUat.executed=true,x=>x.installedUat.changedProductPaths=1,x=>x.activeRuntime.gateRResult.providerDispatches=1,x=>x.activeRuntime.productWiring.bobDispatches=1]){const bad=structuredClone(r);mutate(bad);assert.throws(()=>validateCompletionObservation(bad,{programIndex:buildProgramIndex(),evidenceDigests:digests(bad)}),TypeError)}
+ const promoted=structuredClone(p);promoted.boundaries.find(x=>x.id==='PROCESSING-FOUNDATION').state='VERIFIED';assert.throws(()=>deriveNextSlice({programIndex:buildProgramIndex(),statusProjection:promoted}),TypeError)
+})
+
+test('t13_generator_requires_one_canonical_completion',async()=>{
+ const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/proc-t13-ledger-completion-2026-10-23.json',import.meta.url));let reads=0,output
+ await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,13);assert.equal(output.nextSliceId,'PROC-T14-BOUNDED-DOC');assert.equal(output.acceptedMainSha,t13Main)
+ await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>{if(p===target)throw Error('missing T13');return readFileSync(p)},writeStdout:()=>assert.fail('missing T13 emitted')}))
+ for(const bytes of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replace(/\n/g,'\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?bytes:readFileSync(p),writeStdout:()=>assert.fail('noncanonical T13 emitted')}))
+})
+
+test('t13_completion_lf_survives_real_index_checkout',async()=>{
+ const {mkdtempSync,realpathSync}=await import('node:fs'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),{execFileSync}=await import('node:child_process'),root=fileURLToPath(new URL('../../../',import.meta.url)),temp=mkdtempSync(join(realpathSync(tmpdir()),'t13-completion-lf-')),relative='docs/release-evidence/proc-t13-ledger-completion-2026-10-23.json'
  execFileSync('git',['-c','core.autocrlf=true','checkout-index','--prefix='+temp.replaceAll('\\','/')+'/','--',relative],{cwd:root,windowsHide:true,maxBuffer:8*1024*1024});const checked=readFileSync(join(temp,relative)),indexed=execFileSync('git',['show',':'+relative],{cwd:root,windowsHide:true,maxBuffer:8*1024*1024});assert.ok(checked.equals(indexed));assert.equal(checked.at(-1),10);assert.equal(checked.includes(13),false)
 })
