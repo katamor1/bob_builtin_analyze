@@ -9,7 +9,7 @@ const ADMISSION='tools/main-consolidation/processing-budget-source-admission.jso
 const COVERAGE='docs/release-evidence/proc-t13-ledger-source-coverage-2026-10-23.json';
 const BASE='aa25f00f98c41c5aebdb30c68cdc967a1d205ab5';
 const TREE='fc869e3735b5ddcad3dcf7e6892e290888656716';
-export const PROCESSING_BUDGET_SOURCE_ADMISSION_SHA256='3c48389a44580fc24c763a525b6a4de99a899b07574aef0cebcb0e3a8d988b52';
+export const PROCESSING_BUDGET_SOURCE_ADMISSION_SHA256='6c7b3e89feaa67976449c9deb04d3456968566b38b9be390015790f30f7e666a';
 export const PROCESSING_BUDGET_SOURCE_COVERAGE_SHA256='a85e14013887aa28bf07c3c9c86c92761d9376ccd89a4a904a45d147b9b6a0f8';
 export const PROCESSING_BUDGET_T13_SOURCE_PATHS=Object.freeze([
   ".github/workflows/processing-budget-runtime.yml",
@@ -49,8 +49,8 @@ const baselines={
   "tools/main-consolidation/registry-bridge-source-admission.json": "1665c66acd04a535b08116e639f5119b98e03609d9bb4d5f8efacc9bba37b5a4",
   "tools/main-consolidation/registry-discovery-source-admission.json": "c3a311ce9fb9948532234a0460b8643a93c1149bb1a10f92a737e1b71d6fd816",
   "tools/main-consolidation/registry-discovery-upstream-main-admission.json": "61be4ae3c383573d3075149d02c9ef9ac5955dc0243980b48538dcb7f07f3bd7",
-  "tools/main-consolidation/feature-selection-source-universe.json": "76dc440f70e44d48ff507d1f5ca890c61029fb71c73270607c0800d142a323bf",
-  "docs/release-evidence/feature-selection-ledger-2026-08-23.json": "502f6149501e5904049816b6f34dcb1d15aa0474a27dd63125ca5ba468dc685a"
+  "tools/main-consolidation/feature-selection-source-universe.json": "c69adc6b82d1d6d40719e10c116e985890f17d45ee4b99e0feabe76b00d08c79",
+  "docs/release-evidence/feature-selection-ledger-2026-08-23.json": "e7603655a9f356d36938fc6d722061aa9a616fcfd8258bde05ad6c30ac9ae894"
 };
 export const PROCESSING_BUDGET_BASELINE_PATHS=Object.freeze(Object.keys(baselines));
 const before={
@@ -187,7 +187,7 @@ export function processingBudgetCurrentSourceFiles(){return processingBudgetT13S
 
 export function validateProcessingBudgetRepository(root=ROOT){
  root=path.resolve(root);if(!fs.lstatSync(root).isDirectory()||fs.lstatSync(root).isSymbolicLink())fail('repository root');
- for(const [relative,expected] of Object.entries(baselines))if(digest(read(root,relative))!==expected)fail('unchanged Owner/Discovery baseline');
+ for(const [relative,expected] of Object.entries(baselines))if(gateRDigest(fs.readFileSync(safeFile(root,relative)))!==expected)fail('unchanged Owner/Discovery baseline');
  validateProcessingBudgetSourceAdmission(read(root,ADMISSION));validateProcessingBudgetCoverage(read(root,COVERAGE));
  const git=(args,input)=>execFileSync('git',args,{cwd:root,input,encoding:'utf8',maxBuffer:4*1024*1024,stdio:['pipe','pipe','pipe']}).trim();
  const expected=processingBudgetCurrentSourceFiles();

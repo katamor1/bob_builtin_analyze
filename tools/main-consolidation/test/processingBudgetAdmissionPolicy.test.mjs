@@ -23,8 +23,32 @@ test('t13_admission_is_literal_and_preserves_full_675_partition',async()=>{
  for(const baseline of ['tools/main-consolidation/registry-bridge-source-admission.json','tools/main-consolidation/registry-discovery-source-admission.json']){
   const fixture=fs.mkdtempSync(path.join(process.env.PROCESSING_BUDGET_ARTIFACT_ROOT||os.tmpdir(),'bob-processing-budget-ledger-baseline-'));
   for(const file of p.PROCESSING_BUDGET_BASELINE_PATHS){fs.mkdirSync(path.dirname(path.join(fixture,file)),{recursive:true});fs.copyFileSync(path.join(root,file),path.join(fixture,file));}
-  fs.appendFileSync(path.join(fixture,baseline),' ');assert.throws(()=>p.validateProcessingBudgetRepository(fixture),/baseline/);
+  fs.appendFileSync(path.join(fixture,baseline),' ');assert.throws(()=>p.validateProcessingBudgetRepository(fixture),{name:'TypeError',message:'Processing budget admission: unchanged Owner/Discovery baseline'});
  }
+});
+test('immutable_baseline_seal_rejects_byte_drift_before_repository_replay',async()=>{
+ const p=await import(policyPath);
+ for(const baseline of ['tools/main-consolidation/registry-bridge-source-admission.json','tools/main-consolidation/registry-discovery-source-admission.json'])for(const mutation of ['space','order','crlf']){
+  const fixture=fs.mkdtempSync(path.join(process.env.PROCESSING_BUDGET_ARTIFACT_ROOT||os.tmpdir(),'bob-processing-budget-ledger-seal-'));
+  for(const file of p.PROCESSING_BUDGET_BASELINE_PATHS){fs.mkdirSync(path.dirname(path.join(fixture,file)),{recursive:true});fs.copyFileSync(path.join(root,file),path.join(fixture,file));}
+  // A pristine partial fixture reaches the missing new admission; it is never a valid baseline rejection.
+  assert.throws(()=>p.validateProcessingBudgetRepository(fixture),{code:'ENOENT'});
+  const file=path.join(fixture,baseline),original=fs.readFileSync(file,'utf8');
+  const changed=mutation==='space'?original+' ':mutation==='crlf'?original.replace(/\r?\n/g,'\r\n'):JSON.stringify(Object.fromEntries(Object.entries(JSON.parse(original)).reverse()),null,2)+'\n';
+  assert.notEqual(changed,original);fs.writeFileSync(file,changed);
+  assert.throws(()=>p.validateProcessingBudgetRepository(fixture),{name:'TypeError',message:'Processing budget admission: unchanged Owner/Discovery baseline'});
+ }
+});
+test('immutable_baselines_keep_lf_in_real_index_checkout',async()=>{
+ const p=await import(policyPath),fixture=fs.mkdtempSync(path.join(process.env.PROCESSING_BUDGET_ARTIFACT_ROOT||os.tmpdir(),'bob-processing-budget-ledger-seal-checkout-'));
+ const empty=path.join(fixture,'empty-attributes'),output=path.join(fixture,'checkout');fs.writeFileSync(empty,'');
+ const git=(args)=>execFileSync('git',['-c','core.attributesFile='+empty,'-c','core.autocrlf=true',...args],{cwd:fixture,env:{...process.env,GIT_ATTR_NOSYSTEM:'1'},maxBuffer:16*1024*1024,stdio:['ignore','pipe','pipe']});
+ git(['init','--quiet','--template=']);
+ fs.copyFileSync(path.join(root,'.gitattributes'),path.join(fixture,'.gitattributes'));
+ for(const file of p.PROCESSING_BUDGET_BASELINE_PATHS){fs.mkdirSync(path.dirname(path.join(fixture,file)),{recursive:true});fs.writeFileSync(path.join(fixture,file),execFileSync('git',['show',':'+file],{cwd:root,maxBuffer:16*1024*1024}));}
+ git(['add','--','.gitattributes',...p.PROCESSING_BUDGET_BASELINE_PATHS]);
+ git(['checkout-index','--prefix='+output.replaceAll('\\','/')+'/','--',...p.PROCESSING_BUDGET_BASELINE_PATHS]);
+ for(const file of p.PROCESSING_BUDGET_BASELINE_PATHS){const actual=fs.readFileSync(path.join(output,file)),indexed=git(['show',':'+file]);assert.equal(actual.includes(13),false,file+' must remain LF independently of host attributes');assert.ok(actual.equals(indexed),file+' must match the sealed index bytes');}
 });
 test('current_bazaar_actual_export_matches_explicit_profile',()=>{
  const {DEFAULT_RULE_AUTHORING_LIMITS:b}=require(path.join(root,'extensions/bob-bazaar-review/out/ruleAuthoring/ruleAuthoringLimits.js'));

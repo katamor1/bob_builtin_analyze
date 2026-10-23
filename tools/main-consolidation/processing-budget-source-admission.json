@@ -3,7 +3,7 @@
   "baseTreeSha": "fc869e3735b5ddcad3dcf7e6892e290888656716",
   "controlRows": [
     {
-      "blobSha": "fafb2d8d7fed959065559e3b05bce758e292426f",
+      "blobSha": "2cbdece50d3835192d07102af764938ed0dedd52",
       "mode": "100644",
       "path": ".gitattributes"
     },
@@ -23,7 +23,7 @@
       "path": "tools/main-consolidation/exact-head-ci-contract.json"
     },
     {
-      "blobSha": "5c8c7b473b9f8219d949b9ebef5ac1fec08fe779",
+      "blobSha": "c757c5b7ff8f57c9735f7a8eea48260f635ee20b",
       "mode": "100644",
       "path": "tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs"
     }
