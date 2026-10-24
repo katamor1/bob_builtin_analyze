@@ -160,3 +160,5 @@ test("code consistency triage operator smoke remains a separate Linux and Window
   assert.equal(fs.existsSync(operatorTestPath), true, "triage operator Extension Host test file must be committed")
   assert.equal(fs.existsSync(operatorWorkspacePath), true, "triage operator workspace fixture must be committed")
 })
+
+test("document payload host pins the same runtime and uses owned profiles",()=>{ const source=readRepoFile("scripts","t14-bounded-document-installed-smoke.mjs"); assert.match(source,/version:'1\.106\.1'/); assert.match(source,/reuseMachineInstall:false/); assert.match(source,/extensionDevelopmentPath:\[/); assert.match(source,/--user-data-dir=/); assert.match(source,/--extensions-dir=/); assert.match(source,/productActivationProbe:'not_run'/); const workflow=readRepoFile(".github","workflows","processing-budget-runtime.yml"); assert.match(workflow,/@vscode\/test-cli@0\.0\.12 @vscode\/test-electron@2\.5\.2/); });

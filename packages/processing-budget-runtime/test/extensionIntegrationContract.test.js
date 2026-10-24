@@ -7,3 +7,5 @@ test('product_deep_imports_are_rejected',()=>{
  const proof=h.packAndInstall(h.packageRoot,h.freshArtifactRoot('exports-pack'));
  const child=cp.spawnSync(process.execPath,['-e',"const a=require('node:assert/strict');a.throws(()=>require('@bob/processing-budget-runtime/out/ooxmlParserInput'),e=>e.code==='ERR_PACKAGE_PATH_NOT_EXPORTED');a.equal(typeof require('@bob/processing-budget-runtime/validated-ooxml').withValidatedOoxmlParserInput,'function');a.equal(require('@bob/processing-budget-runtime').prepareOoxmlParserInput,undefined);"],{cwd:proof.consumerRoot,encoding:'utf8',env:{...process.env,NODE_PATH:'',NODE_OPTIONS:''}});assert.equal(child.status,0,child.stderr);
 });
+
+test('closed_current_document_graph_passes_ast_boundary_policy',()=>{require('../scripts/check-document-boundary').checkDocumentBoundaries(path.resolve(h.packageRoot,'../..'));});

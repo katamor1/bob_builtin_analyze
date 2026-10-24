@@ -21,7 +21,8 @@
     "compile": "node scripts/build-runtime.js",
     "prepack": "npm run compile",
     "typecheck:consumers": "tsc -p test/fixtures/tsconfig.json --noEmit",
-    "test": "npm run compile && npm run typecheck:consumers && node --test --test-concurrency=1 test/*.test.js"
+    "test": "npm run compile && npm run typecheck:consumers && node --test --test-concurrency=1 test/*.test.js",
+    "boundary:policy": "node scripts/check-document-boundary.js"
   },
   "devDependencies": {
     "@types/node": "20.19.43",

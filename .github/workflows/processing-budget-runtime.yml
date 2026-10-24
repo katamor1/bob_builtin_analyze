@@ -5,6 +5,10 @@ on:
   pull_request:
     paths:
       - "packages/processing-budget-runtime/**"
+      - "extensions/bob-bazaar-review/**"
+      - "extensions/bob-code-consistency-review/**"
+      - "scripts/t14-bounded-document*"
+      - "scripts/processing-runtime-build-workflow.test.js"
       - "tools/main-consolidation/processingBudgetAdmissionPolicy.mjs"
       - "tools/main-consolidation/processing-budget-source-admission.json"
       - "tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs"
@@ -19,6 +23,10 @@ on:
     branches: [main]
     paths:
       - "packages/processing-budget-runtime/**"
+      - "extensions/bob-bazaar-review/**"
+      - "extensions/bob-code-consistency-review/**"
+      - "scripts/t14-bounded-document*"
+      - "scripts/processing-runtime-build-workflow.test.js"
       - "tools/main-consolidation/processingBudgetAdmissionPolicy.mjs"
       - "tools/main-consolidation/processing-budget-source-admission.json"
       - "tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs"
@@ -51,7 +59,7 @@ jobs:
   test:
     name: Processing budget / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -95,10 +103,53 @@ jobs:
       - name: Test standalone package and installed consumers
         run: npm test --prefix packages/processing-budget-runtime
 
-      - name: Build current Bazaar parity inputs
+      - name: Build and package companion runtime artifacts
         run: |
+          set -euo pipefail
           npm ci --prefix extensions/bob-bazaar-review
-          npm run compile --prefix extensions/bob-bazaar-review
+          npm ci --prefix extensions/bob-code-consistency-review
+          npm run package --prefix extensions/bob-bazaar-review
+          npm run package:policy --prefix extensions/bob-bazaar-review
+          npm run package:smoke --prefix extensions/bob-bazaar-review
+          npm run package --prefix extensions/bob-code-consistency-review
+          npm run package:policy --prefix extensions/bob-code-consistency-review
+
+      - name: Install pinned document host tooling after packaging
+        run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2 --prefix extensions/bob-bazaar-review
+
+      - name: Verify document build and artifact contracts
+        run: node --test scripts/processing-runtime-build-workflow.test.js scripts/t14-bounded-document-installed-smoke.test.mjs scripts/extension-host-smoke-contract.test.js scripts/three-extension-ui-contract-workflow.test.js
+
+      - name: Prepare installed document artifacts
+        id: document-artifacts
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs"; import path from "node:path"; import crypto from "node:crypto";
+          import {createArtifactManifest} from "./scripts/t14-bounded-document-installed-smoke.mjs";
+          const manifest=await createArtifactManifest(process.cwd(),process.env.PROCESSING_BUDGET_ARTIFACT_ROOT);
+          const evidenceRoot=path.join(process.env.PROCESSING_BUDGET_ARTIFACT_ROOT,"installed-host-"+crypto.randomBytes(8).toString("hex"));
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,"manifest="+manifest+"\ninput_root="+path.dirname(manifest)+"\nevidence_root="+evidenceRoot+"\n");
+          NODE
+
+      - name: Verify installed document runtime on Ubuntu
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node scripts/t14-bounded-document-installed-smoke.mjs --artifacts "${{ steps.document-artifacts.outputs.manifest }}" --evidence-root "${{ steps.document-artifacts.outputs.evidence_root }}"
+
+      - name: Verify installed document runtime on Windows
+        if: runner.os == 'Windows'
+        run: node scripts/t14-bounded-document-installed-smoke.mjs --artifacts "${{ steps.document-artifacts.outputs.manifest }}" --evidence-root "${{ steps.document-artifacts.outputs.evidence_root }}"
+
+      - name: Upload installed document runtime proof
+        if: always() && steps.document-artifacts.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: t14-bounded-document-${{ matrix.os }}
+          path: |
+            ${{ steps.document-artifacts.outputs.input_root }}
+            ${{ steps.document-artifacts.outputs.evidence_root }}/receipt.json
+            ${{ steps.document-artifacts.outputs.evidence_root }}/logs
+            ${{ steps.document-artifacts.outputs.evidence_root }}/user-data/logs
+          if-no-files-found: error
 
       - name: Verify literal admission and current product limits
         run: node --test tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs scripts/exact-head-ci-contract.test.js
