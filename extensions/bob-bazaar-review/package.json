@@ -41,69 +41,282 @@
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-      { "command": "bobBazaar.openReviewGui", "title": "レビューを開始", "category": "Bob Bazaar Review" },
-      { "command": "bobBazaar.collectReviewContext", "title": "レビュー対象の情報を収集", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.loadReviewRules", "title": "プロジェクト規約を読み込む", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.captureReviewResult", "title": "レビュー結果を取り込む", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.saveReviewResultFromClipboard", "title": "クリップボードからレビュー結果を保存", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.configureMcp", "title": "Bob MCP を設定", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.initProjectRules", "title": "プロジェクト規約を初期化", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.authorProjectRulesFromDocuments", "title": "資料からプロジェクト規約を作成", "category": "Bob Bazaar Review" },
-      { "command": "bobBazaar.reviewRevision", "title": "1リビジョンを Bob でレビュー", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.reviewRange", "title": "リビジョン範囲を Bob でレビュー", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.reviewRevisionWithProjectRules", "title": "1リビジョンをプロジェクト規約付きでレビュー", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.reviewRangeWithProjectRules", "title": "リビジョン範囲をプロジェクト規約付きでレビュー", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.validateReviewResultJson", "title": "レビュー結果 JSON を検証", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.records.initCampaign", "title": "実績キャンペーンを初期化", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.records.createRecord", "title": "実績記録を作成", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.records.validateRecord", "title": "実績記録を検証", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.records.createTriage", "title": "指摘確認・振り分け一覧を作成", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.records.validateTriage", "title": "指摘確認・振り分け内容を検証", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.records.generateSummary", "title": "集計レポートを生成", "category": "Bob Bazaar レビュー" }
+      {
+        "command": "bobBazaar.openReviewGui",
+        "title": "レビューを開始",
+        "category": "Bob Bazaar Review"
+      },
+      {
+        "command": "bobBazaar.collectReviewContext",
+        "title": "レビュー対象の情報を収集",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.loadReviewRules",
+        "title": "プロジェクト規約を読み込む",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.captureReviewResult",
+        "title": "レビュー結果を取り込む",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.saveReviewResultFromClipboard",
+        "title": "クリップボードからレビュー結果を保存",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.configureMcp",
+        "title": "Bob MCP を設定",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.initProjectRules",
+        "title": "プロジェクト規約を初期化",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.authorProjectRulesFromDocuments",
+        "title": "資料からプロジェクト規約を作成",
+        "category": "Bob Bazaar Review"
+      },
+      {
+        "command": "bobBazaar.reviewRevision",
+        "title": "1リビジョンを Bob でレビュー",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.reviewRange",
+        "title": "リビジョン範囲を Bob でレビュー",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.reviewRevisionWithProjectRules",
+        "title": "1リビジョンをプロジェクト規約付きでレビュー",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.reviewRangeWithProjectRules",
+        "title": "リビジョン範囲をプロジェクト規約付きでレビュー",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.validateReviewResultJson",
+        "title": "レビュー結果 JSON を検証",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.records.initCampaign",
+        "title": "実績キャンペーンを初期化",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.records.createRecord",
+        "title": "実績記録を作成",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.records.validateRecord",
+        "title": "実績記録を検証",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.records.createTriage",
+        "title": "指摘確認・振り分け一覧を作成",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.records.validateTriage",
+        "title": "指摘確認・振り分け内容を検証",
+        "category": "Bob Bazaar レビュー"
+      },
+      {
+        "command": "bobBazaar.records.generateSummary",
+        "title": "集計レポートを生成",
+        "category": "Bob Bazaar レビュー"
+      }
     ],
     "configuration": {
       "title": "Bob Bazaar レビュー",
       "properties": {
-        "bobBazaar.bzrPath": { "type": "string", "default": "bzr", "description": "Bazaar コマンドを実行するファイルのパスです。PATH に bzr がない場合は絶対パスを指定します。" },
-        "bobBazaar.textEncoding": { "type": "string", "default": "auto", "enum": ["auto", "utf8", "shift_jis", "cp932", "windows-31j"], "description": "Bazaar のログ、差分、ファイル内容を読み取る文字コードです。auto は UTF-8 を優先し、文字化けが疑われる場合に Shift-JIS 系で読み直します。" },
-        "bobBazaar.mcpServerName": { "type": "string", "default": "bazaar", "description": ".bob/mcp.json に保存する MCP サーバー名です。" },
-        "bobBazaar.maxDiffBytes": { "type": "number", "default": 1048576, "minimum": 32768, "maximum": 5242880, "description": "Bob に渡すレビュー資料へ含める Bazaar 差分の最大バイト数です。" },
-        "bobBazaar.maxAddedFileContentBytes": { "type": "number", "default": 262144, "minimum": 0, "maximum": 2097152, "description": "新規追加ファイルの本文をレビュー資料へ含める最大合計バイト数です。0 の場合は本文を含めません。" },
-        "bobBazaar.projectRules.checklistPath": { "type": "string", "default": ".bob/review/checklist.json", "description": "プロジェクト固有のレビュー確認項目 JSON のパスです。ワークスペース相対パスまたは絶対パスを指定します。" },
-        "bobBazaar.projectRules.schemaPath": { "type": "string", "default": ".bob/review/review-result.schema.json", "description": "レビュー結果 JSON の形式を検証するスキーマのパスです。ワークスペース相対パスまたは絶対パスを指定します。" },
-        "bobBazaar.ruleAuthoring.pdfToTextPath": { "type": "string", "default": "pdftotext", "description": "PDF の規約資料から文字を抽出する pdftotext コマンドの名前またはパスです。" },
-        "bobBazaar.ruleAuthoring.maxSourceFiles": { "type": "number", "default": 20, "minimum": 1, "maximum": 20, "description": "1回の規約作成で選択できる資料ファイル数です。拡張機能が許可する上限20件を超える値は使用されません。" },
-        "bobBazaar.ruleAuthoring.maxSourceBytes": { "type": "number", "default": 26214400, "minimum": 1, "maximum": 26214400, "description": "規約資料1件あたりの最大バイト数です。" },
-        "bobBazaar.ruleAuthoring.maxAggregateSourceBytes": { "type": "number", "default": 104857600, "minimum": 1, "maximum": 104857600, "description": "選択した規約資料全体の最大合計バイト数です。" },
-        "bobBazaar.ruleAuthoring.maxChunkBytes": { "type": "number", "default": 32768, "minimum": 1, "maximum": 32768, "description": "抽出した範囲1件あたりの最大 UTF-8 バイト数です。" },
-        "bobBazaar.ruleAuthoring.maxSelectedEvidenceBytes": { "type": "number", "default": 1048576, "minimum": 1, "maximum": 1048576, "description": "AI に渡す選択済み根拠全体の最大 UTF-8 バイト数です。" },
-        "bobBazaar.commandTimeoutMs": { "type": "number", "default": 120000, "minimum": 1000, "maximum": 600000, "description": "Bazaar CLI と関連する外部コマンドの制限時間（ミリ秒）です。GUI から中止した場合も同じ実行を停止します。" }
+        "bobBazaar.bzrPath": {
+          "type": "string",
+          "default": "bzr",
+          "description": "Bazaar コマンドを実行するファイルのパスです。PATH に bzr がない場合は絶対パスを指定します。"
+        },
+        "bobBazaar.textEncoding": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "utf8",
+            "shift_jis",
+            "cp932",
+            "windows-31j"
+          ],
+          "description": "Bazaar のログ、差分、ファイル内容を読み取る文字コードです。auto は UTF-8 を優先し、文字化けが疑われる場合に Shift-JIS 系で読み直します。"
+        },
+        "bobBazaar.mcpServerName": {
+          "type": "string",
+          "default": "bazaar",
+          "description": ".bob/mcp.json に保存する MCP サーバー名です。"
+        },
+        "bobBazaar.maxDiffBytes": {
+          "type": "number",
+          "default": 1048576,
+          "minimum": 32768,
+          "maximum": 5242880,
+          "description": "Bob に渡すレビュー資料へ含める Bazaar 差分の最大バイト数です。"
+        },
+        "bobBazaar.maxAddedFileContentBytes": {
+          "type": "number",
+          "default": 262144,
+          "minimum": 0,
+          "maximum": 2097152,
+          "description": "新規追加ファイルの本文をレビュー資料へ含める最大合計バイト数です。0 の場合は本文を含めません。"
+        },
+        "bobBazaar.projectRules.checklistPath": {
+          "type": "string",
+          "default": ".bob/review/checklist.json",
+          "description": "プロジェクト固有のレビュー確認項目 JSON のパスです。ワークスペース相対パスまたは絶対パスを指定します。"
+        },
+        "bobBazaar.projectRules.schemaPath": {
+          "type": "string",
+          "default": ".bob/review/review-result.schema.json",
+          "description": "レビュー結果 JSON の形式を検証するスキーマのパスです。ワークスペース相対パスまたは絶対パスを指定します。"
+        },
+        "bobBazaar.ruleAuthoring.pdfToTextPath": {
+          "type": "string",
+          "default": "pdftotext",
+          "description": "PDF の規約資料から文字を抽出する pdftotext コマンドの名前またはパスです。"
+        },
+        "bobBazaar.ruleAuthoring.maxSourceFiles": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "maximum": 20,
+          "description": "1回の規約作成で選択できる資料ファイル数です。拡張機能が許可する上限20件を超える値は使用されません。"
+        },
+        "bobBazaar.ruleAuthoring.maxSourceBytes": {
+          "type": "number",
+          "default": 26214400,
+          "minimum": 1,
+          "maximum": 26214400,
+          "description": "規約資料1件あたりの最大バイト数です。"
+        },
+        "bobBazaar.ruleAuthoring.maxAggregateSourceBytes": {
+          "type": "number",
+          "default": 104857600,
+          "minimum": 1,
+          "maximum": 104857600,
+          "description": "選択した規約資料全体の最大合計バイト数です。"
+        },
+        "bobBazaar.ruleAuthoring.maxChunkBytes": {
+          "type": "number",
+          "default": 32768,
+          "minimum": 1,
+          "maximum": 32768,
+          "description": "抽出した範囲1件あたりの最大 UTF-8 バイト数です。"
+        },
+        "bobBazaar.ruleAuthoring.maxSelectedEvidenceBytes": {
+          "type": "number",
+          "default": 1048576,
+          "minimum": 1,
+          "maximum": 1048576,
+          "description": "AI に渡す選択済み根拠全体の最大 UTF-8 バイト数です。"
+        },
+        "bobBazaar.commandTimeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "minimum": 1000,
+          "maximum": 600000,
+          "description": "Bazaar CLI と関連する外部コマンドの制限時間（ミリ秒）です。GUI から中止した場合も同じ実行を停止します。"
+        }
       }
     },
     "menus": {
       "commandPalette": [
-        { "command": "bobBazaar.openReviewGui" },
-        { "command": "bobBazaar.collectReviewContext", "when": "false" },
-        { "command": "bobBazaar.loadReviewRules", "when": "false" },
-        { "command": "bobBazaar.captureReviewResult", "when": "false" },
-        { "command": "bobBazaar.saveReviewResultFromClipboard", "when": "false" },
-        { "command": "bobBazaar.configureMcp", "when": "false" },
-        { "command": "bobBazaar.initProjectRules", "when": "false" },
-        { "command": "bobBazaar.authorProjectRulesFromDocuments" },
-        { "command": "bobBazaar.reviewRevision", "when": "false" },
-        { "command": "bobBazaar.reviewRange", "when": "false" },
-        { "command": "bobBazaar.reviewRevisionWithProjectRules", "when": "false" },
-        { "command": "bobBazaar.reviewRangeWithProjectRules", "when": "false" },
-        { "command": "bobBazaar.validateReviewResultJson", "when": "false" },
-        { "command": "bobBazaar.records.initCampaign", "when": "false" },
-        { "command": "bobBazaar.records.createRecord", "when": "false" },
-        { "command": "bobBazaar.records.validateRecord", "when": "false" },
-        { "command": "bobBazaar.records.createTriage", "when": "false" },
-        { "command": "bobBazaar.records.validateTriage", "when": "false" },
-        { "command": "bobBazaar.records.generateSummary", "when": "false" }
+        {
+          "command": "bobBazaar.openReviewGui"
+        },
+        {
+          "command": "bobBazaar.collectReviewContext",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.loadReviewRules",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.captureReviewResult",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.saveReviewResultFromClipboard",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.configureMcp",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.initProjectRules",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.authorProjectRulesFromDocuments"
+        },
+        {
+          "command": "bobBazaar.reviewRevision",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.reviewRange",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.reviewRevisionWithProjectRules",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.reviewRangeWithProjectRules",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.validateReviewResultJson",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.records.initCampaign",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.records.createRecord",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.records.validateRecord",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.records.createTriage",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.records.validateTriage",
+          "when": "false"
+        },
+        {
+          "command": "bobBazaar.records.generateSummary",
+          "when": "false"
+        }
       ],
       "scm/title": [
-        { "command": "bobBazaar.openReviewGui", "group": "navigation" }
+        {
+          "command": "bobBazaar.openReviewGui",
+          "group": "navigation"
+        }
       ]
     }
   },
@@ -114,7 +327,7 @@
     "unused:report": "node scripts/run-unused-checks.js",
     "artifact:policy": "node scripts/check-artifact-size-policy.js --max-bytes 12000 templates",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
-    "compile": "tsc -p ./",
+    "compile": "node scripts/build-shared-runtime.js",
     "dependency:policy": "node --test test/dependencyPolicy.test.js",
     "test": "npm run compile && node --test test/*.test.js",
     "watch": "tsc -watch -p ./",

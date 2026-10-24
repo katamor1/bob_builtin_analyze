@@ -68,6 +68,7 @@ test("bob-bazaar-review dependency policy requires a committed lockfile and loca
   assert.ok(fs.existsSync(lockPath), "package-lock.json must be committed for reproducible VSIX builds")
 
   assert.equal(packageJson.scripts["dependency:policy"], "node --test test/dependencyPolicy.test.js")
+  assertLocalScript(packageJson, "compile", "node scripts/build-shared-runtime.js")
   assertLocalScript(packageJson, "architecture:policy", "node scripts/check-import-cycles.js src")
   assertLocalScript(packageJson, "source:policy", "node scripts/check-export-star-policy.js src")
   assertLocalScript(packageJson, "unused:policy", "node scripts/run-unused-policy.js")

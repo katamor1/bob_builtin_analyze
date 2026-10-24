@@ -18,14 +18,26 @@
   "scripts": {
     "contracts:generate": "node scripts/generate-processing-budget-contracts.js",
     "contracts:check": "node scripts/generate-processing-budget-contracts.js --check",
-    "compile": "npm run contracts:check && tsc -p ./",
+    "compile": "node scripts/build-runtime.js",
     "prepack": "npm run compile",
     "typecheck:consumers": "tsc -p test/fixtures/tsconfig.json --noEmit",
-    "test": "npm run compile && npm run typecheck:consumers && node --test test/*.test.js"
+    "test": "npm run compile && npm run typecheck:consumers && node --test --test-concurrency=1 test/*.test.js"
   },
   "devDependencies": {
     "@types/node": "20.19.43",
     "fflate": "0.8.3",
     "typescript": "5.9.3"
+  },
+  "exports": {
+    ".": {
+      "types": "./out/index.d.ts",
+      "require": "./out/index.js",
+      "default": "./out/index.js"
+    },
+    "./validated-ooxml": {
+      "types": "./out/validatedOoxml.d.ts",
+      "require": "./out/validatedOoxml.js",
+      "default": "./out/validatedOoxml.js"
+    }
   }
 }

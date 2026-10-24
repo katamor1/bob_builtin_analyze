@@ -19,6 +19,7 @@ test("extension dependency policy requires a committed lockfile and local releas
   assert.ok(fs.existsSync(lockPath), "package-lock.json must be committed for reproducible VSIX builds")
 
   assert.equal(packageJson.scripts["dependency:policy"], "node --test test/dependencyPolicy.test.js")
+  assertLocalScript(packageJson, "compile", "node scripts/build-shared-runtime.js")
   assertLocalScript(packageJson, "architecture:policy", "node scripts/check-import-cycles.js src")
   assertLocalScript(packageJson, "source:policy", "node scripts/check-export-star-policy.js src")
   assertLocalScript(packageJson, "unused:report", "node scripts/run-unused-checks.js")
@@ -33,6 +34,8 @@ test("extension dependency policy requires a committed lockfile and local releas
   assert.equal(packageJson.devDependencies.depcheck, "^1.4.7")
   assert.equal(packageJson.devDependencies["ts-prune"], "^0.10.3")
   assert.equal(packageJson.dependencies["read-excel-file"], "^9.2.0")
+  assert.equal(packageJson.dependencies.fflate, "0.8.3")
+  assert.equal(readJson("package-lock.json").packages["node_modules/fflate"].version, "0.8.3")
   assert.ok(!packageJson.dependencies.xlsx, "xlsx must not be a production dependency because npm audit has no fixed version")
 
   const vscodeignore = fs.readFileSync(path.join(extensionRoot, ".vscodeignore"), "utf8").split(/\r?\n/)
