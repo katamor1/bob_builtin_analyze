@@ -1,3 +1,4 @@
+import {applyBoundedDocumentSourceAdmission,validateBoundedDocumentRepository} from './boundedDocumentAdmissionPolicy.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -182,25 +183,27 @@ export function processingBudgetT13SourceFiles(){
  const a=data(ADMISSION);validateProcessingBudgetSourceAdmission(a);
  return [...a.sourceRows.map(x=>({path:x.path,mode:x.mode,blobSha:x.afterBlobSha})),...a.controlRows].map(x=>({...x})).sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);
 }
-// Future T14/T15 add separately reviewed literal layers here; the T13 base remains immutable.
-export function processingBudgetCurrentSourceFiles(){return processingBudgetT13SourceFiles();}
+// Reviewed current layers are applied separately; the T13 base remains immutable.
+export function processingBudgetCurrentSourceFiles(){return applyBoundedDocumentSourceAdmission(fs.readFileSync(path.join(ROOT,'tools/main-consolidation/bounded-document-source-admission.json')),{domain:'processing_budget',baseFiles:processingBudgetT13SourceFiles()});}
 
 export function validateProcessingBudgetRepository(root=ROOT){
  root=path.resolve(root);if(!fs.lstatSync(root).isDirectory()||fs.lstatSync(root).isSymbolicLink())fail('repository root');
  for(const [relative,expected] of Object.entries(baselines))if(gateRDigest(fs.readFileSync(safeFile(root,relative)))!==expected)fail('unchanged Owner/Discovery baseline');
  validateProcessingBudgetSourceAdmission(read(root,ADMISSION));validateProcessingBudgetCoverage(read(root,COVERAGE));
- const git=(args,input)=>execFileSync('git',args,{cwd:root,input,encoding:'utf8',maxBuffer:4*1024*1024,stdio:['pipe','pipe','pipe']}).trim();
- const expected=processingBudgetCurrentSourceFiles();
+ validateBoundedDocumentRepository(root);
+ const git=(args,input)=>execFileSync('git',args,{cwd:root,input,encoding:'utf8',maxBuffer:16*1024*1024,stdio:['pipe','pipe','pipe']}).trim();
+ const expected=processingBudgetCurrentSourceFiles(),controls=[ADMISSION,'tools/main-consolidation/processingBudgetAdmissionPolicy.mjs'];
+ const required=[...new Set([...expected.map(row=>row.path),...controls])].sort();
+ for(const relative of required)fs.readFileSync(safeFile(root,relative));
+ const index=new Map();
+ for(const line of git(['ls-files','--stage','--',...required]).split('\n')){const match=/^100644 ([0-9a-f]{40}) 0\t(.+)$/.exec(line);if(!match||index.has(match[2]))fail('index source identity');index.set(match[2],match[1]);}
+ const measured=git(['hash-object','--stdin-paths'],required.join('\n')+'\n').split('\n');if(measured.length!==required.length)fail('working source inventory');
+ const working=new Map(required.map((relative,position)=>[relative,measured[position]]));
  for(const row of expected){
-  const file=safeFile(root,row.path),index=git(['ls-files','--stage','--',row.path]);
-  if(index!==`100644 ${row.blobSha} 0\t${row.path}`)fail('index source identity: '+row.path);
-  const bytes=fs.readFileSync(file);
-  if(git(['hash-object','--path='+row.path,'--stdin'],bytes)!==row.blobSha)fail('working source identity: '+row.path);
+  if(index.get(row.path)!==row.blobSha)fail('index source identity: '+row.path);
+  if(working.get(row.path)!==row.blobSha)fail('working source identity: '+row.path);
  }
- for(const relative of [ADMISSION,'tools/main-consolidation/processingBudgetAdmissionPolicy.mjs']){
-  const file=safeFile(root,relative),index=git(['ls-files','--stage','--',relative]);
-  if(!index.startsWith('100644 ')||git(['hash-object','--path='+relative,'--stdin'],fs.readFileSync(file))!==index.split(' ')[1])fail('control working/index identity');
- }
+ for(const relative of controls)if(!index.has(relative)||working.get(relative)!==index.get(relative))fail('control working/index identity');
  const packagePrefix='packages/processing-budget-runtime/';
  const actual=[];
  function inventory(dir,relative){for(const name of fs.readdirSync(dir)){

@@ -1,0 +1,810 @@
+{
+  "baseFilesDigests": {
+    "gateRDiscovery": "b611481d7cc00f46bb040bbc4d89620f971ee39e94cba1dd009f5d435d3012f0",
+    "processingBudgetT13": "06e8a58e3cdbf447d9cf0238c8979adf6f8117373e872079f47062b92056d50d"
+  },
+  "baseMainSha": "0e806d48dfdd3136f47f36218b72fba1cfb4c4fd",
+  "baseTreeSha": "7623f90470a16145cdcb8d641959e18856820f67",
+  "controlRows": [
+    {
+      "afterBlobSha": "dc11f74de6b37e2c5446336e82213ef1e133cbf1",
+      "beforeBlobSha": "2cbdece50d3835192d07102af764938ed0dedd52",
+      "mode": "100644",
+      "path": ".gitattributes",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "9c0cce80e0802cba658dbcfc75862064a48aae91",
+      "beforeBlobSha": "e7082022513c63de984ba276feb5d26c511701be",
+      "mode": "100644",
+      "path": ".github/workflows/code-consistency-review-scaffold.yml",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "059fa43e3b2f00e6f4084cc8e7c4570df66cf661",
+      "beforeBlobSha": "bba89c38e0dc5c4dbeef645bac9a04947d74437a",
+      "mode": "100644",
+      "path": ".github/workflows/extensions-quality.yml",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "0c4a8f663d8be3306d64dd4a7fa008f0285c09a7",
+      "beforeBlobSha": "634f8bd94657f944c94cb2b9992624df3cf8d063",
+      "mode": "100644",
+      "path": ".github/workflows/processing-budget-runtime.yml",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "49eece1cdad568269201b3ac400070ead438985f",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "docs/release-evidence/proc-t14-bounded-doc-source-coverage-2026-10-24.json",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "62994b3e7c04c9b3b61fd7273d5824f5350503a3",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "docs/superpowers/plans/2026-10-24-proc-t14-bounded-doc.md",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "f935523a0ec8bb1d3c23dbd7a16b1f655570fd8e",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "docs/superpowers/specs/2026-10-24-proc-t14-bounded-doc-design.md",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "bbf87c58ed9274ca73f7eefce54d8d8441928a97",
+      "beforeBlobSha": "6b7da725baa4dcf1ef4ccdb4f0be9106e0e2d6ce",
+      "mode": "100644",
+      "path": "scripts/exact-head-ci-contract.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "af963a8e73ae4ce93b2693886ff4dd5caa9eac05",
+      "beforeBlobSha": "209e4fe8c6ec034a15f1ffaedf3657d522b5c8d9",
+      "mode": "100644",
+      "path": "scripts/extension-host-smoke-contract.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "2d1883675a524ebcdd8804292d888c13c9806c36",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/processing-runtime-build-workflow.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "b4613b61922034ecc2bfc95725136a96124b83b6",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/t14-bounded-document-installed-extension-host.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "a59d9dffad2b9639a027319bc2331b596d1ebc9e",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/t14-bounded-document-installed-smoke.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "07c443b4e8b16ee2aafb585a5f783a2c4529d321",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/t14-bounded-document-installed-smoke.test.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "02ebd70117bd8bf69b7f5f7c9b26a29d188a343e",
+      "beforeBlobSha": "232bac6c7ad371f7e601caa1d52f1b04200bece6",
+      "mode": "100644",
+      "path": "scripts/three-extension-ui-contract-workflow.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "65d33bdde8f395180b2fd2d46c785a489af42ad2",
+      "beforeBlobSha": "8b230d95d6d448d873f886b3e8c69e1f2adc52bb",
+      "mode": "100644",
+      "path": "tools/main-consolidation/gateRMainAdmissionPolicy.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "a35ff1d4980bd22107f90b6272f8331f39b9ad09",
+      "beforeBlobSha": "8c6e9b57c4cdc41d526f504471fdfa5053222e74",
+      "mode": "100644",
+      "path": "tools/main-consolidation/processingBudgetAdmissionPolicy.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "5524562655d9165e1d786d2a0617f0b8bfec77d9",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "tools/main-consolidation/test/boundedDocumentAdmissionPolicy.test.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "fe6007b856da932da21d6f730a89298f94286665",
+      "beforeBlobSha": "ae632e6ba483e535b952e91fff103996f9914da5",
+      "mode": "100644",
+      "path": "tools/main-consolidation/test/gateRMainAdmissionPolicy.test.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "a0f1b8c83fee23b2267e42e9caf21fa00463cd43",
+      "beforeBlobSha": "c757c5b7ff8f57c9735f7a8eea48260f635ee20b",
+      "mode": "100644",
+      "path": "tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs",
+      "sourceItemIds": []
+    }
+  ],
+  "schemaVersion": "bob-builtin-analyze/bounded-document-source-admission/v1",
+  "sourceCoverageDigest": "d46487c938af20b02ed35b1e21d5c4dc11394c494ff7cb0685efa7a35cb3e2e5",
+  "sourceRows": [
+    {
+      "afterBlobSha": "b92a6da826e7a882501bfc025b01134199e56f59",
+      "beforeBlobSha": "9a8bfea5c1b2cd2780fec905003982694b624223",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/README.md",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "34a186fdca4169bdb78572c5f69e8b9e3537d959",
+      "beforeBlobSha": "96235c33f13a4f6759df82e3d820171662ddf60d",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/package.json",
+      "sourceItemIds": [
+        "source-0f84fc23754230d796e0a5b3"
+      ]
+    },
+    {
+      "afterBlobSha": "d7dfd859fcbb592273e9fed9ef93b9eb1384e6ef",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/scripts/build-shared-runtime.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "e4d0327a1fc73fca92a594e191be54ff4cccbaee",
+      "beforeBlobSha": "8f6dce6347f1ec72a002038b0cc7cdedcbd49745",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/ruleAuthoring/extraction/documentExtractor.ts",
+      "sourceItemIds": [
+        "source-9364e198f4b4e13273dfe750"
+      ]
+    },
+    {
+      "afterBlobSha": "f229c434e39a47d02aede5bcb5924b2f9b8d112b",
+      "beforeBlobSha": "f229c434e39a47d02aede5bcb5924b2f9b8d112b",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/ruleAuthoring/extraction/docxExtractor.ts",
+      "sourceItemIds": [
+        "source-79eaa2908653365204363bca"
+      ]
+    },
+    {
+      "afterBlobSha": "2a5dae5e8c1c89b3e5f952294a299eb924eb8fba",
+      "beforeBlobSha": "1c581f7ccfb3932115eb0f80f2770ab331c6c757",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/ruleAuthoring/extraction/ooxmlArchive.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "bd3083d42eef5b7fc53059afe7f56698fb7899ee",
+      "beforeBlobSha": "b6a7655698219250050023ac3c713da47074bbd9",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/ruleAuthoring/extraction/ooxmlPreflight.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "afde548593108320fc684ecb0801f7b1b5ce93a8",
+      "beforeBlobSha": "afde548593108320fc684ecb0801f7b1b5ce93a8",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/ruleAuthoring/extraction/xlsxExtractor.ts",
+      "sourceItemIds": [
+        "source-e056445cbc6911cd4866e520"
+      ]
+    },
+    {
+      "afterBlobSha": "818fb397bf6a30b62202c2da57da9dd9580d8e60",
+      "beforeBlobSha": "8ebb7a7857955434d0a17cb37c8f5a8ce0dc2d65",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/ruleAuthoring/ruleSourceHash.ts",
+      "sourceItemIds": [
+        "source-da39f68ce042cc7d54b5e92b"
+      ]
+    },
+    {
+      "afterBlobSha": "06e8ed9419734c14105ef071ba1e3a6733f4cf1e",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/sharedProcessingBudgetRuntime.ts",
+      "sourceItemIds": [
+        "source-757ca93020f46db1d64ffa69"
+      ]
+    },
+    {
+      "afterBlobSha": "fc72a4b0cf533590a78e88869cf4ca6fb1e01163",
+      "beforeBlobSha": "205fdda3de840ac683589aa0039d0512375e6715",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/dependencyPolicy.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "e94f6126330effb5f22e250b8abb36275ee6ed40",
+      "beforeBlobSha": "a4ee37273231a18a40846a1ef0b7f8b81aefcd7b",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/extensionSourceLayout.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "44c5fa0ecbb7382e2b9b55371388021b51b7d212",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/helpers/sharedOoxmlTestAdapter.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "7bf3f1ed9d6ec0696ad652769a7b969c4738b2b8",
+      "beforeBlobSha": "8ef27dd0475a1fafa41cc6adac9ec82e2af023a9",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleAuthoringHeavyDependencyLoading.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "2614c926943f40b14cff90db88088ecef7145228",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleBoundedOoxmlExtraction.test.js",
+      "sourceItemIds": [
+        "source-081690cb9b343e0e4fd86aaa"
+      ]
+    },
+    {
+      "afterBlobSha": "89041ee0b781c8b4ae1794ef7bc2dab13c1f8572",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleConfiguredFingerprintLimit.test.js",
+      "sourceItemIds": [
+        "source-116947d48756a2313f259d67"
+      ]
+    },
+    {
+      "afterBlobSha": "514dd4db72fac21c1c100ad7ff47d38daf3d9c21",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleConfiguredOoxmlLimitForwarding.test.js",
+      "sourceItemIds": [
+        "source-b4ab7cc1ae4820e5605f057e"
+      ]
+    },
+    {
+      "afterBlobSha": "1fe729fabff18d73284af230a440aefd4bfa15ea",
+      "beforeBlobSha": "ebe14943f18b003fa0d4f789545b96a4199b52c3",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleDocumentExtraction.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "85e71b7c4c6a554fa274ba421081dd9999e25f9f",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleNoLegacyOoxmlPreflight.test.js",
+      "sourceItemIds": [
+        "source-9e6d125b619471c4637173cb"
+      ]
+    },
+    {
+      "afterBlobSha": "cba58ec568e1523db0fde454b2f0da22db2e1acc",
+      "beforeBlobSha": "d649f7188f9d105884ac91e3e6151dc0bf573980",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleOoxmlPreflight.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "8bd48f71c4990f48f9108b890c73afb155abedb8",
+      "beforeBlobSha": "7fd6de41be20adad87922fe05d3bb0d06d54c1cd",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleSourceHash.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "dae9cb002d9d52b0f2cd5b4c094050d69c8885b9",
+      "beforeBlobSha": "c69107e64ceae37551013117fa846c3f440006c6",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleXlsxExtraction.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "1c31b365f8bbd554ee11c42ce5054af1ef224cfc",
+      "beforeBlobSha": "6c01f160cd131cbb76ee049b45c9110685ca5dfa",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/README.md",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "ae54fb098c1c5b8a120ab2a7976f5d7c00f5504e",
+      "beforeBlobSha": "72d32a3b297dc496666073301299dc8a3cda6337",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/package-lock.json",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "364ae0bb19f14a20b09cb2ab22da3c2d149f9e1f",
+      "beforeBlobSha": "3f00affb63b12a1a4bd6e1a7c0af823f4e94c132",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/package.json",
+      "sourceItemIds": [
+        "source-c7840f4d1fe2e382e974f73a"
+      ]
+    },
+    {
+      "afterBlobSha": "d7dfd859fcbb592273e9fed9ef93b9eb1384e6ef",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/scripts/build-shared-runtime.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "3210fb0a364c12be772e83637ff46df3104a041f",
+      "beforeBlobSha": "998e9f5ddcdafe791fe42399a8b5db18fe67e973",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/analyzers/documentDocxExtractor.ts",
+      "sourceItemIds": [
+        "source-115f8910d0fd986cd859a0cb"
+      ]
+    },
+    {
+      "afterBlobSha": "9a8a1f351135f4a03d0cc88a26839286c4029b41",
+      "beforeBlobSha": "6cdaa269ad4160cb1ba26cb216e945f0f815be09",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/analyzers/documentExtractor.ts",
+      "sourceItemIds": [
+        "source-db0dcef3635a43637cc9c2f3"
+      ]
+    },
+    {
+      "afterBlobSha": "1c63051d0028eeeb9806892e9fdd8b10cf4a44ec",
+      "beforeBlobSha": "80535d3a5e4317be823e05a9a3213bc89803bac7",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/analyzers/documentXlsxExtractor.ts",
+      "sourceItemIds": [
+        "source-98d63195b541433bc119f411"
+      ]
+    },
+    {
+      "afterBlobSha": "18c23812d6174bcfd3e5f40bd6323e7b524d4d96",
+      "beforeBlobSha": "aa2a4e9437337b46d90966a53cef08a252eaa55e",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/commands/reviewInputCommands.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "436700a076baad22f6f2836b744800298febf072",
+      "beforeBlobSha": "4f3fda1363284b48492a00505582202dd081e1dc",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/reviewInputAiDraftProvider.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "4bbde580ef2a4ebddbc81aac4b72eae1a944fd1b",
+      "beforeBlobSha": "fdf7cddf3014603afbea3d268ab164326f0b611b",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/reviewInputDiscovery.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "7d59bf376a37eec9f5b01927f554c1d9f1cf6f96",
+      "beforeBlobSha": "19220b053e51ea100a9e296abadaefc06a9ac68d",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/traceabilityAiDraftProvider.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "836e39f1a4f8a722c9d0411c62caa45913815eed",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/reviewProcessingConfiguration.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "06e8ed9419734c14105ef071ba1e3a6733f4cf1e",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/sharedProcessingBudgetRuntime.ts",
+      "sourceItemIds": [
+        "source-15ac07e0adbade462b24c3d7"
+      ]
+    },
+    {
+      "afterBlobSha": "9ffd6ba9ea9271d57074205ada471633cee625df",
+      "beforeBlobSha": "a1a6c5f49945f47f742d7380d79b5134136d5e50",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/traceabilityCommands.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "ae04445b0d50df96823916031332b9bad774ca2a",
+      "beforeBlobSha": "e605c6eaa8f6255a186647ca4758db0df5706bf7",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/webview/consistencyReviewWizard.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "02e4871355ca057c19acbe594f095b5dc4deeea6",
+      "beforeBlobSha": "335a21f642d5f239dc06f3b6e7ab316b6a57278c",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/dependencyPolicy.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "06f0c52695aa6a116833ece93e20191dcac87de7",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/discoveryProcessingLimitsWiring.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "14195fc57c9eedf4ee9703f9af37a443313a077f",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/documentBoundedInput.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "98a473e1db1b04172dea0fd6ff34b243deae9ef6",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/documentSourceLimitDescription.test.js",
+      "sourceItemIds": [
+        "source-d2c3714904c50e0fe41bbb09"
+      ]
+    },
+    {
+      "afterBlobSha": "09a5c658640e0d54fce797fd539545e3b8a6018e",
+      "beforeBlobSha": "7b30722f4fbe756983e744cbd52dc19b236bc416",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/heavyDependencyLoading.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "2167bcc3007391e86963f0c6213a514fea4d18ea",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/reviewInputDiscovery.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "5f0f3ca6bb144943c23d3f6b6e279aeeb7bf9814",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/reviewProcessingConfiguration.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "d4818f4389dc49f53227c08152337390558b9801",
+      "beforeBlobSha": "11fec4faacbeb40df9d3c2ef7ab648fe89589003",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/sizeLimits.test.js",
+      "sourceItemIds": [
+        "source-92c9c09c80024b9a183e6a25"
+      ]
+    },
+    {
+      "afterBlobSha": "142f34dbc6309ab46eccc5562a3ea6e97eb19525",
+      "beforeBlobSha": "09af2a1b2c7186793805ab3f89b89972027d7d05",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/README.md",
+      "sourceItemIds": [
+        "source-11c6eda712b2f301761a6dd5"
+      ]
+    },
+    {
+      "afterBlobSha": "6ec87b8000300cb4b261de8d09826cb8d1ffa892",
+      "beforeBlobSha": "57007a558a51b2dfe26bfe065cbf37bd1d94ec42",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/package-lock.json",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "893b52e182df9d25cf6fd29665d36529150aa596",
+      "beforeBlobSha": "b3d67a460a1203f5e4a24d5242e595103c615176",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/package.json",
+      "sourceItemIds": [
+        "source-a2f4e841de98c10855985c8d"
+      ]
+    },
+    {
+      "afterBlobSha": "29de44d55711e9b8705973286d28cfd0e64b4d0a",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/scripts/build-runtime.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "d97e0b393f1d35b864dcb44fa137e5461f00982e",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/scripts/check-document-boundary.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "9aae44ca6d7573adc6840246835842a0f297ed41",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/scripts/copy-extension-runtime.js",
+      "sourceItemIds": [
+        "source-6e47fdc9c880c66578479d9e",
+        "source-88eaed95118bf51f812a1b91"
+      ]
+    },
+    {
+      "afterBlobSha": "d6dae9e9a26c9e70ded5e73d008815e3d1c8e2a1",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/scripts/runtime-payload.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "3bf3b67099e007d1094692c446f332d207cf1a1e",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/boundedDocumentError.ts",
+      "sourceItemIds": [
+        "source-e6b932cf56ceda58b85a155f"
+      ]
+    },
+    {
+      "afterBlobSha": "5bd694a2e4e9f73d2c8cb61969d09a2e4308f169",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/boundedDocumentFile.ts",
+      "sourceItemIds": [
+        "source-9c736d36f51e003acd61ec67"
+      ]
+    },
+    {
+      "afterBlobSha": "f7759503eded7bf7b25b0cebdc69a72da65e9398",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/boundedDocumentIo.ts",
+      "sourceItemIds": [
+        "source-61060f515b48c9284440815f"
+      ]
+    },
+    {
+      "afterBlobSha": "a9f805fb3b2cbd261f8715997775a26477569ac7",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/boundedDocumentRequest.ts",
+      "sourceItemIds": [
+        "source-9c736d36f51e003acd61ec67"
+      ]
+    },
+    {
+      "afterBlobSha": "dc3b6940cf52e72cdab4ccad27dd0ef071a923e8",
+      "beforeBlobSha": "190dddd4831b25b0a8c8151016c8f35fd2ea8e67",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/index.ts",
+      "sourceItemIds": [
+        "source-8e4006e199b552802bd3321e"
+      ]
+    },
+    {
+      "afterBlobSha": "90383950e8077d6cd209c051c17333ca17cdc1ca",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/ooxmlParserInput.ts",
+      "sourceItemIds": [
+        "source-212b25dd59af07e1690b14f0",
+        "source-8921fb578f27dc51782bedbb",
+        "source-e9d5a1e9d34f3ddaa30417cb"
+      ]
+    },
+    {
+      "afterBlobSha": "3e7b96982cdc72a55f82b63dc60f18a0f10a805e",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/ooxmlPreflight.ts",
+      "sourceItemIds": [
+        "source-212b25dd59af07e1690b14f0",
+        "source-e9d5a1e9d34f3ddaa30417cb"
+      ]
+    },
+    {
+      "afterBlobSha": "7ad56fbce461f8e065e73fc8aeecd0a72cb5bf4f",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/validatedOoxml.ts",
+      "sourceItemIds": [
+        "source-8921fb578f27dc51782bedbb"
+      ]
+    },
+    {
+      "afterBlobSha": "1c581f7ccfb3932115eb0f80f2770ab331c6c757",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/baseline/m2-ooxmlArchive.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "b6a7655698219250050023ac3c713da47074bbd9",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/baseline/m2-ooxmlPreflight.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "dafc16b11602c6e914da53ca010deaa797ab0214",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/baseline/m2-ruleAuthoringLimits.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "d649f7188f9d105884ac91e3e6151dc0bf573980",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/baseline/m2-ruleOoxmlPreflight.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "8ebb7a7857955434d0a17cb37c8f5a8ce0dc2d65",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/baseline/m2-ruleSourceHash.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "f40c9aa52d48aee3bcda236616b22d9a9a234b14",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/baseline/m2-storedZipFixture.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "b0aed8bdf122514a291f1fb44ada01448b4b0451",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/boundedArchiveInputLimit.test.js",
+      "sourceItemIds": [
+        "source-c4a71884a59c961e40fd6866"
+      ]
+    },
+    {
+      "afterBlobSha": "70a415490a6b78060d290f8b05869d5c25de5e7e",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/boundedDocumentIo.test.js",
+      "sourceItemIds": [
+        "source-8bc8f4d403d2a239104b230b"
+      ]
+    },
+    {
+      "afterBlobSha": "65064784716f341ccf7ac76106c4b68218d4c968",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/boundedDocumentPackaging.test.js",
+      "sourceItemIds": [
+        "source-e1425c0445b88a037b0c09af"
+      ]
+    },
+    {
+      "afterBlobSha": "af51ec7f65a0f1e32a2a1e8b3a893f17148f1cbc",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/boundedDocumentRuntime.test.js",
+      "sourceItemIds": [
+        "source-77efe876583486afd84bc446"
+      ]
+    },
+    {
+      "afterBlobSha": "370659d459deef4706a0e600773271066cb912af",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/boundedZipRetention.test.js",
+      "sourceItemIds": [
+        "source-122cdfe84d37c5f2d7462bdc"
+      ]
+    },
+    {
+      "afterBlobSha": "b15c11548f9062d09844b2dd306c7bb1dc86ee8b",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/extensionIntegrationContract.test.js",
+      "sourceItemIds": [
+        "source-f67f10f4f0b705f9399609cd"
+      ]
+    },
+    {
+      "afterBlobSha": "4a48da41fee37922259a05946de97140cc0b74af",
+      "beforeBlobSha": "e78c6b11f3effdf72fa7e11e0a7fdf21fc0a00c0",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/fixtures/bob-bazaar-review-consumer.ts",
+      "sourceItemIds": [
+        "source-766a64b493cd8b3b12542bb6"
+      ]
+    },
+    {
+      "afterBlobSha": "5e7a01be044218ebee537c57e835799acc63c69d",
+      "beforeBlobSha": "fbf6a2f4398efc53138dda675e3874c098202a8a",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/fixtures/bob-code-consistency-review-consumer.ts",
+      "sourceItemIds": [
+        "source-8c8b935c16fbfd490ffaed7c"
+      ]
+    },
+    {
+      "afterBlobSha": "9c56c59080aa6de1df3495dc34d5590b77d1dcdd",
+      "beforeBlobSha": "080e9d7e42b0b67b298ed20ddc9e575f9219bc47",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/fixtures/tsconfig.json",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "5e7a01be044218ebee537c57e835799acc63c69d",
+      "beforeBlobSha": "fbf6a2f4398efc53138dda675e3874c098202a8a",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/fixtures/workflow-register-consumer.ts",
+      "sourceItemIds": [
+        "source-55668c6c4fc0ac2d3e153762"
+      ]
+    },
+    {
+      "afterBlobSha": "38de6619f6ea06e560e2f3dc558cd9238d4adf89",
+      "beforeBlobSha": "2b617b2245112dba48397d65547ecddfb908cbe9",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/helpers.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "db835053a6e0e15acce0569b0dc1e0ce7beb67aa",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/helpers/boundedDocumentFixtures.js",
+      "sourceItemIds": [
+        "source-a7bc4d9c841743268ccca70c"
+      ]
+    },
+    {
+      "afterBlobSha": "af580800d4af5cf058bf21e9f6f99fdd3c550208",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/helpers/m2OoxmlBaseline.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "402b3a4f5cc20799402c5aba25954141d59c5d78",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/ooxmlMigrationParity.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "3157f7b21ebd016a2c4c4b2b1fcd5a61464e9550",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/ooxmlParserInput.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "49d0dd234677e6950e9ede55ba331be3a80b016e",
+      "beforeBlobSha": "1f3da0c84baacee836da0d671aef37c34a18668d",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/packageContract.test.js",
+      "sourceItemIds": [
+        "source-e8f3a56005a262a9606c1e60"
+      ]
+    },
+    {
+      "afterBlobSha": "b96f2b3f0f6578e7a7baecaef8830fd209020b66",
+      "beforeBlobSha": "a2773c07ff8a218d21d3ae4f802e9e4e5131c9e2",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/processingBudgetContracts.test.js",
+      "sourceItemIds": []
+    }
+  ]
+}
