@@ -1,6 +1,9 @@
+import { createDocumentLedger, readBoundedDocumentFile, fingerprintBoundedDocumentFile, withValidatedOoxmlParserInput, loadXlsxCodec } from "../sharedProcessingBudgetRuntime"
+import { normalizeReviewProcessingLimits, type ReviewProcessingLimits } from "./limits"
+import { decodeTextBuffer } from "./textEncoding"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
-import { readTextFile, relativePosix, resolveWorkspacePathStrict } from "./fileSystem"
+import { relativePosix, resolveWorkspacePathStrict } from "./fileSystem"
 import type { ArtifactKind, ReviewInputArtifactDraft } from "./reviewInputBuilder"
 
 type ExcelFileModule = typeof import("read-excel-file/node")
@@ -10,6 +13,7 @@ export type ReviewInputDiscoveryOptions = {
   maxFiles?: number
   maxIdsPerFile?: number
   textEncoding?: string
+  limits?: Partial<ReviewProcessingLimits>
 }
 
 export type ReviewInputDocumentCandidate = ReviewInputArtifactDraft & {
@@ -30,6 +34,7 @@ let excelFileModulePromise: Promise<ExcelFileModule> | undefined
 export async function discoverReviewInputCandidates(workspaceRoot: string, options: ReviewInputDiscoveryOptions = {}): Promise<ReviewInputDiscoveryResult> {
   const warnings: string[] = []
   const root = resolveWorkspacePathStrict(workspaceRoot, options.docsRoot ?? "docs", "docsRoot")
+  const limits = normalizeReviewProcessingLimits(options.limits)
   const maxFiles = options.maxFiles ?? 200
   const maxIdsPerFile = options.maxIdsPerFile ?? 20
 
@@ -51,9 +56,9 @@ export async function discoverReviewInputCandidates(workspaceRoot: string, optio
     const extension = path.extname(filePath).toLowerCase()
     try {
       if (extension === ".md" || extension === ".markdown") {
-        documents.push(await discoverMarkdownCandidate(filePath, relativePath, kind, options.textEncoding ?? "auto", maxIdsPerFile))
+        documents.push(await discoverMarkdownCandidate(filePath, relativePath, kind, options.textEncoding ?? "auto", maxIdsPerFile, workspaceRoot, limits))
       } else if (extension === ".xlsx") {
-        documents.push(await discoverXlsxCandidate(filePath, relativePath, kind, maxIdsPerFile))
+        documents.push(await discoverXlsxCandidate(filePath, relativePath, kind, maxIdsPerFile, workspaceRoot, limits))
       } else {
         documents.push({ kind, path: relativePath, label: relativePath, description: `${kind}; ID 抽出は未実施` })
       }
@@ -86,8 +91,9 @@ async function walkDocumentFiles(root: string, maxFiles: number): Promise<string
   return result
 }
 
-async function discoverMarkdownCandidate(filePath: string, relativePath: string, kind: ArtifactKind, textEncoding: string, maxIds: number): Promise<ReviewInputDocumentCandidate> {
-  const markdown = await readTextFile(filePath, textEncoding)
+async function discoverMarkdownCandidate(filePath: string, relativePath: string, kind: ArtifactKind, textEncoding: string, maxIds: number, workspaceRoot: string, limits: ReviewProcessingLimits): Promise<ReviewInputDocumentCandidate> {
+  const snapshot = await readBoundedDocumentFile(documentRequest(filePath, workspaceRoot, limits))
+  const markdown = decodeTextBuffer(snapshot.copyBytes(), textEncoding)
   const ids = uniqueMatches(markdown, maxIds)
   const selectorKey = kind === "test_spec" ? "cases" : "sections"
   return {
@@ -99,27 +105,35 @@ async function discoverMarkdownCandidate(filePath: string, relativePath: string,
   }
 }
 
-async function discoverXlsxCandidate(filePath: string, relativePath: string, kind: ArtifactKind, maxIds: number): Promise<ReviewInputDocumentCandidate> {
-  const readExcelFile = await loadExcelFile()
-  const workbook = await readExcelFile.default(filePath)
-  const ids: string[] = []
-  const sheetNames = workbook.map((sheet) => sheet.sheet)
-  for (const sheet of workbook) {
-    for (const row of sheet.data.slice(0, 80)) {
-      ids.push(...uniqueMatches(row.map(cellText).join(" "), maxIds - ids.length))
+async function discoverXlsxCandidate(filePath: string, relativePath: string, kind: ArtifactKind, maxIds: number, workspaceRoot: string, limits: ReviewProcessingLimits): Promise<ReviewInputDocumentCandidate> {
+  const request = documentRequest(filePath, workspaceRoot, limits)
+  const expectedFingerprint = await fingerprintBoundedDocumentFile({ filePath, rootPath: request.rootPath, maximumFileBytes: limits.maxDocumentBytes })
+  return withValidatedOoxmlParserInput({ ...request, expectedFingerprint, documentKind: "xlsx", structuralLimits: { maxEntries: 5000, maxExpandedBytes: 250 * 1048576 }, loadXlsxCodec }, async ({ parserInput }) => {
+    const readExcelFile = await loadExcelFile()
+    const workbook = await readExcelFile.default(parserInput)
+    const ids: string[] = []
+    const sheetNames = workbook.map((sheet) => sheet.sheet)
+    for (const sheet of workbook) {
+      for (const row of sheet.data.slice(0, 80)) {
+        ids.push(...uniqueMatches(row.map(cellText).join(" "), maxIds - ids.length))
+        if (ids.length >= maxIds) break
+      }
       if (ids.length >= maxIds) break
     }
-    if (ids.length >= maxIds) break
-  }
 
-  return {
-    kind,
-    path: relativePath,
-    sheets: sheetNames.length > 0 ? sheetNames : undefined,
-    rows: ids.length > 0 ? ids : undefined,
-    label: relativePath,
-    description: descriptionText(kind, ids.length > 0 ? ids : sheetNames)
-  }
+    return {
+      kind,
+      path: relativePath,
+      sheets: sheetNames.length > 0 ? sheetNames : undefined,
+      rows: ids.length > 0 ? ids : undefined,
+      label: relativePath,
+      description: descriptionText(kind, ids.length > 0 ? ids : sheetNames)
+    }
+  })
+}
+
+function documentRequest(filePath: string, workspaceRoot: string, limits: ReviewProcessingLimits) {
+  return { filePath, rootPath: path.resolve(workspaceRoot), maximumFileBytes: limits.maxDocumentBytes, target: "discovery", ledger: createDocumentLedger(limits.maxDocumentBytes) }
 }
 
 function cellText(cell: unknown): string {

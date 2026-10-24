@@ -1,3 +1,4 @@
+import { reviewProcessingLimitsFromConfiguration } from "../reviewProcessingConfiguration"
 import * as vscode from "vscode"
 import { applyAiReviewInputDraft, prepareAiReviewInputDraftPrompt } from "../core/reviewInputAiDraftProvider"
 import { writeReviewInputFromDraft } from "../core/reviewInputBuilder"
@@ -8,6 +9,7 @@ import {
   booleanOption,
   firstString,
   notifyError,
+  numberOption,
   notifyInfo,
   optionalAbsolute,
   requireBobWorkspaceRoot,
@@ -30,11 +32,19 @@ import { optionRecord } from "../workflowProviderRegistration"
 export async function runCreateReviewInput(options?: unknown): Promise<unknown> {
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
+  const limits = reviewProcessingLimitsFromConfiguration(config, {
+    maxDocumentBytes: numberOption(record, "maxDocumentBytes"),
+    maxWorkbookSheets: numberOption(record, "maxWorkbookSheets"),
+    maxRowsPerSheet: numberOption(record, "maxRowsPerSheet"),
+    maxExcerptBytesPerDocument: numberOption(record, "maxExcerptBytesPerDocument"),
+    maxRawDiffBytes: numberOption(record, "maxRawDiffBytes"),
+    maxBobInputBytes: numberOption(record, "maxBobInputBytes")
+  })
   const workspaceRoot = await requireBobWorkspaceRoot(record)
   const reviewInputPath = absolute(workspaceRoot, stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
 
-  const discovery = await discoverReviewInputCandidates(workspaceRoot, { textEncoding })
+  const discovery = await discoverReviewInputCandidates(workspaceRoot, { textEncoding, limits })
   const draft = await collectReviewInputDraft(discovery.documents)
   if (!draft) return { status: "cancelled" }
 
@@ -69,6 +79,14 @@ export async function runCreateReviewInput(options?: unknown): Promise<unknown> 
 export async function runPrepareAiReviewInputDraft(options?: unknown): Promise<unknown> {
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
+  const limits = reviewProcessingLimitsFromConfiguration(config, {
+    maxDocumentBytes: numberOption(record, "maxDocumentBytes"),
+    maxWorkbookSheets: numberOption(record, "maxWorkbookSheets"),
+    maxRowsPerSheet: numberOption(record, "maxRowsPerSheet"),
+    maxExcerptBytesPerDocument: numberOption(record, "maxExcerptBytesPerDocument"),
+    maxRawDiffBytes: numberOption(record, "maxRawDiffBytes"),
+    maxBobInputBytes: numberOption(record, "maxBobInputBytes")
+  })
   const workspaceRoot = await requireBobWorkspaceRoot(record)
   const reviewInputPath = absolute(workspaceRoot, stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
   const outputDir = absolute(workspaceRoot, stringOption(record, "aiDraftPromptPath") ?? ".bob-review/review-input-draft")
@@ -91,7 +109,8 @@ export async function runPrepareAiReviewInputDraft(options?: unknown): Promise<u
       vcsRoot: stringOption(record, "vcsRoot") ?? stringOption(record, "vcs_root"),
       bzrPath: resolveTrustedBzrPath(record, config.get<string>("bzrPath", "bzr")),
       diffFixturePath: optionalAbsolute(workspaceRoot, stringOption(record, "diffFixturePath")),
-      textEncoding
+      textEncoding,
+      limits
     })
   )
 

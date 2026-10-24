@@ -1,3 +1,4 @@
+import { reviewProcessingLimitsFromConfiguration } from "./reviewProcessingConfiguration"
 import * as path from "node:path"
 import * as vscode from "vscode"
 import { applyAiTraceabilityDraft, parseAiTraceabilityDraft, prepareAiTraceabilityDraftPrompt } from "./core/traceabilityAiDraftProvider"
@@ -15,6 +16,7 @@ import {
   booleanOption,
   firstString,
   notifyError,
+  numberOption,
   notifyInfo,
   notifyInfoWithReport,
   optionalAbsolute,
@@ -41,6 +43,14 @@ const TRACEABILITY_DRAFT_ITEM_TYPE_ALIASES: Record<string, string> = {
 export async function runPrepareAiTraceabilityDraft(options?: unknown): Promise<unknown> {
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
+  const limits = reviewProcessingLimitsFromConfiguration(config, {
+    maxDocumentBytes: numberOption(record, "maxDocumentBytes"),
+    maxWorkbookSheets: numberOption(record, "maxWorkbookSheets"),
+    maxRowsPerSheet: numberOption(record, "maxRowsPerSheet"),
+    maxExcerptBytesPerDocument: numberOption(record, "maxExcerptBytesPerDocument"),
+    maxRawDiffBytes: numberOption(record, "maxRawDiffBytes"),
+    maxBobInputBytes: numberOption(record, "maxBobInputBytes")
+  })
   const workspaceRoot = await requireBobWorkspaceRoot(record)
   const catalogPath = stringOption(record, "traceabilityCatalogPath") ??
     config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH)
@@ -65,7 +75,8 @@ export async function runPrepareAiTraceabilityDraft(options?: unknown): Promise<
       vcsRoot: stringOption(record, "vcsRoot") ?? stringOption(record, "vcs_root"),
       bzrPath: resolveTrustedBzrPath(record, config.get<string>("bzrPath", "bzr")),
       diffFixturePath: optionalAbsolute(workspaceRoot, stringOption(record, "diffFixturePath")),
-      textEncoding
+      textEncoding,
+      limits
     })
   )
 
