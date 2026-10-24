@@ -35,7 +35,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "49eece1cdad568269201b3ac400070ead438985f",
+      "afterBlobSha": "8bb8b1a7addf7c98bde99c10190a53dca909238a",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "docs/release-evidence/proc-t14-bounded-doc-source-coverage-2026-10-24.json",
@@ -141,13 +141,20 @@
     }
   ],
   "schemaVersion": "bob-builtin-analyze/bounded-document-source-admission/v1",
-  "sourceCoverageDigest": "d46487c938af20b02ed35b1e21d5c4dc11394c494ff7cb0685efa7a35cb3e2e5",
+  "sourceCoverageDigest": "a79353cf0a4663cced2a7e4417e583ddf0f8a233344730d06380ff10a65fffa9",
   "sourceRows": [
     {
       "afterBlobSha": "b92a6da826e7a882501bfc025b01134199e56f59",
       "beforeBlobSha": "9a8bfea5c1b2cd2780fec905003982694b624223",
       "mode": "100644",
       "path": "extensions/bob-bazaar-review/README.md",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "5133d1970b38173bfec72e0ea5d3d2df014b76f1",
+      "beforeBlobSha": "08d23c1990a980cf1dd1b05281d948ea880be1b7",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/package-lock.json",
       "sourceItemIds": []
     },
     {
@@ -325,7 +332,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "ae54fb098c1c5b8a120ab2a7976f5d7c00f5504e",
+      "afterBlobSha": "63be7a1a030129c6955201733f20e296f4341983",
       "beforeBlobSha": "72d32a3b297dc496666073301299dc8a3cda6337",
       "mode": "100644",
       "path": "extensions/bob-code-consistency-review/package-lock.json",

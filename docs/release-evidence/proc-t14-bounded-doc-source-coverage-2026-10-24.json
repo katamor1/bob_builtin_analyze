@@ -23,6 +23,10 @@
     {
       "decision": "No historical JSON is rewritten. Preserve fifteen Git blobs; compare raw bytes against exact pinned checkout representations for two auto-text T13 JSONs and one exact hash for every literal-LF original; local before/after raw hashes remain recorded externally.",
       "id": "historical_raw_checkout"
+    },
+    {
+      "decision": "Actual live production audit failures require two literal consumer lock prerequisites. Only undici7.30.1/fast-uri3.1.9 version/resolved/integrity records change; existing parser entries and Workflow dependencies remain unchanged, with public metadata and audit RED to GREEN recorded externally.",
+      "id": "transitive_audit_patch"
     }
   ],
   "additionalCurrentMainPrerequisites": [
@@ -103,6 +107,27 @@
         "extensions/bob-bazaar-review/test/ruleConfiguredOoxmlLimitForwarding.test.js",
         "extensions/bob-bazaar-review/test/ruleXlsxExtraction.test.js",
         "extensions/bob-bazaar-review/test/ruleDocumentExtraction.test.js"
+      ]
+    },
+    {
+      "beforeBlobSha": "08d23c1990a980cf1dd1b05281d948ea880be1b7",
+      "classification": "additionalCurrentMainPrerequisite",
+      "path": "extensions/bob-bazaar-review/package-lock.json",
+      "reason": "Actual production audit prerequisite: patch only existing undici7.30.1 and fast-uri3.1.9 records; preserve root declarations, parser versions/integrities and all Workflow dependencies. Verified clean npm ci, audit RED to GREEN and full parser/package/host regressions.",
+      "testPaths": [
+        "extensions/bob-bazaar-review/test/dependencyPolicy.test.js",
+        "packages/processing-budget-runtime/test/ooxmlParserInput.test.js",
+        "packages/processing-budget-runtime/test/ooxmlMigrationParity.test.js",
+        "packages/processing-budget-runtime/test/boundedArchiveInputLimit.test.js",
+        "packages/processing-budget-runtime/test/boundedZipRetention.test.js",
+        "extensions/bob-bazaar-review/test/ruleBoundedOoxmlExtraction.test.js",
+        "extensions/bob-bazaar-review/test/ruleConfiguredFingerprintLimit.test.js",
+        "extensions/bob-bazaar-review/test/ruleConfiguredOoxmlLimitForwarding.test.js",
+        "extensions/bob-bazaar-review/test/ruleXlsxExtraction.test.js",
+        "extensions/bob-bazaar-review/test/ruleDocumentExtraction.test.js",
+        "extensions/bob-code-consistency-review/test/documentBoundedInput.test.js",
+        "extensions/bob-code-consistency-review/test/documentExtraction.test.js",
+        "extensions/bob-code-consistency-review/test/sizeLimits.test.js"
       ]
     },
     {
@@ -231,8 +256,18 @@
       "beforeBlobSha": "72d32a3b297dc496666073301299dc8a3cda6337",
       "classification": "additionalCurrentMainPrerequisite",
       "path": "extensions/bob-code-consistency-review/package-lock.json",
-      "reason": "Current-main consumer/build/test prerequisite for the approved shared Buffer boundary, configured caps, lazy parser identity and existing diagnostics/GUI/locator compatibility.",
+      "reason": "Actual production audit prerequisite: patch only existing undici7.30.1 and fast-uri3.1.9 records; preserve root declarations, parser versions/integrities and all Workflow dependencies. Verified clean npm ci, audit RED to GREEN and full parser/package/host regressions.",
       "testPaths": [
+        "extensions/bob-code-consistency-review/test/dependencyPolicy.test.js",
+        "packages/processing-budget-runtime/test/ooxmlParserInput.test.js",
+        "packages/processing-budget-runtime/test/ooxmlMigrationParity.test.js",
+        "packages/processing-budget-runtime/test/boundedArchiveInputLimit.test.js",
+        "packages/processing-budget-runtime/test/boundedZipRetention.test.js",
+        "extensions/bob-bazaar-review/test/ruleBoundedOoxmlExtraction.test.js",
+        "extensions/bob-bazaar-review/test/ruleConfiguredFingerprintLimit.test.js",
+        "extensions/bob-bazaar-review/test/ruleConfiguredOoxmlLimitForwarding.test.js",
+        "extensions/bob-bazaar-review/test/ruleXlsxExtraction.test.js",
+        "extensions/bob-bazaar-review/test/ruleDocumentExtraction.test.js",
         "extensions/bob-code-consistency-review/test/documentBoundedInput.test.js",
         "extensions/bob-code-consistency-review/test/documentExtraction.test.js",
         "extensions/bob-code-consistency-review/test/sizeLimits.test.js"
