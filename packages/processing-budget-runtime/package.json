@@ -24,6 +24,8 @@
     "test": "npm run compile && npm run typecheck:consumers && node --test test/*.test.js"
   },
   "devDependencies": {
+    "@types/node": "20.19.43",
+    "fflate": "0.8.3",
     "typescript": "5.9.3"
   }
 }
