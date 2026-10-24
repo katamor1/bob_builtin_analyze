@@ -1,13 +1,6 @@
-import { createHash } from "node:crypto"
-import * as fs from "node:fs/promises"
+import { fingerprintBoundedDocumentFile, type BoundedDocumentFingerprint } from "../sharedProcessingBudgetRuntime"
 
-export interface SourceFingerprint {
-  byteSize: string
-  mtimeNs: string
-  device: string
-  inode: string
-  sha256: string
-}
+export type SourceFingerprint = BoundedDocumentFingerprint
 
 const FINGERPRINT_FIELDS: ReadonlyArray<keyof SourceFingerprint> = [
   "byteSize",
@@ -17,26 +10,8 @@ const FINGERPRINT_FIELDS: ReadonlyArray<keyof SourceFingerprint> = [
   "sha256"
 ]
 
-export async function fingerprintSource(filePath: string): Promise<SourceFingerprint> {
-  const file = await fs.open(filePath, "r")
-  try {
-    const stats = await file.stat({ bigint: true })
-    if (!stats.isFile()) throw new Error(`Rule source must be a regular file: ${filePath}`)
-
-    const hash = createHash("sha256")
-    const stream = file.createReadStream({ autoClose: false })
-    for await (const chunk of stream) hash.update(chunk)
-
-    return {
-      byteSize: stats.size.toString(10),
-      mtimeNs: stats.mtimeNs.toString(10),
-      device: stats.dev.toString(10),
-      inode: stats.ino.toString(10),
-      sha256: hash.digest("hex")
-    }
-  } finally {
-    await file.close()
-  }
+export async function fingerprintSource(filePath: string, options: { maximumBytes: number; rootPath: string }): Promise<SourceFingerprint> {
+  return fingerprintBoundedDocumentFile({ filePath, rootPath: options.rootPath, maximumFileBytes: options.maximumBytes })
 }
 
 export function assertStableSourceFingerprint(before: SourceFingerprint, after: SourceFingerprint): void {

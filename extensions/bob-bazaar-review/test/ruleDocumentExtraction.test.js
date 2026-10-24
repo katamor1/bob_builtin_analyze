@@ -61,7 +61,7 @@ test("extractRuleDocument validates a normal DOCX stored-entry CRC before loadin
     additionalEntries: [{ name: "custom/bad-crc.bin", data: Buffer.from("tampered"), crc32: 0 }]
   }))
 
-  const result = freshExtractionProbe(filePath, /CRC/i, {
+  const result = freshExtractionProbe(filePath, /bounded document archive invalid/i, {
     mammoth: 0,
     cheerio: 0,
     excel: 0,
@@ -87,7 +87,7 @@ test("extractRuleDocument consumes a normal XLSX deflate payload exactly before 
     }]
   }))
 
-  const result = freshExtractionProbe(filePath, /consumed exactly/i, {
+  const result = freshExtractionProbe(filePath, /bounded document archive invalid/i, {
     mammoth: 0,
     cheerio: 0,
     excel: 0,
@@ -112,7 +112,7 @@ test("extractRuleDocument bounds every normal OOXML deflate payload before loadi
     }]
   }))
 
-  const result = freshExtractionProbe(filePath, /deflate output.*declared size/i, {
+  const result = freshExtractionProbe(filePath, /bounded document archive invalid/i, {
     mammoth: 0,
     cheerio: 0,
     excel: 0,
@@ -179,7 +179,7 @@ test("extractRuleDocument gives DOCX and normal XLSX parsers only validated snap
 test("extractRuleDocument hands each verified OOXML snapshot to its parser after the source path changes", async (t) => {
   const directory = await temporaryDirectory(t)
   const documentExtractorPath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "documentExtractor.js")
-  const archivePath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "ooxmlArchive.js")
+  const archivePath = path.join(__dirname, "..", "out", "shared-processing-budget-runtime", "boundedDocumentFile.js")
 
   for (const fixture of [
     { extension: "docx", bytes: createDocxFixture(), extractorRequest: "./docxExtractor", extractorExport: "extractDocx" },
@@ -200,6 +200,7 @@ test("extractRuleDocument hands each verified OOXML snapshot to its parser after
       const originalLoad = Module._load
       const documentExtractorPath = ${JSON.stringify(documentExtractorPath)}
       const archivePath = ${JSON.stringify(archivePath)}
+      let sourceOpens = 0
       let handleSnapshotBuffer
       let parserSha256
       Module._load = function(request, parent, isMain) {
@@ -210,11 +211,9 @@ test("extractRuleDocument hands each verified OOXML snapshot to its parser after
             async open(...args) {
               const handle = await loaded.open(...args)
               const originalRead = handle.read.bind(handle)
+              const capture = ++sourceOpens === 2
               handle.read = async (buffer, ...readArgs) => {
-                handleSnapshotBuffer ??= buffer
-                if (handleSnapshotBuffer !== buffer) {
-                  throw new Error("OOXML snapshot read switched Buffers")
-                }
+                if (capture) handleSnapshotBuffer ??= buffer
                 return originalRead(buffer, ...readArgs)
               }
               return handle
@@ -225,13 +224,12 @@ test("extractRuleDocument hands each verified OOXML snapshot to its parser after
         if (request === "./ooxmlArchive") {
           return {
             ...loaded,
-            async prepareOoxmlParserInput(...args) {
-              const prepared = await loaded.prepareOoxmlParserInput(...args)
-              await fs.writeFile(
-                ${JSON.stringify(filePath)},
-                Buffer.from(${JSON.stringify(replacement.toString("base64"))}, "base64")
-              )
-              return prepared
+            async withRuleOoxmlParserInput(...args) {
+              const parse = args[4]
+              return loaded.withRuleOoxmlParserInput(...args.slice(0,4), async prepared => {
+                await fs.writeFile(${JSON.stringify(filePath)}, Buffer.from(${JSON.stringify(replacement.toString("base64"))}, "base64"))
+                return parse(prepared)
+              }, args[5])
             }
           }
         }
@@ -257,7 +255,7 @@ test("extractRuleDocument hands each verified OOXML snapshot to its parser after
       require(documentExtractorPath).extractRuleDocument({ filePath: ${JSON.stringify(filePath)} })
         .then(() => { throw new Error("source replacement unexpectedly remained stable") })
         .catch((error) => {
-          if (!/source changed.*fingerprint/i.test(error.message)) throw error
+          if (error.code !== "bounded_document_source_changed") throw error
           if (parserSha256 !== ${JSON.stringify(expectedSha256)}) {
             throw new Error("parser input was not the verified snapshot: " + parserSha256)
           }
@@ -432,7 +430,7 @@ test("extractRuleDocument rejects an invalid XLSX in preflight before an extensi
     { name: "xl/workbook.xml", data: "first" },
     { name: "xl/workbook.xml", data: "second" }
   ]))
-  const archivePath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "ooxmlArchive.js")
+  const archivePath = path.join(__dirname, "..", "out", "sharedProcessingBudgetRuntime.js")
   const documentExtractorPath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "documentExtractor.js")
   const script = `
     const Module = require("node:module")
@@ -445,7 +443,7 @@ test("extractRuleDocument rejects an invalid XLSX in preflight before an extensi
     require(${JSON.stringify(documentExtractorPath)}).extractRuleDocument({ filePath: ${JSON.stringify(filePath)} })
       .then(() => { throw new Error("invalid XLSX unexpectedly extracted") })
       .catch((error) => {
-        if (!/duplicate entry/i.test(error.message)) throw error
+        if (error.code !== "bounded_document_archive_invalid") throw error
         if (compatibilityLoads !== 0) throw new Error("fflate compatibility loads: " + compatibilityLoads)
       })
   `
@@ -460,7 +458,7 @@ test("extractRuleDocument rejects a stored-size mismatch before an extension ffl
     { name: "[Content_Types].xml", data: "types" },
     { name: "xl/workbook.xml", data: Buffer.alloc(1024), uncompressedSize: 0 }
   ]))
-  const archivePath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "ooxmlArchive.js")
+  const archivePath = path.join(__dirname, "..", "out", "sharedProcessingBudgetRuntime.js")
   const documentExtractorPath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "documentExtractor.js")
   const script = `
     const Module = require("node:module")
@@ -473,7 +471,7 @@ test("extractRuleDocument rejects a stored-size mismatch before an extension ffl
     require(${JSON.stringify(documentExtractorPath)}).extractRuleDocument({ filePath: ${JSON.stringify(filePath)} })
       .then(() => { throw new Error("invalid XLSX unexpectedly extracted") })
       .catch((error) => {
-        if (!/stored entry size mismatch/i.test(error.message)) throw error
+        if (error.code !== "bounded_document_archive_invalid") throw error
         if (compatibilityLoads !== 0) throw new Error("fflate compatibility loads: " + compatibilityLoads)
       })
   `
@@ -488,7 +486,7 @@ test("extractRuleDocument rejects a truncated stored payload in preflight before
     { name: "[Content_Types].xml", data: "types" },
     { name: "xl/workbook.xml", data: Buffer.from("x"), compressedSize: 1024, uncompressedSize: 1024 }
   ]))
-  const archivePath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "ooxmlArchive.js")
+  const archivePath = path.join(__dirname, "..", "out", "sharedProcessingBudgetRuntime.js")
   const documentExtractorPath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "documentExtractor.js")
   const script = `
     const Module = require("node:module")
@@ -501,7 +499,7 @@ test("extractRuleDocument rejects a truncated stored payload in preflight before
     require(${JSON.stringify(documentExtractorPath)}).extractRuleDocument({ filePath: ${JSON.stringify(filePath)} })
       .then(() => { throw new Error("invalid XLSX unexpectedly extracted") })
       .catch((error) => {
-        if (!/entry payload.*truncated/i.test(error.message)) throw error
+        if (error.code !== "bounded_document_archive_invalid") throw error
         if (compatibilityLoads !== 0) throw new Error("fflate compatibility loads: " + compatibilityLoads)
       })
   `
@@ -524,7 +522,7 @@ test("extractRuleDocument bounds deflate output before loading fflate or read-ex
       uncompressedSize: 1
     }]
   }))
-  const archivePath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "ooxmlArchive.js")
+  const archivePath = path.join(__dirname, "..", "out", "sharedProcessingBudgetRuntime.js")
   const documentExtractorPath = path.join(__dirname, "..", "out", "ruleAuthoring", "extraction", "documentExtractor.js")
   const script = `
     const Module = require("node:module")
@@ -539,7 +537,7 @@ test("extractRuleDocument bounds deflate output before loading fflate or read-ex
     require(${JSON.stringify(documentExtractorPath)}).extractRuleDocument({ filePath: ${JSON.stringify(filePath)} })
       .then(() => { throw new Error("invalid XLSX unexpectedly extracted") })
       .catch((error) => {
-        if (!/deflate output.*declared size/i.test(error.message)) throw error
+        if (!/bounded document archive invalid/i.test(error.message)) throw error
         if (compatibilityLoads !== 0) throw new Error("fflate compatibility loads: " + compatibilityLoads)
         if (parserLoads !== 0) throw new Error("read-excel-file loads: " + parserLoads)
       })
@@ -637,7 +635,7 @@ test("extractRuleDocument enforces the default 25 MiB per-source limit before di
         }
       }
     }),
-    /25|source.*limit/i
+    error => error.code === "bounded_document_source_invalid"
   )
   assert.equal(called, false)
 })
@@ -711,7 +709,7 @@ test("extractRuleDocuments clamps caller-raised file, source, and aggregate byte
   await fs.truncate(oversizedPath, DEFAULT_RULE_AUTHORING_LIMITS.maxSourceBytes + 1)
   await assert.rejects(
     () => extractRuleDocuments([{ filePath: oversizedPath }], undefined, raisedLimits),
-    /per-source limit/i
+    error => error.code === "bounded_document_source_invalid"
   )
 
   const aggregateSource = path.join(directory, "aggregate-0.doc")

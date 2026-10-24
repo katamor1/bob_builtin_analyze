@@ -128,7 +128,7 @@ test("bob-bazaar-review dependency policy requires a committed lockfile and loca
     "the XLSX parser adapter must not own the extension-direct fflate load"
   )
   assert.match(
-    ooxmlArchiveRuntimeSource,
+    fs.readFileSync(path.join(extensionRoot, "src", "sharedProcessingBudgetRuntime.ts"), "utf8"),
     /return\s+import\("fflate"\)/,
     "OOXML missing-both XLSX compatibility must keep the lazy extension-direct fflate load"
   )

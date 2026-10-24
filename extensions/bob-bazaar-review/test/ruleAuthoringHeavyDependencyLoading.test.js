@@ -115,7 +115,7 @@ for (const fixture of [
         const originalLoad = Module._load
         let compatibilityLoadCount = 0
         Module._load = function(request, parent, isMain) {
-          if (request === "fflate" && parent?.filename === ${JSON.stringify(path.join(extensionRoot, "out", "ruleAuthoring", "extraction", "ooxmlArchive.js"))}) {
+          if (request === "fflate" && parent?.filename === ${JSON.stringify(path.join(extensionRoot, "out", "sharedProcessingBudgetRuntime.js"))}) {
             compatibilityLoadCount += 1
           }
           return originalLoad.call(this, request, parent, isMain)

@@ -22,7 +22,7 @@ test("fingerprintSource streams exact file bytes into a full SHA-256 fingerprint
   const bytes = Buffer.from([0x00, 0xff, 0x61, 0xe3, 0x81, 0x82, 0x0a])
   await fs.writeFile(filePath, bytes)
 
-  const fingerprint = await fingerprintSource(filePath)
+  const fingerprint = await fingerprintSource(filePath, { maximumBytes: 25 * 1048576, rootPath: path.dirname(filePath) })
 
   assert.equal(fingerprint.sha256, createHash("sha256").update(bytes).digest("hex"))
   assert.match(fingerprint.sha256, /^[a-f0-9]{64}$/)
@@ -35,17 +35,17 @@ test("fingerprintSource streams exact file bytes into a full SHA-256 fingerprint
 test("fingerprintSource accepts regular files only", async (t) => {
   const directory = await temporaryDirectory(t)
 
-  await assert.rejects(() => fingerprintSource(directory), /regular file/i)
+  await assert.rejects(() => fingerprintSource(directory, { maximumBytes: 25 * 1048576, rootPath: directory }), error => error.code === "bounded_document_source_invalid")
 })
 
 test("assertStableSourceFingerprint detects content and file identity changes", async (t) => {
   const directory = await temporaryDirectory(t)
   const filePath = path.join(directory, "source.txt")
   await fs.writeFile(filePath, "first", "utf8")
-  const before = await fingerprintSource(filePath)
+  const before = await fingerprintSource(filePath, { maximumBytes: 25 * 1048576, rootPath: path.dirname(filePath) })
 
   await fs.writeFile(filePath, "other", "utf8")
-  const after = await fingerprintSource(filePath)
+  const after = await fingerprintSource(filePath, { maximumBytes: 25 * 1048576, rootPath: path.dirname(filePath) })
 
   assert.throws(() => assertStableSourceFingerprint(before, after), /source.*changed/i)
   assert.doesNotThrow(() => assertStableSourceFingerprint(after, { ...after }))

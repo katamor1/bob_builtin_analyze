@@ -17,7 +17,7 @@ import type {
   RuleSourceMediaType
 } from "../ruleAuthoringTypes"
 import { extractDocx } from "./docxExtractor"
-import { prepareOoxmlParserInput } from "./ooxmlArchive"
+import { withRuleOoxmlParserInput } from "./ooxmlArchive"
 import { extractPdf, type PdfExtractionOptions } from "./pdfExtractor"
 import { extractXlsx } from "./xlsxExtractor"
 
@@ -85,6 +85,7 @@ interface ExtractionContext {
   limits: RuleAuthoringLimits
   sourceId?: string
   beforeFingerprint?: SourceFingerprint
+  rootPath?: string
 }
 
 const LEGACY_EXTRACTOR = Object.freeze({ id: "legacy-office", version: "1" })
@@ -104,7 +105,9 @@ async function extractRuleDocumentWithContext(
   const logicalName = request.logicalName ?? path.basename(absolutePath)
   assertLogicalName(logicalName)
   const mediaType = classifySelectedPath(absolutePath, logicalName)
-  const before = context.beforeFingerprint ?? await fingerprintSource(absolutePath)
+  const rootPath = context.rootPath ?? path.dirname(absolutePath)
+  const fingerprintOptions = { maximumBytes: limits.maxSourceBytes, rootPath }
+  const before = context.beforeFingerprint ?? await fingerprintSource(absolutePath, fingerprintOptions)
   const byteSize = fingerprintByteSize(before)
   if (byteSize > limits.maxSourceBytes) {
     throw new Error(`Rule source exceeds the ${limits.maxSourceBytes}-byte per-source limit`)
@@ -126,13 +129,11 @@ async function extractRuleDocumentWithContext(
       extractor: { ...LEGACY_EXTRACTOR }
     }
   } else if (mediaType === "docx" || mediaType === "xlsx") {
-    const prepared = await prepareOoxmlParserInput(absolutePath, before, mediaType, limits)
-    extracted = mediaType === "docx"
-      ? await extractDocx(prepared.parserInput, { sourceId, maxChunkBytes: limits.maxChunkBytes })
-      : await extractXlsx(prepared.parserInput, {
-        sourceId,
-        maxChunkBytes: limits.maxChunkBytes
-      })
+    extracted = await withRuleOoxmlParserInput(absolutePath, before, mediaType, limits, async ({ parserInput }) => {
+      return mediaType === "docx"
+        ? extractDocx(parserInput, { sourceId, maxChunkBytes: limits.maxChunkBytes })
+        : extractXlsx(parserInput, { sourceId, maxChunkBytes: limits.maxChunkBytes })
+    }, { rootPath, target: sourceId })
   } else {
     extracted = await extractPdf(absolutePath, {
       ...request.pdf,
@@ -142,8 +143,10 @@ async function extractRuleDocumentWithContext(
     })
   }
 
-  const after = await fingerprintSource(absolutePath)
-  assertStableSourceFingerprint(before, after)
+  if (mediaType !== "docx" && mediaType !== "xlsx") {
+    const after = await fingerprintSource(absolutePath, fingerprintOptions)
+    assertStableSourceFingerprint(before, after)
+  }
   const shareable = (mediaType === "docx" || mediaType === "xlsx" || mediaType === "pdf") &&
     (extracted.status === "success" || extracted.status === "partial")
   return {
@@ -175,7 +178,7 @@ export async function extractRuleDocuments(
     const absolutePath = path.resolve(request.filePath)
     const logicalName = request.logicalName ?? path.basename(absolutePath)
     assertLogicalName(logicalName)
-    const fingerprint = await fingerprintSource(absolutePath)
+    const fingerprint = await fingerprintSource(absolutePath, { maximumBytes: effectiveLimits.maxSourceBytes, rootPath: path.dirname(absolutePath) })
     const byteSize = fingerprintByteSize(fingerprint)
     if (byteSize > effectiveLimits.maxSourceBytes) {
       throw new Error(`Rule source exceeds the ${effectiveLimits.maxSourceBytes}-byte per-source limit`)
