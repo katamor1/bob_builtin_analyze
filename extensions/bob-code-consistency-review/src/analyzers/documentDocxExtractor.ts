@@ -7,9 +7,9 @@ type MammothModule = typeof import("mammoth")
 let cheerioModulePromise: Promise<CheerioModule> | undefined
 let mammothModulePromise: Promise<MammothModule> | undefined
 
-export async function extractDocxChunks(filePath: string, evidenceType: string, selectors: string[]): Promise<ExtractedChunk[]> {
+export async function extractDocxChunks(documentBuffer: Buffer, evidenceType: string, selectors: string[]): Promise<ExtractedChunk[]> {
   const [mammoth, cheerio] = await Promise.all([loadMammoth(), loadCheerio()])
-  const html = (await mammoth.convertToHtml({ path: filePath })).value
+  const html = (await mammoth.convertToHtml({ buffer: documentBuffer })).value
   const $ = cheerio.load(html)
   const chunks: ExtractedChunk[] = []
   const headingPath: string[] = []

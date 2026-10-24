@@ -92,7 +92,7 @@ test("validateReviewInput rejects excessive aggregate artifact references before
   )
 })
 
-test("extractDocuments limits document bytes and excerpt bytes with warnings", async () => {
+test("extractDocuments rejects an oversized document with no evidence", async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "bob-size-doc-"))
   fs.mkdirSync(path.join(workspace, "docs"), { recursive: true })
   fs.writeFileSync(path.join(workspace, "docs", "large.md"), [
@@ -111,9 +111,12 @@ test("extractDocuments limits document bytes and excerpt bytes with warnings", a
   })
 
   assert.ok(result.warnings.some((warning) => warning.includes("maxDocumentBytes")))
-  assert.ok(result.warnings.some((warning) => warning.includes("maxExcerptBytesPerDocument")))
-  assert.ok(Buffer.byteLength(result.evidence[0].text, "utf8") <= 120)
-  assert.match(result.excerptsMarkdown, /\[truncated/)
+  assert.deepEqual([result.evidence.length, result.excerptsMarkdown], [0, ""])
+  const withinSource = await extractDocuments(reviewInput("docs/large.md"), { workspaceRoot: workspace, limits: { maxDocumentBytes: 4096, maxExcerptBytesPerDocument: 120 } })
+  assert.ok(withinSource.warnings.some(warning => warning.includes("maxExcerptBytesPerDocument")))
+  assert.ok(withinSource.evidence.length > 0)
+  assert.ok(withinSource.evidence.every(item => Buffer.byteLength(item.text, "utf8") <= 120))
+  assert.match(withinSource.excerptsMarkdown, /\[truncated/)
 })
 
 test("extractDocuments enforces an aggregate excerpt budget across documents", async () => {

@@ -187,7 +187,7 @@
           "default": 5242880,
           "minimum": 1,
           "maximum": 52428800,
-          "description": "文書1件あたりの読み取り上限（バイト）です。Markdown は上限まで読み、DOCX／XLSX は上限超過時に抽出を中止します。"
+          "description": "文書1件あたりの原本全体を上限判定するバイト数です。Markdown／DOCX／XLSX は超過時に抽出しないため、文書の一部を成功入力として扱いません。"
         },
         "bobCodeConsistency.maxWorkbookSheets": {
           "type": "number",

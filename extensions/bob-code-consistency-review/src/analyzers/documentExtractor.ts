@@ -1,4 +1,4 @@
-import * as fs from "node:fs/promises"
+import { BoundedDocumentError, createDocumentLedger, readBoundedDocumentFile, fingerprintBoundedDocumentFile, withValidatedOoxmlParserInput, loadXlsxCodec } from "../sharedProcessingBudgetRuntime"
 import * as path from "node:path"
 import { resolveWorkspacePathStrict, toPosixPath } from "../core/fileSystem"
 import { decodeTextBuffer } from "../core/textEncoding"
@@ -51,8 +51,11 @@ export async function extractDocuments(reviewInput: ReviewInput, options: { work
       let chunks: ExtractedChunk[] = []
       try {
         const filePath = resolveWorkspacePathStrict(options.workspaceRoot, item.path, "artifact path")
-        chunks = await extractFileChunks(filePath, item, typeInfo.evidenceType, selectors, warnings, limits, options.textEncoding)
+        chunks = await extractFileChunks(filePath, item, typeInfo.evidenceType, selectors, warnings, limits, options.workspaceRoot, options.textEncoding)
       } catch (error) {
+        if (error instanceof BoundedDocumentError && error.code === "bounded_document_source_invalid" && error.details.limit !== undefined) {
+          warnings.push(`${toPosixPath(item.path)} exceeded maxDocumentBytes (${limits.maxDocumentBytes}); skipped.`)
+        }
         warnings.push(`failed to extract ${item.path}: ${error instanceof Error ? error.message : String(error)}`)
       }
 
@@ -127,38 +130,26 @@ async function extractFileChunks(
   selectors: string[],
   warnings: string[],
   limits: ReviewProcessingLimits,
+  workspaceRoot: string,
   textEncoding = "auto"
 ): Promise<ExtractedChunk[]> {
   const extension = path.extname(filePath).toLowerCase()
+  if (![".md", ".markdown", ".docx", ".xlsx"].includes(extension)) throw new Error(`unsupported document extension: ${extension || "(none)"}`)
+  const request = { filePath, rootPath: path.resolve(workspaceRoot), maximumFileBytes: limits.maxDocumentBytes, target: "document", ledger: createDocumentLedger(limits.maxDocumentBytes) }
   if (extension === ".md" || extension === ".markdown") {
-    const read = await readLimitedTextFile(filePath, limits.maxDocumentBytes, textEncoding)
-    if (read.truncated) warnings.push(`${toPosixPath(item.path ?? filePath)} exceeded maxDocumentBytes (${read.originalBytes} > ${limits.maxDocumentBytes}); truncated before extraction.`)
-    return extractMarkdownChunks(read.text, evidenceType, selectors)
+    const snapshot = await readBoundedDocumentFile(request)
+    return extractMarkdownChunks(decodeTextBuffer(snapshot.copyBytes(), textEncoding), evidenceType, selectors)
   }
-  await assertDocumentWithinByteLimit(filePath, item.path ?? filePath, limits, warnings)
-  if (extension === ".docx") return extractDocxChunks(filePath, evidenceType, selectors)
-  if (extension === ".xlsx") return extractXlsxChunks(filePath, item, evidenceType, selectors, warnings, limits)
-  throw new Error(`unsupported document extension: ${extension || "(none)"}`)
-}
-
-async function readLimitedTextFile(filePath: string, maxBytes: number, textEncoding: string): Promise<{ text: string; truncated: boolean; originalBytes: number }> {
-  const stat = await fs.stat(filePath)
-  const length = Math.min(stat.size, maxBytes)
-  const handle = await fs.open(filePath, "r")
-  try {
-    const buffer = Buffer.alloc(length)
-    await handle.read(buffer, 0, length, 0)
-    return { text: decodeTextBuffer(buffer, textEncoding), truncated: stat.size > maxBytes, originalBytes: stat.size }
-  } finally {
-    await handle.close()
-  }
-}
-
-async function assertDocumentWithinByteLimit(filePath: string, sourcePath: string, limits: ReviewProcessingLimits, warnings: string[]): Promise<void> {
-  const stat = await fs.stat(filePath)
-  if (stat.size <= limits.maxDocumentBytes) return
-  warnings.push(`${toPosixPath(sourcePath)} exceeded maxDocumentBytes (${stat.size} > ${limits.maxDocumentBytes}); skipped.`)
-  throw new Error(`document exceeds maxDocumentBytes (${stat.size} > ${limits.maxDocumentBytes})`)
+  const expectedFingerprint = await fingerprintBoundedDocumentFile({ filePath, rootPath: request.rootPath, maximumFileBytes: limits.maxDocumentBytes })
+  return withValidatedOoxmlParserInput({
+    ...request,
+    expectedFingerprint,
+    documentKind: extension === ".docx" ? "docx" : "xlsx",
+    structuralLimits: { maxEntries: 5000, maxExpandedBytes: 250 * 1048576 },
+    loadXlsxCodec
+  }, async ({ parserInput }) => extension === ".docx"
+    ? extractDocxChunks(parserInput, evidenceType, selectors)
+    : extractXlsxChunks(parserInput, item, evidenceType, selectors, warnings, limits))
 }
 
 function limitChunkText(chunk: ExtractedChunk, sourcePath: string, warnings: string[], limits: ReviewProcessingLimits): ExtractedChunk {
