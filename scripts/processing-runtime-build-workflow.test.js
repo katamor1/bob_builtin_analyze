@@ -47,3 +47,8 @@ test("boundary_policy_rejects_path_parser_deep_import_and_unawaited_callback", t
     assert.throws(() => checker.checkDocumentBoundaries(fixture), /document boundary/)
   }
 })
+
+test("clean_parser_contracts_and_artifact_inputs_precede_mutating_host_tooling",()=>{
+ const source=workflow("processing-budget-runtime"),pack=source.indexOf("- name: Build and package companion runtime artifacts"),contracts=source.indexOf("- name: Verify document build and artifact contracts"),prepare=source.indexOf("- name: Prepare installed document artifacts"),tooling=source.indexOf("- name: Install pinned document host tooling after packaging"),host=source.indexOf("- name: Verify installed document runtime on Ubuntu");
+ assert.ok(pack<contracts&&contracts<prepare&&prepare<tooling&&tooling<host,"clean npm-ci parser bytes must be tested/captured before no-save tooling mutates their layout");
+});

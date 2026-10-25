@@ -114,9 +114,6 @@ jobs:
           npm run package --prefix extensions/bob-code-consistency-review
           npm run package:policy --prefix extensions/bob-code-consistency-review
 
-      - name: Install pinned document host tooling after packaging
-        run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2 --prefix extensions/bob-bazaar-review
-
       - name: Verify document build and artifact contracts
         run: node --test scripts/processing-runtime-build-workflow.test.js scripts/t14-bounded-document-installed-smoke.test.mjs scripts/extension-host-smoke-contract.test.js scripts/three-extension-ui-contract-workflow.test.js
 
@@ -130,6 +127,9 @@ jobs:
           const evidenceRoot=path.join(process.env.PROCESSING_BUDGET_ARTIFACT_ROOT,"installed-host-"+crypto.randomBytes(8).toString("hex"));
           fs.appendFileSync(process.env.GITHUB_OUTPUT,"manifest="+manifest+"\ninput_root="+path.dirname(manifest)+"\nevidence_root="+evidenceRoot+"\n");
           NODE
+
+      - name: Install pinned document host tooling after packaging
+        run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2 --prefix extensions/bob-bazaar-review
 
       - name: Verify installed document runtime on Ubuntu
         if: runner.os == 'Linux'
