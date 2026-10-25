@@ -282,3 +282,7 @@ npm run package:policy
 - `docs/real-machine-test-spec-ja.md`
 - `docs/triage-integrity-ibm-bob-uat-runbook-ja.md`
 - `../../docs/workflows/code-consistency-review/README.md`
+
+開発時はリポジトリの `packages/processing-budget-runtime` と本拡張で先に `npm ci` を実行してください。`npm run compile` はローカルの `scripts/build-shared-runtime.js` から共有packageの固定compilerによるbuild、本拡張のcompile、検証済みruntimeのコピーを順に実行します。実行時は本拡張の `out/shared-processing-budget-runtime` のみを読み込み、開発用sourceへのfallbackや暗黙installは行いません。VSIXには12個のruntime JSとmanifestが含まれます。
+
+`fflate` 0.8.3 はXLSXのstyles/sharedStringsが両方欠ける場合だけ本拡張が遅延ロードする互換処理用の直接依存です。

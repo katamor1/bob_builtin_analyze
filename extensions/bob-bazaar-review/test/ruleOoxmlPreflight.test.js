@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict")
 const { test } = require("node:test")
 
-const { preflightOoxmlArchive } = require("../out/ruleAuthoring/extraction/ooxmlPreflight")
+const { preflightOoxmlArchive } = require("./helpers/sharedOoxmlTestAdapter")
 const {
   CENTRAL_DIRECTORY_ENTRY_SIGNATURE,
   createStoredZip

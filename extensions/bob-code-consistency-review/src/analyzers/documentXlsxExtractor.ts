@@ -15,7 +15,7 @@ type ExcelSheet = import("read-excel-file/node").Sheet
 let excelFileModulePromise: Promise<ExcelFileModule> | undefined
 
 export async function extractXlsxChunks(
-  filePath: string,
+  workbookBuffer: Buffer,
   item: ArtifactRef,
   evidenceType: string,
   selectors: string[],
@@ -23,13 +23,13 @@ export async function extractXlsxChunks(
   limits: ReviewProcessingLimits
 ): Promise<ExtractedChunk[]> {
   const readExcelFile = await loadExcelFile()
-  const workbook = await readExcelFile.default(filePath)
+  const workbook = await readExcelFile.default(workbookBuffer)
   const sheetsByName = new Map(workbook.map((sheet) => [sheet.sheet, sheet] as const))
   const sheetNames = workbook.map((sheet) => sheet.sheet)
   const allSelectedSheets = item.sheets && item.sheets.length > 0 ? item.sheets : sheetNames
   const selectedSheets = allSelectedSheets.slice(0, limits.maxWorkbookSheets)
   if (allSelectedSheets.length > selectedSheets.length) {
-    warnings.push(`${toPosixPath(item.path ?? filePath)} exceeded maxWorkbookSheets (${allSelectedSheets.length} > ${limits.maxWorkbookSheets}); remaining sheets skipped.`)
+    warnings.push(`${toPosixPath(item.path ?? "(document)")} exceeded maxWorkbookSheets (${allSelectedSheets.length} > ${limits.maxWorkbookSheets}); remaining sheets skipped.`)
   }
   const chunks: ExtractedChunk[] = []
 
@@ -41,7 +41,7 @@ export async function extractXlsxChunks(
     const headers = rows[0].map(cellText)
     const dataRows = rows.slice(1)
     if (dataRows.length > limits.maxRowsPerSheet) {
-      warnings.push(`${toPosixPath(item.path ?? filePath)} sheet ${sheetName} exceeded maxRowsPerSheet (${dataRows.length} > ${limits.maxRowsPerSheet}); remaining rows skipped.`)
+      warnings.push(`${toPosixPath(item.path ?? "(document)")} sheet ${sheetName} exceeded maxRowsPerSheet (${dataRows.length} > ${limits.maxRowsPerSheet}); remaining rows skipped.`)
     }
     for (let index = 1; index <= Math.min(dataRows.length, limits.maxRowsPerSheet); index += 1) {
       const row = rows[index].map(cellText)

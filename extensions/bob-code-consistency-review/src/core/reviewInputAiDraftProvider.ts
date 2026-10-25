@@ -1,3 +1,4 @@
+import type { ReviewProcessingLimits } from "./limits"
 import * as path from "node:path"
 import { collectGitDiff } from "./gitDiffCollector"
 import { discoverReviewInputCandidates } from "./reviewInputDiscovery"
@@ -19,6 +20,7 @@ export type PrepareAiReviewInputDraftPromptInput = {
   bzrPath?: string
   diffFixturePath?: string
   textEncoding?: string
+  limits?: Partial<ReviewProcessingLimits>
 }
 
 export type PrepareAiReviewInputDraftPromptResult = {
@@ -47,7 +49,7 @@ export async function prepareAiReviewInputDraftPrompt(input: PrepareAiReviewInpu
   const warnings: string[] = []
   const outputDir = resolveWorkspacePathStrict(input.workspaceRoot, input.outputDir, "aiDraftPromptPath")
   const reviewInputPath = resolveWorkspacePathStrict(input.workspaceRoot, input.reviewInputPath, "reviewInputPath")
-  const discovery = await discoverReviewInputCandidates(input.workspaceRoot, { textEncoding: input.textEncoding, maxFiles: MAX_CANDIDATE_COUNT })
+  const discovery = await discoverReviewInputCandidates(input.workspaceRoot, { textEncoding: input.textEncoding, maxFiles: MAX_CANDIDATE_COUNT, limits: input.limits })
   warnings.push(...discovery.warnings)
 
   const diagnostics = await explainReviewInputDiagnostics({ inputPath: reviewInputPath, workspaceRoot: input.workspaceRoot, textEncoding: input.textEncoding })

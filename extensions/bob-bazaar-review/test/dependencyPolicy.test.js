@@ -68,6 +68,7 @@ test("bob-bazaar-review dependency policy requires a committed lockfile and loca
   assert.ok(fs.existsSync(lockPath), "package-lock.json must be committed for reproducible VSIX builds")
 
   assert.equal(packageJson.scripts["dependency:policy"], "node --test test/dependencyPolicy.test.js")
+  assertLocalScript(packageJson, "compile", "node scripts/build-shared-runtime.js")
   assertLocalScript(packageJson, "architecture:policy", "node scripts/check-import-cycles.js src")
   assertLocalScript(packageJson, "source:policy", "node scripts/check-export-star-policy.js src")
   assertLocalScript(packageJson, "unused:policy", "node scripts/run-unused-policy.js")
@@ -127,7 +128,7 @@ test("bob-bazaar-review dependency policy requires a committed lockfile and loca
     "the XLSX parser adapter must not own the extension-direct fflate load"
   )
   assert.match(
-    ooxmlArchiveRuntimeSource,
+    fs.readFileSync(path.join(extensionRoot, "src", "sharedProcessingBudgetRuntime.ts"), "utf8"),
     /return\s+import\("fflate"\)/,
     "OOXML missing-both XLSX compatibility must keep the lazy extension-direct fflate load"
   )

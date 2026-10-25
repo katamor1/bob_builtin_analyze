@@ -40,3 +40,6 @@ export {
   type ProcessingBudgetLedgerTargetReport,
   type ProcessingBudgetReservation
 } from "./processingBudgetLedger"
+
+export { readBoundedDocumentFile, fingerprintBoundedDocumentFile, type BoundedDocumentSnapshot, type BoundedDocumentReadInput, type BoundedDocumentFingerprint, type BoundedDocumentIdentity } from "./boundedDocumentIo"
+export { BoundedDocumentError, type BoundedDocumentErrorCode, type BoundedDocumentErrorDetails } from "./boundedDocumentError"

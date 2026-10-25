@@ -81,3 +81,5 @@ test("dedicated UI contract workflow checks out and verifies the exact triggerin
   assert.doesNotMatch(whitespaceStep, /^\s*git diff --check "\$HEAD_SHA\^" "\$HEAD_SHA"\s*$/m)
   assert.doesNotMatch(whitespaceStep, /\|\|\s*true/)
 })
+
+test("T14 payload GUI queue proof stays separate from final visual UAT",()=>{ const source=fs.readFileSync(path.join(repoRoot,"scripts/t14-bounded-document-installed-extension-host.test.js"),"utf8"); assert.match(source,/createRuleAuthoringGuiHost/); assert.match(source,/guiLoggedOriginalErrorCount/); assert.match(source,/nextQueuedOperationSucceeded/); assert.match(source,/productActivationProbe: "not_run"/); assert.doesNotMatch(source,/executeCommand\(.*(?:openReviewGui|runBob)/); });

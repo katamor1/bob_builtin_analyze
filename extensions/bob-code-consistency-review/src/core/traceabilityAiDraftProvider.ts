@@ -1,3 +1,4 @@
+import type { ReviewProcessingLimits } from "./limits"
 import * as path from "node:path"
 import { collectGitDiff } from "./gitDiffCollector"
 import { discoverReviewInputCandidates } from "./reviewInputDiscovery"
@@ -36,6 +37,7 @@ export type PrepareAiTraceabilityDraftPromptInput = {
   bzrPath?: string
   diffFixturePath?: string
   textEncoding?: string
+  limits?: Partial<ReviewProcessingLimits>
 }
 
 export type PrepareAiTraceabilityDraftPromptResult = {
@@ -93,7 +95,8 @@ export async function prepareAiTraceabilityDraftPrompt(input: PrepareAiTraceabil
   const discovery = await discoverReviewInputCandidates(input.workspaceRoot, {
     docsRoot: input.docsRoot,
     textEncoding: input.textEncoding,
-    maxFiles: MAX_TRACEABILITY_CANDIDATE_COUNT
+    maxFiles: MAX_TRACEABILITY_CANDIDATE_COUNT,
+    limits: input.limits
   })
   warnings.push(...discovery.warnings)
 

@@ -4,6 +4,7 @@ run-name: ${{ github.event_name == 'workflow_dispatch' && format('wave0a-{0}-{1}
 on:
   pull_request:
     paths:
+      - "packages/processing-budget-runtime/**"
       - "tools/workflow-evidence/**"
       - "extensions/*/contracts/workflow-discovery-claims.json"
       - "extensions/*/contracts/workflow-contributions.json"
@@ -26,6 +27,7 @@ on:
     branches:
       - main
     paths:
+      - "packages/processing-budget-runtime/**"
       - "tools/workflow-evidence/**"
       - "extensions/*/contracts/workflow-discovery-claims.json"
       - "extensions/*/contracts/workflow-contributions.json"
@@ -88,6 +90,14 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: extensions/workflow-register/package-lock.json
+
+      - name: Prepare shared processing runtime
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund --prefix packages/processing-budget-runtime
+          npm run compile --prefix packages/processing-budget-runtime
 
       - name: Record CI baseline
         run: node ../../scripts/ci-baseline-summary.js
@@ -197,6 +207,14 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/bob-bazaar-review/package-lock.json
 
+      - name: Prepare shared processing runtime
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund --prefix packages/processing-budget-runtime
+          npm run compile --prefix packages/processing-budget-runtime
+
       - name: Record CI baseline
         run: node ../../scripts/ci-baseline-summary.js
 
@@ -300,6 +318,14 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: extensions/bob-code-consistency-review/package-lock.json
+
+      - name: Prepare shared processing runtime
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund --prefix packages/processing-budget-runtime
+          npm run compile --prefix packages/processing-budget-runtime
 
       - name: Record CI baseline
         run: node ../../scripts/ci-baseline-summary.js
@@ -440,6 +466,14 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: extensions/${{ matrix.extension }}/package-lock.json
+
+      - name: Prepare shared processing runtime
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund --prefix packages/processing-budget-runtime
+          npm run compile --prefix packages/processing-budget-runtime
 
       - name: Record CI baseline
         run: node ../../scripts/ci-baseline-summary.js

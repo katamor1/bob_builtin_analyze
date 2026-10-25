@@ -16,7 +16,7 @@ test('t13_admission_is_literal_and_preserves_full_675_partition',async()=>{
  assert.equal(p.validateProcessingBudgetCoverage(coverage),true);assert.equal(p.validateProcessingBudgetSourceAdmission(admission),true);
  assert.equal(coverage.items.length,23);assert.equal(coverage.remainderClosure.total,675);assert.equal(coverage.remainderClosure.items.length,675);assert.equal(coverage.remainderClosure.unassigned,0);
  assert.equal(p.PROCESSING_BUDGET_T13_SOURCE_PATHS.length,23);assert.equal(p.PROCESSING_BUDGET_CONTROL_PATHS.length,7);
- assert.equal(p.processingBudgetT13SourceFiles().length,28);assert.deepEqual(p.processingBudgetCurrentSourceFiles(),p.processingBudgetT13SourceFiles());
+ assert.equal(p.processingBudgetT13SourceFiles().length,28);assert.deepEqual(p.processingBudgetT13SourceFiles(),[...admission.sourceRows.map(row=>({path:row.path,mode:row.mode,blobSha:row.afterBlobSha})),...admission.controlRows].sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0));assert.ok(p.processingBudgetCurrentSourceFiles().length>p.processingBudgetT13SourceFiles().length);
  for(const change of [a=>a.sourceRows.push({...a.sourceRows[0],path:'packages/processing-budget-runtime/extra.ts'}),a=>a.sourceRows[0].mode='120000',a=>a.sourceRows[0].afterBlobSha='0'.repeat(40),a=>a.sourceRows[0].path='../alias',a=>a.baseMainSha='90f926e0045405625f1f40d20a41346a94d1981a']){const a=structuredClone(admission);change(a);assert.throws(()=>p.validateProcessingBudgetSourceAdmission(a));}
  const bad=structuredClone(coverage);bad.remainderClosure.items.pop();assert.throws(()=>p.validateProcessingBudgetCoverage(bad));
  p.validateProcessingBudgetRepository(root);
@@ -64,7 +64,7 @@ test('five_workflow_contract_preserves_original_sixteen_jobs',()=>{
 });
 test('processing_matrix_builds_actual_parity_inputs_before_tests',()=>{
  const y=fs.readFileSync(path.join(root,'.github/workflows/processing-budget-runtime.yml'),'utf8');
- const guard=y.indexOf('- name: Verify checked-out commit'),setup=y.indexOf('- name: Setup Node.js'),install=y.indexOf('npm ci'),bazaar=y.indexOf('npm ci --prefix extensions/bob-bazaar-review'),compile=y.indexOf('npm run compile --prefix extensions/bob-bazaar-review'),parity=y.indexOf('node --test tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs');
+ const guard=y.indexOf('- name: Verify checked-out commit'),setup=y.indexOf('- name: Setup Node.js'),install=y.indexOf('npm ci'),bazaar=y.indexOf('npm ci --prefix extensions/bob-bazaar-review'),compile=y.indexOf('npm run package --prefix extensions/bob-bazaar-review'),parity=y.indexOf('node --test tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs');
  assert.ok(guard>0&&setup>guard&&install>setup&&bazaar>install&&compile>bazaar&&parity>compile);
- assert.match(y,/timeout-minutes: 10/);assert.match(y,/contents: read/);assert.match(y,/os: \[ubuntu-latest, windows-latest\]/);assert.match(y,/CI_VERIFIED_HEAD_SHA/);assert.doesNotMatch(y,/continue-on-error|\|\|\s*true/);
+ assert.match(y,/timeout-minutes: 20/);assert.match(y,/contents: read/);assert.match(y,/os: \[ubuntu-latest, windows-latest\]/);assert.match(y,/CI_VERIFIED_HEAD_SHA/);assert.doesNotMatch(y,/continue-on-error|\|\|\s*true/);
 });

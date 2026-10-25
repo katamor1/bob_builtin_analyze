@@ -1,0 +1,7 @@
+const {test,mock}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
+const shared=require('../out/sharedProcessingBudgetRuntime'),api=require('../out/ruleAuthoring/extraction/documentExtractor');const {createDocxFixture}=require('./helpers/ruleDocumentFixtures');const {DEFAULT_RULE_AUTHORING_LIMITS:defaults}=require('../out/ruleAuthoring/ruleAuthoringLimits');
+test('configured_ooxml_structural_limits_and_document_ledger_are_forwarded',async t=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'bob-ooxml-limits-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));const filePath=path.join(root,'rules.docx');await fs.writeFile(filePath,createDocxFixture());const original=shared.withValidatedOoxmlParserInput;let seen;
+ const m=mock.method(shared,'withValidatedOoxmlParserInput',async(request,parse)=>{seen=request;return original(request,parse);});
+ try{await api.extractRuleDocuments([{filePath}],undefined,{...defaults,maxSourceBytes:1024*1024,maxOoxmlEntries:50,maxOoxmlDeclaredUncompressedBytes:2*1024*1024});assert.deepEqual(seen.structuralLimits,{maxEntries:50,maxExpandedBytes:2*1024*1024});assert.equal(seen.maximumFileBytes,1024*1024);assert.equal(seen.ledger.profile.limits.single_document_bytes,1024*1024);assert.equal(seen.rootPath,root);assert.equal(typeof seen.expectedFingerprint.sha256,'string');}finally{m.mock.restore();}
+});

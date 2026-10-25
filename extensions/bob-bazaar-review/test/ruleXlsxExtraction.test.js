@@ -8,8 +8,8 @@ const zlib = require("node:zlib")
 const { test } = require("node:test")
 
 const { extractXlsx } = require("../out/ruleAuthoring/extraction/xlsxExtractor")
-const { prepareOoxmlParserInput } = require("../out/ruleAuthoring/extraction/ooxmlArchive")
-const { preflightOoxmlArchive } = require("../out/ruleAuthoring/extraction/ooxmlPreflight")
+const { prepareOoxmlParserInput } = require("./helpers/sharedOoxmlTestAdapter")
+const { preflightOoxmlArchive } = require("./helpers/sharedOoxmlTestAdapter")
 const { DEFAULT_RULE_AUTHORING_LIMITS } = require("../out/ruleAuthoring/ruleAuthoringLimits")
 const { fingerprintSource } = require("../out/ruleAuthoring/ruleSourceHash")
 const { createXlsxFixture } = require("./helpers/ruleDocumentFixtures")
@@ -29,7 +29,7 @@ async function xlsxPreflightContext(filePath) {
 async function prepareXlsx(filePath) {
   return prepareOoxmlParserInput(
     filePath,
-    await fingerprintSource(filePath),
+    await fingerprintSource(filePath, { maximumBytes: 25 * 1048576, rootPath: path.dirname(filePath) }),
     "xlsx",
     DEFAULT_RULE_AUTHORING_LIMITS
   )
@@ -108,7 +108,7 @@ test("prepareOoxmlParserInput validates stored and deflated empty entries and pr
 
 test("prepareOoxmlParserInput binds every snapshot fingerprint field before preflight", async (t) => {
   const filePath = await fixtureFile(t, createXlsxFixture())
-  const fingerprint = await fingerprintSource(filePath)
+  const fingerprint = await fingerprintSource(filePath, { maximumBytes: 25 * 1048576, rootPath: path.dirname(filePath) })
   const mutations = {
     byteSize: String(Number(fingerprint.byteSize) + 1),
     mtimeNs: String(BigInt(fingerprint.mtimeNs) + 1n),
@@ -125,16 +125,17 @@ test("prepareOoxmlParserInput binds every snapshot fingerprint field before pref
         "xlsx",
         DEFAULT_RULE_AUTHORING_LIMITS
       ),
-      new RegExp(`fingerprint field ${field} differs`, "i")
+      error => error.code === "bounded_document_source_changed"
     )
   }
 })
 
 test("prepareOoxmlParserInput rejects stat identity mismatch before reading snapshot bytes", async (t) => {
   const filePath = await fixtureFile(t, createXlsxFixture())
-  const fingerprint = await fingerprintSource(filePath)
+  const fingerprint = await fingerprintSource(filePath, { maximumBytes: 25 * 1048576, rootPath: path.dirname(filePath) })
   await fs.appendFile(filePath, Buffer.alloc(64 * 1024))
-  const archivePath = require.resolve("../out/ruleAuthoring/extraction/ooxmlArchive")
+  const archivePath = require.resolve("../out/shared-processing-budget-runtime/boundedDocumentFile")
+  const helperPath = require.resolve("./helpers/sharedOoxmlTestAdapter")
   const script = `
     const Module = require("node:module")
     const originalLoad = Module._load
@@ -155,7 +156,7 @@ test("prepareOoxmlParserInput rejects stat identity mismatch before reading snap
         }
       }
     }
-    require(${JSON.stringify(archivePath)}).prepareOoxmlParserInput(
+    require(${JSON.stringify(helperPath)}).prepareOoxmlParserInput(
       ${JSON.stringify(filePath)},
       ${JSON.stringify(fingerprint)},
       "xlsx",
@@ -163,7 +164,7 @@ test("prepareOoxmlParserInput rejects stat identity mismatch before reading snap
     ).then(() => {
       throw new Error("mismatched snapshot unexpectedly prepared")
     }).catch((error) => {
-      if (!/fingerprint field byteSize differs/i.test(error.message)) throw error
+      if (error.code !== "bounded_document_source_changed") throw error
       if (reads !== 0) throw new Error("snapshot reads before stat identity rejection: " + reads)
     })
   `
@@ -176,8 +177,9 @@ test("prepareOoxmlParserInput rejects stat identity mismatch before reading snap
 test("prepareOoxmlParserInput reads and re-stats one open file handle around the snapshot", async (t) => {
   const sourceBytes = createXlsxFixture()
   const filePath = await fixtureFile(t, sourceBytes)
-  const fingerprint = await fingerprintSource(filePath)
-  const archivePath = require.resolve("../out/ruleAuthoring/extraction/ooxmlArchive")
+  const fingerprint = await fingerprintSource(filePath, { maximumBytes: 25 * 1048576, rootPath: path.dirname(filePath) })
+  const archivePath = require.resolve("../out/shared-processing-budget-runtime/boundedDocumentFile")
+  const helperPath = require.resolve("./helpers/sharedOoxmlTestAdapter")
   const script = `
     const Module = require("node:module")
     const originalLoad = Module._load
@@ -190,7 +192,7 @@ test("prepareOoxmlParserInput reads and re-stats one open file handle around the
         ...loaded,
         async open(...args) {
           openCalls += 1
-          if (args[0] !== ${JSON.stringify(filePath)} || args[1] !== "r") {
+          if (args[0] !== ${JSON.stringify(filePath)} || args[1] !== (require("node:fs").constants.O_RDONLY | (require("node:fs").constants.O_NOFOLLOW ?? 0) | (require("node:fs").constants.O_NONBLOCK ?? 0))) {
             throw new Error("unexpected OOXML open arguments: " + JSON.stringify(args))
           }
           const handle = await loaded.open(...args)
@@ -213,7 +215,7 @@ test("prepareOoxmlParserInput reads and re-stats one open file handle around the
         }
       }
     }
-    require(${JSON.stringify(archivePath)}).prepareOoxmlParserInput(
+    require(${JSON.stringify(helperPath)}).prepareOoxmlParserInput(
       ${JSON.stringify(filePath)},
       ${JSON.stringify(fingerprint)},
       "xlsx",
@@ -222,10 +224,10 @@ test("prepareOoxmlParserInput reads and re-stats one open file handle around the
       if (openCalls !== 1) throw new Error("OOXML open calls: " + openCalls)
       const statIndexes = events.flatMap((event, index) => event === "stat" ? [index] : [])
       const readIndexes = events.flatMap((event, index) => event === "read" ? [index] : [])
-      if (statIndexes.length !== 2 || readIndexes.length < 1) {
+      if (statIndexes.length !== 4 || readIndexes.length < 1) {
         throw new Error("unexpected handle events: " + JSON.stringify(events))
       }
-      if (!(statIndexes[0] < readIndexes[0] && readIndexes.at(-1) < statIndexes[1])) {
+      if (!(statIndexes[0] < readIndexes[0] && readIndexes.at(-1) < statIndexes.at(-1))) {
         throw new Error("snapshot was not bracketed by same-handle stats: " + JSON.stringify(events))
       }
       if (events.at(-1) !== "close") throw new Error("OOXML handle was not closed: " + JSON.stringify(events))
@@ -264,38 +266,11 @@ for (const dataDescriptorSignature of [true, false]) {
 test("prepareOoxmlParserInput gives every deflate decoder a finite preflight-derived output bound", async (t) => {
   const filePath = await fixtureFile(t, createXlsxFixture({ omitStyles: true, deflate: true }))
   const preflight = await xlsxPreflightContext(filePath)
-  const archivePath = require.resolve("../out/ruleAuthoring/extraction/ooxmlArchive")
-  const originalCacheEntry = require.cache[archivePath]
-  const originalLoad = Module._load
+  const originalInflate = zlib.inflateRawSync
   const inflateOptions = []
-  let boundedPrepare
-
-  delete require.cache[archivePath]
-  try {
-    Module._load = function(request, parent, isMain) {
-      const loaded = originalLoad.call(this, request, parent, isMain)
-      if (request !== "node:zlib" || parent?.filename !== archivePath) return loaded
-      return {
-        ...loaded,
-        inflateRawSync(input, options) {
-          inflateOptions.push({ ...options })
-          return loaded.inflateRawSync(input, options)
-        }
-      }
-    }
-    boundedPrepare = require(archivePath).prepareOoxmlParserInput
-  } finally {
-    Module._load = originalLoad
-    if (originalCacheEntry) require.cache[archivePath] = originalCacheEntry
-    else delete require.cache[archivePath]
-  }
-
-  const result = await boundedPrepare(
-    filePath,
-    await fingerprintSource(filePath),
-    "xlsx",
-    DEFAULT_RULE_AUTHORING_LIMITS
-  )
+  let result
+  zlib.inflateRawSync = (input, options) => { inflateOptions.push({ ...options }); return originalInflate(input, options) }
+  try { result = await prepareXlsx(filePath) } finally { zlib.inflateRawSync = originalInflate }
   const expectedBounds = preflight.entries
     .filter((entry) => entry.compressionMethod === 8)
     .map((entry) => Math.max(1, entry.uncompressedSize))
@@ -320,7 +295,7 @@ test("prepareOoxmlParserInput rejects deflate output that exceeds its preflight-
   }))
   await assert.rejects(
     () => prepareXlsx(filePath),
-    /deflate output|decoded size|expansion exceeds/i
+    error => error.code === "bounded_document_archive_invalid"
   )
 })
 
@@ -340,7 +315,7 @@ test("prepareOoxmlParserInput rejects deflate output shorter than its preflight-
   }))
   await assert.rejects(
     () => prepareXlsx(filePath),
-    /decoded size does not match preflight/i
+    error => error.code === "bounded_document_archive_invalid"
   )
 })
 
@@ -360,7 +335,7 @@ test("prepareOoxmlParserInput rejects trailing bytes inside a declared deflate p
   }))
   await assert.rejects(
     () => prepareXlsx(filePath),
-    /compressed payload was not consumed exactly/i
+    error => error.code === "bounded_document_archive_invalid"
   )
 })
 
@@ -371,7 +346,7 @@ test("prepareOoxmlParserInput rejects entry bytes whose CRC does not match prefl
   }))
   await assert.rejects(
     () => prepareXlsx(filePath),
-    /entry CRC does not match preflight/i
+    error => error.code === "bounded_document_archive_invalid"
   )
 })
 
@@ -383,7 +358,7 @@ test("prepareOoxmlParserInput rejects a preflight-listed __proto__ entry before 
 
   await assert.rejects(
     () => prepareXlsx(filePath),
-    /unsafe XLSX compatibility entry/i
+    error => error.code === "bounded_document_archive_invalid"
   )
 })
 

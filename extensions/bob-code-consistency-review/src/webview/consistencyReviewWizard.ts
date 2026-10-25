@@ -1,3 +1,4 @@
+import { reviewProcessingLimitsFromConfiguration } from "../reviewProcessingConfiguration"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { randomBytes } from "node:crypto"
@@ -408,7 +409,7 @@ export class ConsistencyReviewWizardController {
   ): Promise<ConsistencyReviewWizardModel> {
     const config = vscode.workspace.getConfiguration("bobCodeConsistency")
     const textEncoding = config.get<string>("textEncoding", "auto")
-    const discovery = await discoverReviewInputCandidates(this.workspaceRoot, { textEncoding })
+    const discovery = await discoverReviewInputCandidates(this.workspaceRoot, { textEncoding, limits: reviewProcessingLimitsFromConfiguration(config) })
     const documents = discovery.documents
     const traceability = options.skipTraceabilityIo
       ? {

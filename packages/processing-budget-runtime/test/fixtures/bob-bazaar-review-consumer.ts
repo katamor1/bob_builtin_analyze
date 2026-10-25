@@ -32,3 +32,15 @@ ledger.reserve("not_a_category", 1)
 profile.limits.document_count = 1
 // @ts-expect-error reports are readonly
 report.categories.push(firstCategory)
+
+import { readBoundedDocumentFile, fingerprintBoundedDocumentFile, type BoundedDocumentReadInput } from "../.."
+import { withValidatedOoxmlParserInput, type ValidatedOoxmlParserRequest } from "../../out/validatedOoxml"
+const boundedInput: BoundedDocumentReadInput = { filePath: "/source.docx", rootPath: "/", maximumFileBytes: 1, target: "document", ledger }
+void readBoundedDocumentFile(boundedInput)
+const fingerprint = fingerprintBoundedDocumentFile({ filePath: boundedInput.filePath, rootPath: boundedInput.rootPath, maximumFileBytes: 1 })
+async function parseDocument(request: ValidatedOoxmlParserRequest): Promise<number> { return withValidatedOoxmlParserInput(request, async ({ parserInput }) => parserInput.byteLength) }
+void fingerprint; void parseDocument
+// @ts-expect-error no low-level prepare export on the root
+import { prepareOoxmlParserInput } from "../.."
+// @ts-expect-error parser callback must receive validated input
+withValidatedOoxmlParserInput({}, async (input: string) => input)

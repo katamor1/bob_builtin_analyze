@@ -45,10 +45,10 @@ function npmCli() {
 }
 
 const consumerNames = ['workflow-register','bob-bazaar-review','bob-code-consistency-review'];
-const runtimeResult = {state:'passed',entry:'out/index.js',checks:['constructor','reserve_commit','release','snapshot']};
+const runtimeResult = {state:'passed',entry:'out/index.js',checks:['constructor','reserve_commit','release','snapshot','bounded_read','validated_ooxml','deep_import_rejected']};
 function expectedPayload() {
   const files=['package.json','README.md','contracts/processing-budget-definition.v1.json','schema/processing-budget-profile.v1.schema.json'];
-  for(const name of ['index','generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger']) {
+  for(const name of ['index','generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','boundedDocumentError','boundedDocumentRequest','boundedDocumentFile','boundedDocumentIo','ooxmlPreflight','ooxmlParserInput','validatedOoxml']) {
     for(const suffix of ['js','d.ts','js.map']) files.push('out/'+name+'.'+suffix);
   }
   return files.sort();
@@ -72,16 +72,19 @@ function packAndInstall(root, outputRoot) {
     const name=consumer+'-consumer.ts';
     const original=fs.readFileSync(path.join(packageRoot,'test/fixtures',name),'utf8');
     if(!original.includes('from "../.."'))throw new Error('consumer import unavailable');
-    fs.writeFileSync(path.join(consumerRoot,name),original.replace('from "../.."','from "@bob/processing-budget-runtime"'),{flag:'wx'});
+    fs.writeFileSync(path.join(consumerRoot,name),original.replaceAll('from "../.."','from "@bob/processing-budget-runtime"').replaceAll('from "../../out/validatedOoxml"','from "@bob/processing-budget-runtime/validated-ooxml"'),{flag:'wx'});
     const configPath=path.join(consumerRoot,consumer+'.tsconfig.json');
     const tsconfig=JSON.parse(fs.readFileSync(path.join(packageRoot,'test/fixtures/tsconfig.json'),'utf8'));
-    delete tsconfig.include;tsconfig.files=[name];
+    delete tsconfig.include;tsconfig.files=[name];tsconfig.compilerOptions.typeRoots=[path.join(packageRoot,'node_modules/@types')];
     fs.writeFileSync(configPath,JSON.stringify(tsconfig),{flag:'wx'});
     runNode([path.join(packageRoot,'node_modules/typescript/bin/tsc'),'-p',configPath,'--noEmit'],consumerRoot);
     consumerResults.push({consumer,typecheck:'passed'});
   }
+  const zip=require('fflate').zipSync({'[Content_Types].xml':Buffer.from('types'),'word/document.xml':Buffer.from('document')});
+  fs.writeFileSync(path.join(consumerRoot,'source.docx'),zip,{flag:'wx'});
   const probe=`const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
     const entry=fs.realpathSync(require.resolve('@bob/processing-budget-runtime'));
+    (async()=>{
     const installed=fs.realpathSync(path.resolve('node_modules/@bob/processing-budget-runtime'));
     assert.ok(entry.startsWith(installed+path.sep));
     const {ProcessingBudgetLedger}=require(entry),ledger=new ProcessingBudgetLedger();
@@ -90,7 +93,14 @@ function packAndInstall(root, outputRoot) {
     assert.equal(report.schema_version,'processing-budget-ledger-report/v1');
     assert.equal(report.categories.find(x=>x.category==='total_operation_input_bytes').committed,7);
     assert.equal(report.categories.find(x=>x.category==='raw_diff_bytes').used,0);
-    assert.ok(Object.isFrozen(report));process.stdout.write(JSON.stringify({entry}));`;
+    assert.ok(Object.isFrozen(report));
+    const runtime=require(entry),filePath=path.resolve('source.docx'),rootPath=process.cwd(),maximumFileBytes=1024;
+    const bounded=await runtime.readBoundedDocumentFile({filePath,rootPath,maximumFileBytes,target:'read',ledger:new ProcessingBudgetLedger()});assert.ok(bounded.copyBytes().equals(fs.readFileSync(filePath)));
+    const expectedFingerprint=await runtime.fingerprintBoundedDocumentFile({filePath,rootPath,maximumFileBytes});
+    const {withValidatedOoxmlParserInput}=require('@bob/processing-budget-runtime/validated-ooxml');let calls=0;
+    const result=await withValidatedOoxmlParserInput({filePath,rootPath,maximumFileBytes,target:'parse',ledger:new ProcessingBudgetLedger(),expectedFingerprint,documentKind:'docx',structuralLimits:{maxEntries:5000,maxExpandedBytes:250*1048576},loadXlsxCodec:async()=>{throw Error('unexpected codec');}},async({parserInput})=>{calls++;assert.ok(parserInput.equals(fs.readFileSync(filePath)));return 'parsed';});
+    assert.equal(result,'parsed');assert.equal(calls,1);assert.throws(()=>require('@bob/processing-budget-runtime/out/ooxmlParserInput'),e=>e.code==='ERR_PACKAGE_PATH_NOT_EXPORTED');
+    process.stdout.write(JSON.stringify({entry}));})().catch(e=>{console.error(e);process.exitCode=1;});`;
   const installedResolvedPath=JSON.parse(runNode(['-e',probe],consumerRoot)).entry;
   const receiptPath=path.join(outputRoot,'pack-proof.json');
   fs.writeFileSync(receiptPath,JSON.stringify({schemaVersion:'bob-builtin-analyze/processing-budget-pack-proof/v1',node:process.version,tarball,manifest,consumerResults,runtimeResult,installedResolvedPath},null,2)+'\n',{flag:'wx'});

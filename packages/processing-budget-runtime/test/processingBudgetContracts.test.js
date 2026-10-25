@@ -53,7 +53,7 @@ test('runtime_graph_has_no_effectful_imports',()=>{
  assert.ok(fs.existsSync(path.join(packageRoot,'src/generatedProcessingBudgetDefinition.ts')),'generated runtime must exist');
  const ts=require('typescript');
  const allowed=new Set(['./generatedProcessingBudgetDefinition','./processingBudgetError','./processingBudgetProfile','./processingBudgetLedger']);
- for(const file of fs.readdirSync(path.join(packageRoot,'src')).filter(x=>x.endsWith('.ts'))){
+ for(const file of ['generatedProcessingBudgetDefinition.ts','processingBudgetError.ts','processingBudgetProfile.ts','processingBudgetLedger.ts']){
   const tree=ts.createSourceFile(file,fs.readFileSync(path.join(packageRoot,'src',file),'utf8'),ts.ScriptTarget.Latest,true);
   function walk(n){
    if(ts.isImportDeclaration(n)||ts.isExportDeclaration(n)) {if(n.moduleSpecifier) assert.ok(allowed.has(n.moduleSpecifier.text),'effectful or unknown runtime dependency');}
@@ -62,4 +62,41 @@ test('runtime_graph_has_no_effectful_imports',()=>{
    ts.forEachChild(n,walk);
   } walk(tree);
  }
+});
+
+
+test('t14_io_graph_is_closed_and_has_no_product_or_dynamic_runtime_imports',()=>{
+ const ts=require('typescript');
+ const dependencies={
+  index:['./generatedProcessingBudgetDefinition','./processingBudgetError','./processingBudgetProfile','./processingBudgetLedger','./boundedDocumentIo','./boundedDocumentError'],
+  boundedDocumentError:[],
+  boundedDocumentRequest:['node:path','./boundedDocumentError','./processingBudgetLedger','./processingBudgetProfile'],
+  boundedDocumentFile:['node:crypto','node:fs','node:fs/promises','node:path','./boundedDocumentError','./boundedDocumentRequest','./processingBudgetLedger'],
+  boundedDocumentIo:['./boundedDocumentFile','./boundedDocumentRequest'],
+  ooxmlPreflight:['./boundedDocumentError'],
+  ooxmlParserInput:['node:zlib','./boundedDocumentError','./boundedDocumentFile','./boundedDocumentRequest','./ooxmlPreflight'],
+  validatedOoxml:['./ooxmlParserInput']
+ };
+ const pure=new Set(['generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger']);
+ function inspect(name,text){
+  const tree=ts.createSourceFile(name+'.ts',text,ts.ScriptTarget.Latest,true);
+  function visit(node){
+   if(ts.isImportDeclaration(node)||ts.isExportDeclaration(node)){
+    if(node.moduleSpecifier)assert.ok(dependencies[name].includes(node.moduleSpecifier.text),'unknown or product dependency: '+name);
+    if(ts.isExportDeclaration(node))assert.ok(node.exportClause,'no wildcard export');
+   }
+   if(ts.isCallExpression(node)&&((ts.isIdentifier(node.expression)&&node.expression.text==='require')||node.expression.kind===ts.SyntaxKind.ImportKeyword))assert.fail('dynamic runtime import');
+   if(ts.isIdentifier(node)&&['process','fetch','eval','Function','globalThis','setTimeout'].includes(node.text))assert.fail('unknown runtime capability');
+   ts.forEachChild(node,visit);
+  }visit(tree);
+ }
+ for(const entry of fs.readdirSync(path.join(packageRoot,'src'),{withFileTypes:true})){
+  assert.ok(entry.isFile()&&entry.name.endsWith('.ts'),'literal flat source inventory');
+  const name=entry.name.slice(0,-3);if(pure.has(name))continue;
+  assert.ok(Object.hasOwn(dependencies,name),'unreviewed runtime source');
+  inspect(name,fs.readFileSync(path.join(packageRoot,'src',entry.name),'utf8'));
+ }
+ assert.throws(()=>inspect('boundedDocumentIo','import { spawn } from "node:child_process";'),/unknown or product/);
+ assert.throws(()=>inspect('boundedDocumentIo','const x = require("anything");'),/dynamic runtime/);
+ assert.throws(()=>inspect('boundedDocumentIo','fetch("https://example.invalid");'),/unknown runtime/);
 });
