@@ -10,7 +10,7 @@ const COVERAGE='docs/release-evidence/proc-t14-bounded-doc-source-coverage-2026-
 const POLICY='tools/main-consolidation/boundedDocumentAdmissionPolicy.mjs';
 const BASE='0e806d48dfdd3136f47f36218b72fba1cfb4c4fd',TREE='7623f90470a16145cdcb8d641959e18856820f67';
 // Literal constants below are sealed from the reviewed T14 scope, never caller supplied.
-export const BOUNDED_DOCUMENT_SOURCE_ADMISSION_SHA256="d164b2148a99bc4e88c12bdf8083d6b7ce5fa884c5d44a622f3a75b497799d92";
+export const BOUNDED_DOCUMENT_SOURCE_ADMISSION_SHA256="f0a570f609d4cf7c5af2bb219eddeb1005db5038388b979242374acc4581ff41";
 export const BOUNDED_DOCUMENT_SOURCE_COVERAGE_SHA256="c41248daa674ff298ff324a890d45f1eae5f91dc4657f7c148b315ffb57be1b2";
 export const BOUNDED_DOCUMENT_HISTORICAL_BINDINGS=Object.freeze({
   "tools/main-consolidation/registry-bridge-source-admission.json": {

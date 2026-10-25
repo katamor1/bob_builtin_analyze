@@ -192,7 +192,7 @@ test("prepareOoxmlParserInput reads and re-stats one open file handle around the
         ...loaded,
         async open(...args) {
           openCalls += 1
-          if (args[0] !== ${JSON.stringify(filePath)} || args[1] !== "r") {
+          if (args[0] !== ${JSON.stringify(filePath)} || args[1] !== (require("node:fs").constants.O_RDONLY | (require("node:fs").constants.O_NOFOLLOW ?? 0) | (require("node:fs").constants.O_NONBLOCK ?? 0))) {
             throw new Error("unexpected OOXML open arguments: " + JSON.stringify(args))
           }
           const handle = await loaded.open(...args)
