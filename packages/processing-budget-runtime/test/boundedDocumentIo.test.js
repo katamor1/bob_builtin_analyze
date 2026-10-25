@@ -44,3 +44,19 @@ test('ledger_capability_is_brand_checked_before_filesystem_io',async()=>{
  const forged=Object.create(ProcessingBudgetLedger.prototype),proxy=new Proxy({},{getPrototypeOf(){throw Error('untrusted diagnostic');}});
  try{for(const ledger of [forged,proxy])await assert.rejects(()=>r.readBoundedDocumentFile({...f.input,ledger}),e=>e.code==='bounded_document_input_invalid'&&Buffer.byteLength(e.message)<=512);assert.equal(opens,0);}finally{m.mock.restore();}
 });
+
+test('nonregular_leaf_is_rejected_before_open',async()=>{
+ const r=h.load(),f=h.fixture(),directory=path.join(f.root,'directory.docx');fs.mkdirSync(directory);let opens=0;
+ const m=mock.method(fsp,'open',async()=>{opens++;throw Error('nonregular leaf must not be opened');});
+ try{await assert.rejects(()=>r.readBoundedDocumentFile({...f.input,filePath:directory}),e=>e.code==='bounded_document_source_invalid');assert.equal(opens,0);assert.equal(h.openReservations(f.input.ledger),0);assert.deepEqual(h.committedTriple(f.input.ledger),[0,0,0]);}finally{m.mock.restore();}
+});
+test('regular_open_uses_nonblocking_no_follow_flags_when_available',async()=>{
+ const r=h.load(),f=h.fixture(),originalOpen=fsp.open;let flags;
+ const m=mock.method(fsp,'open',async(file,options,...rest)=>{flags=options;return originalOpen(file,options,...rest);});
+ try{await r.readBoundedDocumentFile(f.input);assert.equal(typeof flags,'number');assert.equal(flags,fs.constants.O_RDONLY|(fs.constants.O_NOFOLLOW??0)|(fs.constants.O_NONBLOCK??0));assert.deepEqual(h.committedTriple(f.input.ledger),[7,7,7]);}finally{m.mock.restore();}
+});
+test('posix_fifo_leaf_is_rejected_without_waiting_for_a_writer',{skip:process.platform==='win32'?'POSIX FIFO regression; exercised by Ubuntu CI':false},()=>{
+ const cp=require('node:child_process'),f=h.fixture(),fifo=path.join(f.root,'source.docx');cp.execFileSync('mkfifo',[fifo]);
+ const script="const r=require(process.argv[1]);r.fingerprintBoundedDocumentFile({filePath:process.argv[2],rootPath:process.argv[3],maximumFileBytes:1024}).then(()=>{process.exitCode=2},e=>{process.stdout.write(String(e.code));process.exitCode=e.code==='bounded_document_source_invalid'?0:3});";
+ const result=cp.spawnSync(process.execPath,['-e',script,path.resolve(__dirname,'../out/index.js'),fifo,f.root],{encoding:'utf8',timeout:2000});assert.equal(result.error,undefined);assert.equal(result.status,0);assert.equal(result.stdout,'bounded_document_source_invalid');
+});

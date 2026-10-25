@@ -35,7 +35,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "8bb8b1a7addf7c98bde99c10190a53dca909238a",
+      "afterBlobSha": "d6a6e4ef6b488825d34e9403dd9f77b70f7b3e85",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "docs/release-evidence/proc-t14-bounded-doc-source-coverage-2026-10-24.json",
@@ -77,21 +77,21 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "b4613b61922034ecc2bfc95725136a96124b83b6",
+      "afterBlobSha": "89f37df8cecc75d93d6eb21f674b5bcb952133ec",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "scripts/t14-bounded-document-installed-extension-host.test.js",
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "a59d9dffad2b9639a027319bc2331b596d1ebc9e",
+      "afterBlobSha": "8689bc7c037f586dc0787699adb5da439b25061d",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "scripts/t14-bounded-document-installed-smoke.mjs",
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "07c443b4e8b16ee2aafb585a5f783a2c4529d321",
+      "afterBlobSha": "bc912e16ab743e019f55218374d70f0b02e366cb",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "scripts/t14-bounded-document-installed-smoke.test.mjs",
@@ -141,7 +141,7 @@
     }
   ],
   "schemaVersion": "bob-builtin-analyze/bounded-document-source-admission/v1",
-  "sourceCoverageDigest": "a79353cf0a4663cced2a7e4417e583ddf0f8a233344730d06380ff10a65fffa9",
+  "sourceCoverageDigest": "c41248daa674ff298ff324a890d45f1eae5f91dc4657f7c148b315ffb57be1b2",
   "sourceRows": [
     {
       "afterBlobSha": "b92a6da826e7a882501bfc025b01134199e56f59",
@@ -565,7 +565,7 @@
       ]
     },
     {
-      "afterBlobSha": "5bd694a2e4e9f73d2c8cb61969d09a2e4308f169",
+      "afterBlobSha": "db086da69bb532eb3b6506e22606f43e1c5888c4",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "packages/processing-budget-runtime/src/boundedDocumentFile.ts",
@@ -682,7 +682,7 @@
       ]
     },
     {
-      "afterBlobSha": "70a415490a6b78060d290f8b05869d5c25de5e7e",
+      "afterBlobSha": "5f4bb9f247c36135414aad75cae8d025ecd62592",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "packages/processing-budget-runtime/test/boundedDocumentIo.test.js",

@@ -12,6 +12,21 @@ function assertInstalledRuntimePaths(extensionRoot, paths) {
 }
 exports.assertInstalledRuntimePaths = assertInstalledRuntimePaths
 
+function resolveInstalledParserEntries(extensionRoot, parsers) {
+  const physical = file => fs.realpathSync(file).replace(/^[a-z]:/, drive => drive.toUpperCase())
+  const root = physical(extensionRoot), local = Module.createRequire(path.join(root, "package.json"))
+  return parsers.map(parser => {
+    const file = physical(local.resolve(parser.specifier)), prefix = path.join(root, "node_modules", parser.name) + path.sep
+    if (!file.startsWith(prefix)) throw new Error("artifact parser path escaped installed extension")
+    const metadata = JSON.parse(fs.readFileSync(path.join(prefix, "package.json"), "utf8"))
+    if (metadata.name !== parser.name || metadata.version !== parser.version) throw new Error("artifact parser version mismatch")
+    const relativePath = path.relative(root, file).split(path.sep).join("/"), expected = parser.payload?.find(row => row.path === relativePath), bytes = fs.readFileSync(file)
+    if (!expected || bytes.length !== expected.bytes || sha(bytes) !== expected.sha256) throw new Error("artifact parser entry hash mismatch")
+    return { extensionRoot, name: parser.name, version: parser.version, integrity: parser.integrity, path: file, relativePath, bytes: bytes.length, sha256: sha(bytes) }
+  })
+}
+exports.resolveInstalledParserEntries = resolveInstalledParserEntries
+
 exports.runGuiProbe = async function runGuiProbe(extensionRoot, workspaceRoot) {
   const entry = path.join(extensionRoot, "out/ui/ruleAuthoringGui.js"), originalError = new Error("private fixture path must not reach the UI"), reported = [], displayed = []
   const messageListeners = [], disposeListeners = []
@@ -59,8 +74,8 @@ exports.runGuiProbe = async function runGuiProbe(extensionRoot, workspaceRoot) {
 
 exports.run = async function run() {
   const vscode = require("vscode"), config = JSON.parse(fs.readFileSync(path.join(__dirname, "config.json"), "utf8"))
-  const cases = [], loadedModules = [], actualRoots = []
-  const receipt = { schemaVersion: "bob-builtin-analyze/t14-installed-host/v1", sourceHeadSha: config.sourceHeadSha, sourceTreeSha: config.sourceTreeSha, vscode: vscode.version, node: process.version, state: "failed", productActivationProbe: "not_run", productDeactivationProbe: "not_run", cases, loadedModules }
+  const cases = [], loadedModules = [], actualRoots = [], parserIdentities = []
+  const receipt = { schemaVersion: "bob-builtin-analyze/t14-installed-host/v1", sourceHeadSha: config.sourceHeadSha, sourceTreeSha: config.sourceTreeSha, vscode: vscode.version, node: process.version, state: "failed", productActivationProbe: "not_run", productDeactivationProbe: "not_run", cases, loadedModules, parserIdentities }
   async function check(name, operation) { try { const detail = await operation(); cases.push({ name, state: "passed", ...(detail ? { detail } : {}) }) } catch(error) { cases.push({ name, state: "failed", message: String(error?.message ?? error).slice(0,512) }); throw error } }
   try {
     assert.equal(vscode.version, "1.106.1")
@@ -69,6 +84,7 @@ exports.run = async function run() {
       assert.ok(extension, "artifact development extension must be registered")
       const actual = fs.realpathSync(extension.extensionPath), expected = fs.realpathSync(item.root)
       assert.equal(actual, expected); actualRoots.push(actual)
+      parserIdentities.push(...resolveInstalledParserEntries(actual, item.parsers))
     }
     const [bazaarRoot, consistencyRoot] = actualRoots
     const bazaar = require(path.join(bazaarRoot, "out/ruleAuthoring/extraction/documentExtractor.js")), consistency = require(path.join(consistencyRoot, "out/analyzers/documentExtractor.js"))
@@ -115,6 +131,9 @@ exports.run = async function run() {
     }
     const cached=Object.keys(require.cache).filter(file=>/[\\/](?:shared-processing-budget-runtime[\\/]|processing-budget-runtime[\\/]out[\\/])/.test(file))
     for(const file of cached)assert.ok(actualRoots.some(root=>{try{assertInstalledRuntimePaths(root,[file]);return true}catch{return false}}),"repo runtime fallback")
+    for (const file of Object.keys(require.cache).filter(file => config.extensions.some(item => item.parsers.some(parser => file.split(path.sep).join("/").includes("/node_modules/" + parser.name + "/"))))) {
+      const physical=fs.realpathSync(file).replace(/^[a-z]:/,drive=>drive.toUpperCase());assert.ok(config.extensions.some(item=>item.parsers.some(parser=>physical.startsWith(path.join(fs.realpathSync(item.root).replace(/^[a-z]:/,drive=>drive.toUpperCase()),"node_modules",parser.name)+path.sep))),"artifact parser cache fallback")
+    }
     receipt.state="passed"
   } finally { fs.writeFileSync(config.hostReceiptPath,JSON.stringify(receipt,null,2)+"\n",{flag:"wx"}) }
 }

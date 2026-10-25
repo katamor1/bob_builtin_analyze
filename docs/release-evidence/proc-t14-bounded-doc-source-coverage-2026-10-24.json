@@ -1253,7 +1253,7 @@
       "sourceItemId": "source-8bc8f4d403d2a239104b230b",
       "targets": [
         {
-          "blobSha": "70a415490a6b78060d290f8b05869d5c25de5e7e",
+          "blobSha": "5f4bb9f247c36135414aad75cae8d025ecd62592",
           "mode": "100644",
           "path": "packages/processing-budget-runtime/test/boundedDocumentIo.test.js",
           "symbols": []
@@ -1455,10 +1455,11 @@
       "sourceItemId": "source-9c736d36f51e003acd61ec67",
       "targets": [
         {
-          "blobSha": "5bd694a2e4e9f73d2c8cb61969d09a2e4308f169",
+          "blobSha": "db086da69bb532eb3b6506e22606f43e1c5888c4",
           "mode": "100644",
           "path": "packages/processing-budget-runtime/src/boundedDocumentFile.ts",
           "symbols": [
+            "BigIntStats",
             "BoundedDocumentErrorCode",
             "BoundedDocumentFingerprint",
             "BoundedDocumentReadInput",

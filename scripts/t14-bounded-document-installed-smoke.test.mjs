@@ -8,8 +8,9 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),require=createRequire(import.meta.url);
 const names=['generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','index','boundedDocumentError','boundedDocumentRequest','boundedDocumentFile','boundedDocumentIo','ooxmlPreflight','ooxmlParserInput','validatedOoxml'];
+const {expectedParserIdentities}=await import('./t14-bounded-document-installed-smoke.mjs');
 const binding=(bytes,pathname)=>({path:pathname,bytes:bytes.length,sha256:crypto.createHash('sha256').update(bytes).digest('hex')});
-function fixture(t,omit){
+function fixture(t,omit,alter){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'bob-installed-contract-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  const compiledModules=names.flatMap(name=>['js','d.ts','js.map'].map(suffix=>binding(Buffer.from('module.exports={}\n'),name+'.'+suffix))).sort((a,b)=>a.path.localeCompare(b.path));
  const {zipSync}=createRequire(path.join(root,'packages/processing-budget-runtime/package.json'))('fflate');
@@ -17,6 +18,8 @@ function fixture(t,omit){
   const entries={'extension/package.json':Buffer.from(JSON.stringify({name,publisher:'local',version:'0.0.0',main:'./out/extension.js'})),'extension/out/extension.js':Buffer.from('exports.activate=()=>{};')};
   for(const row of compiledModules.filter(x=>x.path.endsWith('.js')))if(row.path!==omit)entries['extension/out/shared-processing-budget-runtime/'+row.path]=Buffer.from('module.exports={}\n');
   entries['extension/out/shared-processing-budget-runtime/manifest.json']=Buffer.from(JSON.stringify({schemaVersion:'bob-builtin-analyze/processing-runtime-copy/v1',sourceInputDigest:'a'.repeat(64),payload:compiledModules}));
+  for(const parser of expectedParserIdentities('local.'+name))for(const file of parser.payload)entries['extension/'+file.path]=fs.readFileSync(path.join(root,'extensions',name,file.path));
+  if(alter)alter(entries,name);
   const bytes=Buffer.from(zipSync(entries)),file=path.join(dir,name+'.vsix');fs.writeFileSync(file,bytes);return{id:'local.'+name,vsix:binding(bytes,file)};
  });
  const fixtures=['normal.docx','normal.xlsx','missing-both.xlsx','bad-crc.docx','source.md'].map(name=>{const bytes=Buffer.from('fixture'),file=path.join(dir,name);fs.writeFileSync(file,bytes);return{name,...binding(bytes,file)};});
@@ -47,4 +50,18 @@ test('installed_gui_error_is_logged_once_and_queue_recovers',async t=>{
  fs.cpSync(path.join(root,'extensions/bob-bazaar-review/out'),path.join(extensionRoot,'out'),{recursive:true});
  fs.cpSync(path.join(root,'extensions/bob-bazaar-review/node_modules/js-yaml'),path.join(extensionRoot,'node_modules/js-yaml'),{recursive:true});
  const result=await host.runGuiProbe(extensionRoot,directory);assert.equal(result.guiLoggedOriginalErrorCount,1);assert.equal(result.nextQueuedOperationSucceeded,true);assert.ok(result.modulePath.startsWith(extensionRoot+path.sep));
+});
+
+test('installed_smoke_rejects_resigned_vsix_with_wrong_parser_version',async t=>{
+ const runner=await import('./t14-bounded-document-installed-smoke.mjs'),bad=fixture(t,undefined,entries=>{entries['extension/node_modules/cheerio/package.json']=Buffer.from(JSON.stringify({name:'cheerio',version:'0.0.0',main:'./dist/commonjs/index.js'}));});
+ await assert.rejects(()=>runner.validateArtifactManifest(bad.manifest),/parser/);
+});
+test('installed_smoke_rejects_resigned_vsix_with_same_version_parser_byte_change',async t=>{
+ const runner=await import('./t14-bounded-document-installed-smoke.mjs'),bad=fixture(t,undefined,entries=>{entries['extension/node_modules/cheerio/package.json']??=Buffer.from(JSON.stringify({name:'cheerio',version:'1.2.0'}));const key='extension/node_modules/cheerio/dist/commonjs/index.js',bytes=Buffer.from(entries[key]??Buffer.from('module.exports={};'));bytes[0]^=1;entries[key]=bytes;});
+ await assert.rejects(()=>runner.validateArtifactManifest(bad.manifest),/parser/);
+});
+test('installed_parser_resolution_rejects_repository_fallback',async t=>{
+ const host=require('./t14-bounded-document-installed-extension-host.test.js');assert.equal(typeof host.resolveInstalledParserEntries,'function');
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'bob-parser-fallback-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));const extension=path.join(directory,'extensions/local'),parser=path.join(directory,'node_modules/cheerio');fs.mkdirSync(extension,{recursive:true});fs.mkdirSync(parser,{recursive:true});fs.writeFileSync(path.join(parser,'package.json'),JSON.stringify({name:'cheerio',version:'1.2.0',main:'index.js'}));fs.writeFileSync(path.join(parser,'index.js'),'module.exports={}');
+ assert.throws(()=>host.resolveInstalledParserEntries(extension,[{name:'cheerio',version:'1.2.0',specifier:'cheerio'}]),/parser.*(?:path|fallback|escape)/i);
 });

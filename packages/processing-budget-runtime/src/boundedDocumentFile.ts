@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import type { BigIntStats } from "node:fs"
+import { constants as fileFlags, type BigIntStats } from "node:fs"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { BoundedDocumentError, type BoundedDocumentErrorCode } from "./boundedDocumentError"
@@ -39,6 +39,7 @@ async function sourcePath(input: BoundedDocumentReadInput, rootIdentity?: BigInt
   if (!within(input.rootPath, input.filePath)) throw new BoundedDocumentError("bounded_document_source_invalid")
   await rejectLinks(input.rootPath)
   await rejectLinks(input.filePath)
+  if (!(await fs.lstat(input.filePath)).isFile()) throw new BoundedDocumentError("bounded_document_source_invalid")
   const rootStat = await fs.lstat(input.rootPath, { bigint: true })
   if (!rootStat.isDirectory()) throw new BoundedDocumentError("bounded_document_source_invalid")
   if (rootIdentity && (rootIdentity.dev !== rootStat.dev || rootIdentity.ino !== rootStat.ino)) changed()
@@ -85,7 +86,7 @@ export async function withBoundedDocumentSnapshot<T>(value: BoundedDocumentReadI
   let byteLength = 0
   try {
     const root = await fileOperation(() => sourcePath(input), "bounded_document_source_invalid")
-    file = await fileOperation(() => fs.open(input.filePath, "r"), "bounded_document_source_invalid")
+    file = await fileOperation(() => fs.open(input.filePath, fileFlags.O_RDONLY | (fileFlags.O_NOFOLLOW ?? 0) | (fileFlags.O_NONBLOCK ?? 0)), "bounded_document_source_invalid")
     const before = await fileOperation(() => file!.stat({ bigint: true }))
     if (!before.isFile() || before.size < 0n || before.size > BigInt(input.maximumFileBytes)) throw new BoundedDocumentError("bounded_document_source_invalid", { phase: "read", limit: input.maximumFileBytes })
     sameStat(before, await fileOperation(() => fs.lstat(input.filePath, { bigint: true })))
