@@ -19,7 +19,8 @@ const COMPLETION_REGISTRY = Object.freeze([
   Object.freeze({sha256:'6782c1e797fcf7d76090e39a1afd735f3449efe59a9d521c375d4c360e0de04c',evidenceSha256:'0a5920718eb49bf26fa09e5180320006ba1c97abbb808af07f940b4abf0ea129',reference:Object.freeze({boundaryId:'WF2-R2-INVOKE',sha256:'6782c1e797fcf7d76090e39a1afd735f3449efe59a9d521c375d4c360e0de04c',state:'VERIFIED',acceptedMainSha:'a58d5c74be087917093921c26d57c603a3d1c0d5'})}),
   Object.freeze({sha256:'af004f545e7f88dbb4d53df7c81460bf153a40bd56627758aaf8c5f02e59f57c',evidenceSha256:'f859e6fd4e8fbedf43c7d2e33a1f08a9bfd889997d96a1c140478e772d3ee8ea',reference:Object.freeze({boundaryId:'REG-BRIDGE-OWNER-VERSION-LIFECYCLE',sha256:'af004f545e7f88dbb4d53df7c81460bf153a40bd56627758aaf8c5f02e59f57c',state:'VERIFIED',acceptedMainSha:'4f76cbf7a303e8c7b3a0b73055bfa247cc0f1895'})}),
   Object.freeze({sha256:'84af4a7937314e940277ef5965367818ab1cccdbe46b1f18d8edd41fd8b01e0e',evidenceSha256:'16adb142459f056553a7f8cd2f7cf5e9d1d11323a9a880fdc5055268f45bc24f',reference:Object.freeze({boundaryId:'REG-BRIDGE-DISCOVERY-EVIDENCE',sha256:'84af4a7937314e940277ef5965367818ab1cccdbe46b1f18d8edd41fd8b01e0e',state:'VERIFIED',acceptedMainSha:'8410356cfe623b9c1e54528c7e52344669b6d5de'})}),
-  Object.freeze({sha256:'043031f1dca349602e86de34ae039561c9c0b09255ffca5c4e9fb10e66b21c8b',evidenceSha256:'feef6e87f82dbe58e71e6021e2e2785b7905ea0ab7dcc0ddcfbe3c000fa50501',reference:Object.freeze({boundaryId:'PROC-T13-LEDGER',sha256:'043031f1dca349602e86de34ae039561c9c0b09255ffca5c4e9fb10e66b21c8b',state:'VERIFIED',acceptedMainSha:'4ca80105eceb75f9192f8a94d5203a8883c05a26'})})
+  Object.freeze({sha256:'043031f1dca349602e86de34ae039561c9c0b09255ffca5c4e9fb10e66b21c8b',evidenceSha256:'feef6e87f82dbe58e71e6021e2e2785b7905ea0ab7dcc0ddcfbe3c000fa50501',reference:Object.freeze({boundaryId:'PROC-T13-LEDGER',sha256:'043031f1dca349602e86de34ae039561c9c0b09255ffca5c4e9fb10e66b21c8b',state:'VERIFIED',acceptedMainSha:'4ca80105eceb75f9192f8a94d5203a8883c05a26'})}),
+  Object.freeze({sha256:'380ced2e392014619b0b71499e0247291505867d94955e04e0d47f9ab2316209',evidenceSha256:'598c83bf747d40dfce706569424811b5ab1380a59e5428f0f2013cc53f965257',reference:Object.freeze({boundaryId:'PROC-T14-BOUNDED-DOC',sha256:'380ced2e392014619b0b71499e0247291505867d94955e04e0d47f9ab2316209',state:'VERIFIED',acceptedMainSha:'46a923a3f09e83a60a45cca887f612d7187e38c3'})})
 ])
 const GATE_R_COMPLETION_SCOPES = Object.freeze(['GATE-R-ARCHIVE-INVENTORY','GATE-R-ACTIVE-MANIFEST','GATE-R-VALIDATOR','GATE-R-RUNNER'])
 const hashes = record => Object.fromEntries(record.externalEvidence.map(row=>[row.id,{bytes:row.bytes,sha256:row.sha256}]))
@@ -199,6 +200,81 @@ function validateT13Completion(record) {
  if(record.local.allQualityGatesPassed!==true||record.local.rootPassed!==135||record.local.packagePassed!==16||record.runtimeActivation!==false||record.mutationAuthority!==false||record.automaticCleanup!==false||record.finalProgramUat!=='not_run')fail('local gates and no execution authority')
 }
 
+// Captured after source PR #200, exact candidate/main CI and portable byte replay.
+// Replay is pure data validation: historical runner paths are never opened here.
+const T14_SOURCE_HEAD='b5019196f377ef372a1ea7550706f9af9149fc54'
+const T14_ACCEPTED_MAIN='46a923a3f09e83a60a45cca887f612d7187e38c3'
+const T14_ACCEPTED_TREE='fcc1746f6bbfaf1b9138610c45acf82a889c3533'
+const T14_COMPLETION_SHA256='380ced2e392014619b0b71499e0247291505867d94955e04e0d47f9ab2316209'
+const T14_EXTERNAL_ROWS_SHA256='50a3b731b60e6d407c97359af5c66f6b001d8d90e0bed31b2954d89f0322e4fe'
+const T14_INSTALLED_OBSERVATION_SHA256='d2336b99e438ce5d264ed093d7fcce02a8f0a857241674dd421a0d890d855909'
+export function validateT14Completion(record) {
+ const fail=reason=>{throw new TypeError('T14 completion: '+reason)}
+ exactKeys(record,['schemaVersion','boundaryId','state','repository','sourceHeadSha','acceptedMainSha','acceptedTreeSha','mergeParents','pullRequestNumber','source','boundedDocument','ci','packages','installedUat','activeRuntime','review','local','preservation','externalEvidence','runtimeActivation','automaticCleanup','mutationAuthority','finalProgramUat','limits'],'T14 completion')
+ if(record.schemaVersion!=='bob-builtin-analyze/proc-t14-bounded-doc-completion/v1'||record.boundaryId!=='PROC-T14-BOUNDED-DOC'||record.state!=='VERIFIED'||record.repository!=='katamor1/bob_builtin_analyze'||record.sourceHeadSha!==T14_SOURCE_HEAD||record.acceptedMainSha!==T14_ACCEPTED_MAIN||record.acceptedTreeSha!==T14_ACCEPTED_TREE||record.pullRequestNumber!==200)fail('accepted source identity')
+ same(record.mergeParents,['0e806d48dfdd3136f47f36218b72fba1cfb4c4fd',T14_SOURCE_HEAD],'T14 normal merge parents')
+ const external=record.externalEvidence
+ if(!Array.isArray(external)||external.length!==833||new Set(external.map(r=>r.id)).size!==833||new Set(external.map(r=>r.path)).size!==833)fail('unique physical evidence collection')
+ const key=r=>[r.path,r.bytes,r.sha256].join('\0'),observed=new Set()
+ function bare(row){exactKeys(row,['path','bytes','sha256'],'T14 byte binding');if(typeof row.path!=='string'||row.path.length>4096||!(/^(?:[A-Za-z]:[\\/]|\/)/.test(row.path))||row.path.includes('\0')||row.path.split(/[\\/]/).includes('..')||!Number.isSafeInteger(row.bytes)||row.bytes<=0||row.bytes>268435456)fail('positive physical byte binding');hash256(row.sha256)}
+ for(const row of external){exactKeys(row,['id','path','bytes','sha256'],'T14 external evidence');if(typeof row.id!=='string'||!/^t14-evidence-\d{4}$/.test(row.id))fail('evidence identity');const b={path:row.path,bytes:row.bytes,sha256:row.sha256};bare(b);observed.add(key(b))}
+ if(digest(external)!==T14_EXTERNAL_ROWS_SHA256)fail('captured physical evidence identity')
+ const bound=row=>{bare(row);if(!observed.has(key(row)))fail('binding was not physically captured')}
+ const source=record.source
+ exactKeys(source,['selectedSourceItems','remainderItems','unassigned','upstreamMainSha','categories','rawByteAccounting','expandedByteAccounting','packedPayloadFiles','installedTypeConsumers','productionDependencies','literalSourceAndControlPaths','sourceCoverage','sourceAdmission','historicalBindings','additionalPrerequisites','metadataIsNotSourceSubject'],'T14 source')
+ if(source.selectedSourceItems!==39||source.remainderItems!==675||source.unassigned!==0||source.upstreamMainSha!==record.mergeParents[0]||source.categories!==13||source.rawByteAccounting!=='source_once'||source.expandedByteAccounting!=='structural_only'||source.packedPayloadFiles!==40||source.installedTypeConsumers!==3||source.productionDependencies!==0||source.literalSourceAndControlPaths!==103||source.metadataIsNotSourceSubject!==true)fail('closed source accounting and payload facts')
+ for(const name of ['sourceCoverage','sourceAdmission','historicalBindings'])bound(source[name])
+ if(source.sourceCoverage.sha256!=='c41248daa674ff298ff324a890d45f1eae5f91dc4657f7c148b315ffb57be1b2'||source.sourceAdmission.sha256!=='b34713b990e77558528d57e2550044439b24726079ceebc93e9032c35b646cd1')fail('source admission and coverage')
+ exactKeys(source.additionalPrerequisites,['count','sourceCoverage'],'T14 prerequisites');if(source.additionalPrerequisites.count!==66)fail('additional prerequisite count');same(source.additionalPrerequisites.sourceCoverage,source.sourceCoverage,'T14 prerequisite coverage')
+ exactKeys(record.boundedDocument,['contracts','parity','rawAccounting','sourceFingerprints','callbackPostChecks','normalization','consumers','discovery','crossPlatform','packaging'],'T14 ten evidence joins');for(const row of Object.values(record.boundedDocument))bound(row)
+ const ci=record.ci;exactKeys(ci,['mode','allRequiredGatesSucceeded','waiver','candidate','actualMain'],'T14 actual CI')
+ if(ci.mode!=='actual_exact_head_success'||ci.allRequiredGatesSucceeded!==true||ci.waiver!==null)fail('actual CI required without waiver')
+ const jobIds=new Set(),runIds=new Set()
+ for(const [scope,head,success,skips,event]of [[ci.candidate,T14_SOURCE_HEAD,18,0,'pull_request'],[ci.actualMain,T14_ACCEPTED_MAIN,17,1,'push']]){
+  exactKeys(scope,['head','tree','counts','collection','portableReplay','artifactCapture','workflows'],'T14 CI scope');if(scope.head!==head||scope.tree!==T14_ACCEPTED_TREE)fail('CI source subject');same(scope.counts,{workflows:5,rows:18,success,skipped:skips},'T14 CI counts');for(const n of ['collection','portableReplay','artifactCapture'])bound(scope[n]);same(scope.workflows.map(w=>w.id),Object.keys(T13_CI_JOBS),'T14 five workflows')
+  let actualSuccess=0,actualSkips=0
+  for(const w of scope.workflows){
+   exactKeys(w,['id','path','runId','attempt','event','head','url','raw','jobs'],'T14 workflow');if(w.path!=='.github/workflows/'+w.id+'.yml'||!Number.isSafeInteger(w.runId)||w.runId<=0||runIds.has(w.runId)||!Number.isSafeInteger(w.attempt)||w.attempt<1||w.head!==head||w.event!==event||w.url!==`https://github.com/katamor1/bob_builtin_analyze/actions/runs/${w.runId}`)fail('actual workflow provenance');runIds.add(w.runId);exactKeys(w.raw,['run','jobs','artifacts'],'T14 raw workflow');for(const b of Object.values(w.raw))bound(b);same(w.jobs.map(j=>j.name),T13_CI_JOBS[w.id],'T14 eighteen jobs')
+   for(const j of w.jobs){
+    if(!Number.isSafeInteger(j.jobId)||j.jobId<=0||jobIds.has(j.jobId)||j.workflow!==w.id||j.event!==w.event)fail('unique job provenance');jobIds.add(j.jobId)
+    if(w.event!=='pull_request'&&j.name==='Extension source metrics'){
+     exactKeys(j,['workflow','name','jobId','event','conclusion','kind','runner','guard','log'],'T14 metrics skip');if(j.conclusion!=='skipped'||j.kind!=='expected_non_pr_skip'||j.runner!==null||j.guard!==null||j.log!==null)fail('PR-only metrics skip');actualSkips++;continue
+    }
+    exactKeys(j,['workflow','name','jobId','event','conclusion','kind','runner','startedAt','completedAt','guard','log'],'T14 actual job');if(j.conclusion!=='success'||j.kind!=='actual_runner_success'||!Number.isFinite(Date.parse(j.startedAt))||Date.parse(j.completedAt)<Date.parse(j.startedAt))fail('successful completed job')
+    const runner=j.name.startsWith('Windows / ')||j.name==='Real-machine environment contracts'||j.name.endsWith('/ windows-latest')?'windows-latest':'ubuntu-latest';exactKeys(j.runner,['id','name','labels','expected'],'T14 actual runner');if(!Number.isSafeInteger(j.runner.id)||j.runner.id<=0||typeof j.runner.name!=='string'||!j.runner.name||j.runner.expected!==runner||!Array.isArray(j.runner.labels)||!j.runner.labels.includes(runner))fail('assigned actual runner')
+    exactKeys(j.guard,['event','expectedHeadSha','actualHeadSha','logTimestamp','line','step'],'T14 actual guard');if(j.guard.event!==w.event||j.guard.expectedHeadSha!==head||j.guard.actualHeadSha!==head||!Number.isSafeInteger(j.guard.line)||j.guard.line<1)fail('actual checked-out source');exactKeys(j.guard.step,['name','number','startedAt','completedAt'],'T14 guard step');const step=j.guard.step,time=Date.parse(j.guard.logTimestamp);if(step.name!=='Verify checked-out commit'||!Number.isSafeInteger(step.number)||step.number<1||!Number.isFinite(time)||!Number.isFinite(Date.parse(step.startedAt))||!Number.isFinite(Date.parse(step.completedAt))||time<Date.parse(step.startedAt)-5000||time>Date.parse(step.completedAt)+5000)fail('guard log within actual checkout step');bound(j.log);actualSuccess++
+   }
+  }
+  if(actualSuccess!==success||actualSkips!==skips)fail('actual success and skip totals')
+ }
+ const installed=record.installedUat
+ exactKeys(installed,['kind','state','candidate','actualMain','productActivation','productDeactivation','visualOperator','liveBob','finalProgramUat'],'T14 installed UAT');if(installed.kind!=='isolated_artifact_extension_host'||installed.state!=='passed')fail('isolated installed host')
+ for(const n of ['productActivation','productDeactivation','visualOperator','liveBob','finalProgramUat'])if(installed[n]!=='not_run')fail('unexecuted product/visual/live/final UAT')
+ for(const[scope,head,ciScope]of [[installed.candidate,T14_SOURCE_HEAD,ci.candidate],[installed.actualMain,T14_ACCEPTED_MAIN,ci.actualMain]]){
+  exactKeys(scope,['sourceHeadSha','sourceTreeSha','replay','platforms'],'T14 installed scope');if(scope.sourceHeadSha!==head||scope.sourceTreeSha!==T14_ACCEPTED_TREE)fail('installed source subject');same(scope.replay,ciScope.portableReplay,'T14 captured replay');bound(scope.replay);same(scope.platforms.map(p=>p.os),['ubuntu-latest','windows-latest'],'T14 actual host platforms')
+  for(const p of scope.platforms){
+   exactKeys(p,['os','artifactId','originalManifest','runnerReceipt','hostReceipt','mappedManifest','joinProof','caseCount','loadedModules','parserEntries','sourceFixedParserFiles','vsix'],'T14 host platform');if(!Number.isSafeInteger(p.artifactId)||p.artifactId<=0||p.caseCount!==9||p.loadedModules!==24||p.parserEntries!==8||p.sourceFixedParserFiles!==583)fail('actual host and source-fixed parser inventory');for(const n of ['originalManifest','runnerReceipt','hostReceipt','mappedManifest','joinProof'])bound(p[n]);same(p.vsix.map(v=>v.id),['local.bob-bazaar-review','local.bob-code-consistency-review'],'T14 installed extensions')
+   for(const [i,v]of p.vsix.entries()){
+    exactKeys(v,['id','version','vsix','capBytes','headroomBytes','compiledPayload'],'T14 native VSIX');bound(v.vsix);if(v.version!==(i===0?'0.3.2':'0.1.0')||v.capBytes!==(i===0?12000000:11000000)||v.headroomBytes!==v.capBytes-v.vsix.bytes||v.headroomBytes<0||!Array.isArray(v.compiledPayload)||v.compiledPayload.length!==36)fail('actual installed VSIX and compiled payload');const paths=new Set();for(const b of v.compiledPayload){exactKeys(b,['path','bytes','sha256'],'T14 compiled module');if(typeof b.path!=='string'||!/^\w+\.(?:js|d\.ts|js\.map)$/.test(b.path)||paths.has(b.path)||!Number.isSafeInteger(b.bytes)||b.bytes<=0)fail('compiled module inventory');paths.add(b.path);hash256(b.sha256)}
+   }
+  }
+ }
+ // This literal pins the per-platform joins after the original capture and byte
+ // replay; membership alone must not let a candidate artifact replace main.
+ if(digest(installed)!==T14_INSTALLED_OBSERVATION_SHA256)fail('captured installed artifact joins')
+ exactKeys(record.packages,['workflowRegister','bazaar','consistency'],'T14 packages')
+ for(const [name,id,version,cap]of [['workflowRegister','local.workflow-register','0.1.2',1200000],['bazaar','local.bob-bazaar-review','0.3.2',12000000],['consistency','local.bob-code-consistency-review','0.1.0',11000000]]){
+  const p=record.packages[name];exactKeys(p,['id','version','sourceHeadSha','sourceTreeSha','vsix','capBytes','headroomBytes',...(name==='workflowRegister'?['compaction']:['compiledPayload','parserIdentity'])],'T14 package');bound(p.vsix);if(p.id!==id||p.version!==version||p.sourceHeadSha!==T14_ACCEPTED_MAIN||p.sourceTreeSha!==T14_ACCEPTED_TREE||p.capBytes!==cap||p.headroomBytes!==cap-p.vsix.bytes||p.headroomBytes<0)fail('accepted source package subject/capacity');if(name==='workflowRegister')bound(p.compaction);else{same(p.vsix,installed.actualMain.platforms[0].vsix.find(v=>v.id===id).vsix,'T14 exact installed input');same(p.compiledPayload,installed.actualMain.platforms[0].originalManifest,'T14 compiled manifest');same(p.parserIdentity,installed.actualMain.platforms[0].joinProof,'T14 parser identity');bound(p.compiledPayload);bound(p.parserIdentity)}
+ }
+ const runtime=record.activeRuntime;exactKeys(runtime,['sourceHeadSha','sourceTreeSha','receipt','output','gateRResult','productWiring','runtimeActivation'],'T14 active runtime');if(runtime.sourceHeadSha!==T14_ACCEPTED_MAIN||runtime.sourceTreeSha!==T14_ACCEPTED_TREE||runtime.runtimeActivation!==false||runtime.gateRResult.runtimeActivation!==false||runtime.gateRResult.runtimeSuitesExecuted!==15||runtime.gateRResult.runtimeSuiteState!=='PASSED'||runtime.gateRResult.archiveTestsExecuted!==0)fail('inactive accepted runtime');bound(runtime.receipt);bound(runtime.output);const effects=['providerDispatches','bobDispatches','v2ProductLeaseAcquisitions','v2ProductRunDirectoryCreations','v2ProductArtifactStages'];exactKeys(runtime.productWiring,effects,'T14 five effects');for(const n of effects)if(runtime.productWiring[n]!==0||runtime.gateRResult[n]!==0)fail('five effects zero')
+ const review=record.review;exactKeys(review,['oneFreshSourceReview','secondReview','reviewedHeadSha','finalSourceHeadSha','original','remaining','importantFixedByObservedTdd','report','resolution'],'T14 source review');if(review.oneFreshSourceReview!==true||review.secondReview!==false||review.reviewedHeadSha!=='96632a6d19a79468dd8947fffb23ce546395031a'||review.finalSourceHeadSha!==T14_SOURCE_HEAD||review.importantFixedByObservedTdd!==2)fail('single source review');same(review.original,{critical:0,important:2,minor:0},'T14 original findings');same(review.remaining,{critical:0,important:0,minor:0},'T14 review closure');bound(review.report);bound(review.resolution)
+ const local=record.local;exactKeys(local,['allQualityGatesPassed','acceptedMainChecks','rootChecks','rootPassed','packagePassed','packageSkipped','candidateQuality','unchangedInputProof','bazaar','consistency'],'T14 local gates');if(local.allQualityGatesPassed!==true||local.rootPassed!==136||local.packagePassed!==48||local.packageSkipped!==1)fail('actual local gates');for(const n of ['acceptedMainChecks','rootChecks','candidateQuality','unchangedInputProof'])bound(local[n]);for(const[name,pass,skip]of [['bazaar',786,1],['consistency',353,0]]){exactKeys(local[name],['passed','skipped','executedHead'],'T14 original execution subject');if(local[name].passed!==pass||local[name].skipped!==skip||local[name].executedHead!=='7c85b9ba196041a53496afbfd31060979f8be199')fail('local unchanged-input execution history')}
+ const p=record.preservation;exactKeys(p,['primaryVisibleBranch','primaryVisibleHead','primaryMainRef','primaryCheckoutMoved','untrackedPreserved','protectedContentsRead','allHashesVerified','synchronization','files','manifest'],'T14 preservation');if(p.primaryVisibleBranch!=='codex/bob-auto-response-probe'||p.primaryVisibleHead!=='90f926e0045405625f1f40d20a41346a94d1981a'||p.primaryMainRef!==T14_ACCEPTED_MAIN||p.primaryCheckoutMoved!==false||p.untrackedPreserved!==15||p.protectedContentsRead!==false||p.allHashesVerified!==true||p.files!==832||external.length!==p.files+1)fail('preserved user work and source evidence');bound(p.manifest);bound(p.synchronization)
+ if(record.runtimeActivation!==false||record.automaticCleanup!==false||record.mutationAuthority!==false||record.finalProgramUat!=='not_run'||typeof record.limits!=='string'||!record.limits||record.limits.length>2048)fail('no new execution authority')
+ // The immutable source observation also closes nested historical receipt data.
+ if(digest(record)!==T14_COMPLETION_SHA256)fail('byte-fixed historical source observation')
+}
+
 export function validateCompletionObservation(record,{programIndex,evidenceDigests}) {
   validateProgramIndex(programIndex)
   // This is a read-only recovery import, pinned after actual CI/log/archive/ref
@@ -221,6 +297,7 @@ export function validateCompletionObservation(record,{programIndex,evidenceDiges
   if(record.boundaryId==='REG-BRIDGE-OWNER-VERSION-LIFECYCLE')validateOwnerLifecycleCompletion(record)
   if(record.boundaryId==='REG-BRIDGE-DISCOVERY-EVIDENCE')validateDiscoveryCompletion(record)
   if(record.boundaryId==='PROC-T13-LEDGER')validateT13Completion(record)
+  if(record.boundaryId==='PROC-T14-BOUNDED-DOC')validateT14Completion(record)
   const registration=COMPLETION_REGISTRY.find(entry=>entry.sha256===recordDigest)
   if(!registration) throw new TypeError('unregistered completion observation')
   if(digest(evidenceDigests)!==registration.evidenceSha256) throw new TypeError('actual evidence digest registry mismatch')
