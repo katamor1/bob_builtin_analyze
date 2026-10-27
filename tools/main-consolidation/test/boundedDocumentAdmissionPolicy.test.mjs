@@ -1,3 +1,4 @@
+import {createT14AdmissionFixture} from './helpers/aggregateAdmissionFixture.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -30,18 +31,14 @@ test('literal_t14_layer_rejects_before_blob_alias_unknown_and_wrong_domain',asyn
  assert.throws(()=>p.applyBoundedDocumentSourceAdmission(a,{domain:'processing_budget',baseFiles:gateRDiscoveryMainFiles()}),/domain|baseline/);assert.throws(()=>p.applyBoundedDocumentSourceAdmission(a,{domain:'arbitrary',baseFiles:base}),/domain/);
 });
 test('changed_extension_and_package_files_require_both_current_projections',async()=>{
- const {processingBudgetCurrentSourceFiles,processingBudgetT13SourceFiles}=await import('../processingBudgetAdmissionPolicy.mjs'),{gateRCurrentMainFiles,gateRDiscoveryMainFiles}=await import('../gateRMainAdmissionPolicy.mjs'),a=read(admissionPath);
- const current=[gateRCurrentMainFiles(),processingBudgetCurrentSourceFiles()];assert.ok(current[0].length>gateRDiscoveryMainFiles().length);assert.ok(current[1].length>processingBudgetT13SourceFiles().length);
+ const {processingBudgetT14SourceFiles,processingBudgetT13SourceFiles}=await import('../processingBudgetAdmissionPolicy.mjs'),{gateRBoundedDocumentMainFiles,gateRDiscoveryMainFiles}=await import('../gateRMainAdmissionPolicy.mjs'),a=read(admissionPath);
+ const current=[gateRBoundedDocumentMainFiles(),processingBudgetT14SourceFiles()];assert.ok(current[0].length>gateRDiscoveryMainFiles().length);assert.ok(current[1].length>processingBudgetT13SourceFiles().length);
  const maps=current.map(rows=>new Map(rows.map(row=>[row.path,row])));for(const row of [...a.sourceRows,...a.controlRows]){const expected={path:row.path,mode:row.mode,blobSha:row.afterBlobSha};assert.ok(maps.some(map=>JSON.stringify(map.get(row.path))===JSON.stringify(expected)),row.path);if(row.path.startsWith('extensions/'))assert.deepEqual(maps[0].get(row.path),expected);if(row.path.startsWith('packages/processing-budget-runtime/'))assert.deepEqual(maps[1].get(row.path),expected);}
 });
-function ownedFixture(t,a,p){
- const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'bob-t14-admission-'));t.after(()=>{assert.ok(path.resolve(temporary).startsWith(path.resolve(os.tmpdir())+path.sep));fs.rmSync(temporary,{recursive:true,force:true});});
- const old=read('tools/main-consolidation/processing-budget-source-admission.json'),paths=new Set([...a.sourceRows,...a.controlRows,...old.sourceRows,...old.controlRows].map(x=>x.path));for(const relative of [...Object.keys(p.BOUNDED_DOCUMENT_HISTORICAL_BINDINGS),admissionPath,'tools/main-consolidation/boundedDocumentAdmissionPolicy.mjs'])paths.add(relative);
- for(const relative of paths){const target=path.join(temporary,relative);fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(path.join(root,relative),target);}
- const git=(...args)=>cp.execFileSync('git',args,{cwd:temporary,encoding:'utf8',stdio:['pipe','pipe','pipe']});git('init','--quiet');git('add','--all');return{root:temporary,git};
-}
+function ownedFixture(){const parent=fs.mkdtempSync(path.join(process.env.PROCESSING_BUDGET_ARTIFACT_ROOT||os.tmpdir(),'t14-admission-parent-'));return createT14AdmissionFixture(parent);}
+
 test('repository_rejects_unknown_runtime_alias_and_working_index_drift',async t=>{
- const p=await policy(),a=read(admissionPath);p.validateBoundedDocumentRepository(root);
+ const p=await policy(),a=read(admissionPath);p.validateBoundedDocumentRepository(ownedFixture().root);
  for(const mode of ['unknown','runtime','working','index','alias']){const f=ownedFixture(t,a,p);p.validateBoundedDocumentRepository(f.root);const target=path.join(f.root,'packages/processing-budget-runtime/src/boundedDocumentIo.ts');
   if(mode==='unknown')fs.writeFileSync(path.join(path.dirname(target),'unknown.ts'),'export const unexpected=1;');
   if(mode==='runtime'){const dir=path.join(f.root,'packages/processing-budget-runtime/runtime');fs.mkdirSync(dir);fs.writeFileSync(path.join(dir,'legacy.js'),'module.exports={}');}

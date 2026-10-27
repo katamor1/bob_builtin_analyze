@@ -96,6 +96,13 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Fetch immutable admission subjects
+        run: |
+          git fetch --no-tags --depth=1 --no-write-fetch-head origin a826dc20c0e71f472401adf644ca8cc777b74c58
+          git fetch --no-tags --depth=1 --no-write-fetch-head origin 7fc7a371e6506290d8626d06e9b12c2a67888b47
+          git cat-file -e a826dc20c0e71f472401adf644ca8cc777b74c58^{commit}
+          git cat-file -e 7fc7a371e6506290d8626d06e9b12c2a67888b47^{commit}
+
       - name: Prepare physical evidence root
         run: |
           node <<'NODE'
@@ -162,7 +169,7 @@ jobs:
           if-no-files-found: error
 
       - name: Verify literal admission and current product limits
-        run: node --test tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs scripts/exact-head-ci-contract.test.js
+        run: node --test tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/boundedDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/gateRMainAdmissionPolicy.test.mjs scripts/exact-head-ci-contract.test.js
 
       - name: Bind actual installed package evidence
         id: evidence

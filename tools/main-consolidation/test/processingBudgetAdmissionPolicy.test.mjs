@@ -16,7 +16,7 @@ test('t13_admission_is_literal_and_preserves_full_675_partition',async()=>{
  assert.equal(p.validateProcessingBudgetCoverage(coverage),true);assert.equal(p.validateProcessingBudgetSourceAdmission(admission),true);
  assert.equal(coverage.items.length,23);assert.equal(coverage.remainderClosure.total,675);assert.equal(coverage.remainderClosure.items.length,675);assert.equal(coverage.remainderClosure.unassigned,0);
  assert.equal(p.PROCESSING_BUDGET_T13_SOURCE_PATHS.length,23);assert.equal(p.PROCESSING_BUDGET_CONTROL_PATHS.length,7);
- assert.equal(p.processingBudgetT13SourceFiles().length,28);assert.deepEqual(p.processingBudgetT13SourceFiles(),[...admission.sourceRows.map(row=>({path:row.path,mode:row.mode,blobSha:row.afterBlobSha})),...admission.controlRows].sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0));assert.ok(p.processingBudgetCurrentSourceFiles().length>p.processingBudgetT13SourceFiles().length);
+ assert.equal(p.processingBudgetT13SourceFiles().length,28);assert.deepEqual(p.processingBudgetT13SourceFiles(),[...admission.sourceRows.map(row=>({path:row.path,mode:row.mode,blobSha:row.afterBlobSha})),...admission.controlRows].sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0));assert.ok(p.processingBudgetT14SourceFiles().length>p.processingBudgetT13SourceFiles().length);assert.ok(p.processingBudgetCurrentSourceFiles().length>p.processingBudgetT14SourceFiles().length);
  for(const change of [a=>a.sourceRows.push({...a.sourceRows[0],path:'packages/processing-budget-runtime/extra.ts'}),a=>a.sourceRows[0].mode='120000',a=>a.sourceRows[0].afterBlobSha='0'.repeat(40),a=>a.sourceRows[0].path='../alias',a=>a.baseMainSha='90f926e0045405625f1f40d20a41346a94d1981a']){const a=structuredClone(admission);change(a);assert.throws(()=>p.validateProcessingBudgetSourceAdmission(a));}
  const bad=structuredClone(coverage);bad.remainderClosure.items.pop();assert.throws(()=>p.validateProcessingBudgetCoverage(bad));
  p.validateProcessingBudgetRepository(root);
@@ -42,7 +42,7 @@ test('immutable_baseline_seal_rejects_byte_drift_before_repository_replay',async
 test('immutable_baselines_keep_lf_in_real_index_checkout',async()=>{
  const p=await import(policyPath),fixture=fs.mkdtempSync(path.join(process.env.PROCESSING_BUDGET_ARTIFACT_ROOT||os.tmpdir(),'bob-processing-budget-ledger-seal-checkout-'));
  const empty=path.join(fixture,'empty-attributes'),output=path.join(fixture,'checkout');fs.writeFileSync(empty,'');
- const git=(args)=>execFileSync('git',['-c','core.attributesFile='+empty,'-c','core.autocrlf=true',...args],{cwd:fixture,env:{...process.env,GIT_ATTR_NOSYSTEM:'1'},maxBuffer:16*1024*1024,stdio:['ignore','pipe','pipe']});
+ const git=(args)=>execFileSync('git',['-c','core.longpaths=true','-c','core.attributesFile='+empty,'-c','core.autocrlf=true',...args],{cwd:fixture,env:{...process.env,GIT_ATTR_NOSYSTEM:'1'},maxBuffer:16*1024*1024,stdio:['ignore','pipe','pipe']});
  git(['init','--quiet','--template=']);
  fs.copyFileSync(path.join(root,'.gitattributes'),path.join(fixture,'.gitattributes'));
  for(const file of p.PROCESSING_BUDGET_BASELINE_PATHS){fs.mkdirSync(path.dirname(path.join(fixture,file)),{recursive:true});fs.writeFileSync(path.join(fixture,file),execFileSync('git',['show',':'+file],{cwd:root,maxBuffer:16*1024*1024}));}

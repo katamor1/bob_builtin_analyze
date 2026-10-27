@@ -130,3 +130,8 @@ packages/processing-budget-runtime/test/baseline/m2-storedZipFixture.js text eol
 tools/main-consolidation/bounded-document-source-admission.json text eol=lf
 docs/release-evidence/proc-t14-bounded-doc-source-coverage-2026-10-24.json text eol=lf
 docs/release-evidence/proc-t14-bounded-doc-completion-2026-10-24.json text eol=lf
+
+# T15 literal recovery inputs and future separate completion retain LF bytes.
+tools/main-consolidation/aggregate-document-source-admission.json text eol=lf
+docs/release-evidence/proc-t15-aggregate-source-coverage-2026-10-26.json text eol=lf
+docs/release-evidence/proc-t15-aggregate-completion-2026-10-26.json text eol=lf

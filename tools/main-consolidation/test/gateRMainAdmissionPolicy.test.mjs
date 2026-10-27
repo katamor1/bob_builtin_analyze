@@ -68,7 +68,7 @@ test('Discovery layers literal root tools after unchanged Owner57 and verifies a
  const root=new URL('../../../',import.meta.url),actual=[];
  function scan(relative){for(const entry of readdirSync(new URL(relative+'/',root),{withFileTypes:true})){assert.equal(entry.isSymbolicLink(),false);const p=relative+'/'+entry.name;if(entry.isDirectory())scan(p);else actual.push(p);}}
  scan('tools/workflow-evidence');assert.deepEqual(actual.sort(),REGISTRY_DISCOVERY_TOOL_PATHS);
- const owner=policy.gateROwnerMainFiles(),discovery=policy.gateRDiscoveryMainFiles(),current=policy.gateRCurrentMainFiles();assert.equal(owner.length,policy.gateRExpectedMainFiles().length+28);assert.ok(discovery.length>owner.length);assert.ok(current.length>discovery.length);
+ const owner=policy.gateROwnerMainFiles(),discovery=policy.gateRDiscoveryMainFiles(),current=policy.gateRCurrentMainFiles(),bounded=policy.gateRBoundedDocumentMainFiles();assert.equal(owner.length,policy.gateRExpectedMainFiles().length+28);assert.ok(discovery.length>owner.length);assert.ok(bounded.length>discovery.length);assert.ok(current.length>bounded.length);
  assert.equal(JSON.parse(readFileSync(new URL('../registry-bridge-source-admission.json',import.meta.url))).deltas.length,57);
  policy.validateGateRMainRepository();
 });
