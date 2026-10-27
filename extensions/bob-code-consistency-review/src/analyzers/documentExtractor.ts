@@ -1,4 +1,4 @@
-import { BoundedDocumentError, createDocumentLedger, readBoundedDocumentFile, fingerprintBoundedDocumentFile, withValidatedOoxmlParserInput, loadXlsxCodec } from "../sharedProcessingBudgetRuntime"
+import { BoundedDocumentError, ProcessingBudgetError, createReviewDocumentOperation, createReviewDocumentProfile, normalizeProcessingBudgetProfile, assertDocumentNotCancelled, loadXlsxCodec, type DocumentOperation, type SharedProcessingBudgetLimits } from "../sharedProcessingBudgetRuntime"
 import * as path from "node:path"
 import { resolveWorkspacePathStrict, toPosixPath } from "../core/fileSystem"
 import { decodeTextBuffer } from "../core/textEncoding"
@@ -22,13 +22,40 @@ const ARTIFACT_TYPES: Record<string, { evidenceType: string; prefix: string; doc
 }
 const AGGREGATE_EXCERPT_SUFFIX = "\n\n[truncated: aggregate maxBobInputBytes]\n"
 
-export async function extractDocuments(reviewInput: ReviewInput, options: { workspaceRoot: string; textEncoding?: string; limits?: Partial<ReviewProcessingLimits> }): Promise<DocumentExtractionResult> {
+export interface DocumentExtractionOptions {
+  workspaceRoot: string
+  textEncoding?: string
+  limits?: Partial<ReviewProcessingLimits>
+  signal?: AbortSignal
+  processingBudgetLimits?: Readonly<Partial<SharedProcessingBudgetLimits>>
+  operation?: DocumentOperation
+}
+
+export function countDocumentSelections(reviewInput: ReviewInput): number {
+  let count = 0
+  for (const value of Object.values(reviewInput.artifacts)) {
+    if (!Array.isArray(value)) continue
+    for (const item of value as ArtifactRef[]) if (item.path) count += 1
+  }
+  return count
+}
+
+export async function extractDocuments(reviewInput: ReviewInput, options: DocumentExtractionOptions): Promise<DocumentExtractionResult> {
+  const signal = options.signal ?? options.operation?.signal
+  assertDocumentNotCancelled(signal)
   const documents: DocumentMeta[] = []
   const evidence: EvidenceRef[] = []
   const excerpts: string[] = []
   const warnings: string[] = []
   const counters = new Map<string, number>()
   const limits = normalizeReviewProcessingLimits(options.limits)
+  const count = countDocumentSelections(reviewInput)
+  const operation = options.operation ?? createReviewDocumentOperation(count, limits, options.processingBudgetLimits, signal)
+  if (operation.selectedDocumentCount !== count || (options.signal && operation.signal && options.signal !== operation.signal) ||
+      JSON.stringify(normalizeProcessingBudgetProfile(operation.profile)) !== JSON.stringify(createReviewDocumentProfile(limits, options.processingBudgetLimits))) {
+    throw new BoundedDocumentError("bounded_document_input_invalid", { phase: "input" })
+  }
+  let selectionIndex = 0
   let excerptMarkdownBytes = 0
   let aggregateBudgetExhausted = false
 
@@ -46,13 +73,21 @@ export async function extractDocuments(reviewInput: ReviewInput, options: { work
         continue
       }
 
+      assertDocumentNotCancelled(signal)
+      const index = selectionIndex++
       const documentId = `DOC-${typeInfo.documentPrefix}-${String(documents.length + 1).padStart(4, "0")}`
       const selectors = selectorList(item)
       let chunks: ExtractedChunk[] = []
       try {
         const filePath = resolveWorkspacePathStrict(options.workspaceRoot, item.path, "artifact path")
-        chunks = await extractFileChunks(filePath, item, typeInfo.evidenceType, selectors, warnings, limits, options.workspaceRoot, options.textEncoding)
+        chunks = await extractFileChunks(filePath, item, typeInfo.evidenceType, selectors, warnings, limits, options.workspaceRoot, operation, index, signal, options.textEncoding)
+        assertDocumentNotCancelled(signal)
       } catch (error) {
+        assertDocumentNotCancelled(signal)
+        if (error instanceof ProcessingBudgetError || (error instanceof BoundedDocumentError && [
+          "bounded_document_input_invalid", "bounded_document_archive_invalid", "bounded_document_source_changed",
+          "bounded_document_cleanup_failed", "bounded_document_kind_mismatch", "bounded_document_cancelled"
+        ].includes(error.code))) throw error
         if (error instanceof BoundedDocumentError && error.code === "bounded_document_source_invalid" && error.details.limit !== undefined) {
           warnings.push(`${toPosixPath(item.path)} exceeded maxDocumentBytes (${limits.maxDocumentBytes}); skipped.`)
         }
@@ -116,6 +151,7 @@ export async function extractDocuments(reviewInput: ReviewInput, options: { work
     if (aggregateBudgetExhausted) break
   }
 
+  assertDocumentNotCancelled(signal)
   return { documents, excerptsMarkdown: excerpts.join("\n"), evidence, warnings }
 }
 
@@ -131,25 +167,30 @@ async function extractFileChunks(
   warnings: string[],
   limits: ReviewProcessingLimits,
   workspaceRoot: string,
+  operation: DocumentOperation,
+  index: number,
+  signal?: AbortSignal,
   textEncoding = "auto"
 ): Promise<ExtractedChunk[]> {
   const extension = path.extname(filePath).toLowerCase()
   if (![".md", ".markdown", ".docx", ".xlsx"].includes(extension)) throw new Error(`unsupported document extension: ${extension || "(none)"}`)
-  const request = { filePath, rootPath: path.resolve(workspaceRoot), maximumFileBytes: limits.maxDocumentBytes, target: "document", ledger: createDocumentLedger(limits.maxDocumentBytes) }
+  const request = { filePath, rootPath: path.resolve(workspaceRoot), maximumFileBytes: limits.maxDocumentBytes, signal }
   if (extension === ".md" || extension === ".markdown") {
-    const snapshot = await readBoundedDocumentFile(request)
-    return extractMarkdownChunks(decodeTextBuffer(snapshot.copyBytes(), textEncoding), evidenceType, selectors)
+    const snapshot = await operation.readSelection(index, request)
+    assertDocumentNotCancelled(signal)
+    const chunks = extractMarkdownChunks(decodeTextBuffer(snapshot.copyBytes(), textEncoding), evidenceType, selectors)
+    assertDocumentNotCancelled(signal)
+    return chunks
   }
-  const expectedFingerprint = await fingerprintBoundedDocumentFile({ filePath, rootPath: request.rootPath, maximumFileBytes: limits.maxDocumentBytes })
-  return withValidatedOoxmlParserInput({
-    ...request,
-    expectedFingerprint,
-    documentKind: extension === ".docx" ? "docx" : "xlsx",
+  const admission = await operation.fingerprintSelection(index, request)
+  assertDocumentNotCancelled(signal)
+  return operation.withValidatedOoxml(admission, {
+    ...(extension === ".docx" ? { documentKind: "docx" as const } : { documentKind: "xlsx" as const, xlsxBudget: { headerRows: 1 as const } }),
     structuralLimits: { maxEntries: 5000, maxExpandedBytes: 250 * 1048576 },
     loadXlsxCodec
-  }, async ({ parserInput }) => extension === ".docx"
-    ? extractDocxChunks(parserInput, evidenceType, selectors)
-    : extractXlsxChunks(parserInput, item, evidenceType, selectors, warnings, limits))
+  }, async ({ parserInput, ...prepared }) => prepared.documentKind === "docx"
+    ? extractDocxChunks(parserInput, evidenceType, selectors, { signal })
+    : extractXlsxChunks(parserInput, item, evidenceType, selectors, warnings, limits, { signal, workbookInspection: prepared.workbookInspection }))
 }
 
 function limitChunkText(chunk: ExtractedChunk, sourcePath: string, warnings: string[], limits: ReviewProcessingLimits): ExtractedChunk {

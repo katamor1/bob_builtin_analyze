@@ -1,3 +1,4 @@
+import { assertDocumentNotCancelled } from "../sharedProcessingBudgetRuntime"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import YAML from "yaml"
@@ -13,14 +14,18 @@ export async function validateReviewInput(
   inputPath: string,
   workspaceRoot = process.cwd(),
   textEncoding = "auto",
-  maxInputBytes = DEFAULT_REVIEW_PROCESSING_LIMITS.maxDocumentBytes
+  maxInputBytes = DEFAULT_REVIEW_PROCESSING_LIMITS.maxDocumentBytes,
+  options?: { signal?: AbortSignal; beforeArtifactPaths?: (reviewInput: ReviewInput) => void }
 ): Promise<ReviewInput> {
+  assertDocumentNotCancelled(options?.signal)
   const resolvedInputPath = resolveWorkspacePathStrict(workspaceRoot, inputPath, "reviewInputPath")
   const inputByteLimit = normalizeReviewProcessingLimits({ maxDocumentBytes: maxInputBytes }).maxDocumentBytes
   const raw = await readReviewInputWithinLimit(resolvedInputPath, textEncoding, inputByteLimit)
+  assertDocumentNotCancelled(options?.signal)
   const parsed = YAML.parse(raw) as unknown
 
   const validate = await loadSchemaValidator("review-input")
+  assertDocumentNotCancelled(options?.signal)
   if (!validate(parsed)) {
     const errors = formatSchemaErrors(validate)
     throw new Error(`Invalid review-input.yaml:\n${errors.map((error) => `- ${error}`).join("\n")}`)
@@ -34,7 +39,11 @@ export async function validateReviewInput(
     )
   }
 
-  const artifactValidation = await validateArtifactPaths(reviewInput, workspaceRoot)
+  assertDocumentNotCancelled(options?.signal)
+  options?.beforeArtifactPaths?.(reviewInput)
+  assertDocumentNotCancelled(options?.signal)
+  const artifactValidation = await validateArtifactPaths(reviewInput, workspaceRoot, options?.signal)
+  assertDocumentNotCancelled(options?.signal)
   if (artifactValidation.escaped.length > 0) {
     throw new Error(`review-input.yaml artifact path escapes workspace:\n${artifactValidation.escaped.map((file) => `- ${file}`).join("\n")}`)
   }
@@ -78,13 +87,14 @@ function countArtifactReferences(reviewInput: ReviewInput): number {
   )
 }
 
-async function validateArtifactPaths(reviewInput: ReviewInput, workspaceRoot: string): Promise<{ escaped: string[]; missing: string[] }> {
+async function validateArtifactPaths(reviewInput: ReviewInput, workspaceRoot: string, signal?: AbortSignal): Promise<{ escaped: string[]; missing: string[] }> {
   const escaped: string[] = []
   const missing: string[] = []
   for (const value of Object.values(reviewInput.artifacts)) {
     if (!Array.isArray(value)) continue
     for (const item of value as Array<{ path?: string }>) {
       if (!item.path) continue
+      assertDocumentNotCancelled(signal)
       let resolved: string
       try {
         resolved = resolveWorkspacePathStrict(workspaceRoot, item.path, "artifact path")
@@ -92,7 +102,9 @@ async function validateArtifactPaths(reviewInput: ReviewInput, workspaceRoot: st
         escaped.push(path.normalize(item.path))
         continue
       }
-      if (!(await pathExists(resolved))) missing.push(path.normalize(item.path))
+      const exists = await pathExists(resolved)
+      assertDocumentNotCancelled(signal)
+      if (!exists) missing.push(path.normalize(item.path))
     }
   }
   return { escaped, missing }
