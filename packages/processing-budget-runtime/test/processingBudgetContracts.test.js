@@ -68,14 +68,16 @@ test('runtime_graph_has_no_effectful_imports',()=>{
 test('t14_io_graph_is_closed_and_has_no_product_or_dynamic_runtime_imports',()=>{
  const ts=require('typescript');
  const dependencies={
-  index:['./generatedProcessingBudgetDefinition','./processingBudgetError','./processingBudgetProfile','./processingBudgetLedger','./boundedDocumentIo','./boundedDocumentError'],
+  index:['./generatedProcessingBudgetDefinition','./processingBudgetError','./processingBudgetProfile','./processingBudgetLedger','./boundedDocumentIo','./boundedDocumentError','./documentBudget','./workbookBudget'],
   boundedDocumentError:[],
   boundedDocumentRequest:['node:path','./boundedDocumentError','./processingBudgetLedger','./processingBudgetProfile'],
-  boundedDocumentFile:['node:crypto','node:fs','node:fs/promises','node:path','./boundedDocumentError','./boundedDocumentRequest','./processingBudgetLedger'],
+  boundedDocumentFile:['node:crypto','node:fs','node:fs/promises','node:path','./boundedDocumentError','./boundedDocumentRequest','./processingBudgetLedger','./processingBudgetError'],
   boundedDocumentIo:['./boundedDocumentFile','./boundedDocumentRequest'],
   ooxmlPreflight:['./boundedDocumentError'],
-  ooxmlParserInput:['node:zlib','./boundedDocumentError','./boundedDocumentFile','./boundedDocumentRequest','./ooxmlPreflight'],
-  validatedOoxml:['./ooxmlParserInput']
+  ooxmlParserInput:['node:zlib','./boundedDocumentError','./boundedDocumentFile','./boundedDocumentRequest','./ooxmlPreflight','./workbookBudget','./processingBudgetError'],
+  validatedOoxml:['./ooxmlParserInput','./documentBudget'],
+  documentBudget:['node:crypto','./boundedDocumentFile','./boundedDocumentIo','./boundedDocumentRequest','./processingBudgetLedger','./processingBudgetProfile','./ooxmlParserInput','./workbookBudget'],
+  workbookBudget:['node:crypto','./boundedDocumentError','./processingBudgetError','./processingBudgetLedger']
  };
  const pure=new Set(['generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger']);
  function inspect(name,text){

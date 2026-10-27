@@ -1,7 +1,7 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');const h=require('./helpers');
 test('packed_bounded_runtime_and_declarations_work_offline',()=>{
- const proof=h.packAndInstall(h.packageRoot,h.freshArtifactRoot('bounded-pack'));const receipt=JSON.parse(fs.readFileSync(proof.receipt.path));assert.equal(proof.manifest.length,40);assert.ok(receipt.runtimeResult.checks.includes('bounded_read'));assert.ok(receipt.runtimeResult.checks.includes('validated_ooxml'));assert.equal(receipt.consumerResults.length,3);
+ const proof=h.packAndInstall(h.packageRoot,h.freshArtifactRoot('bounded-pack'));const receipt=JSON.parse(fs.readFileSync(proof.receipt.path));assert.equal(proof.manifest.length,46);assert.ok(receipt.runtimeResult.checks.includes('bounded_read'));assert.ok(receipt.runtimeResult.checks.includes('validated_ooxml'));assert.equal(receipt.consumerResults.length,3);
 });
 test('product_deep_imports_are_rejected',()=>{
  const proof=h.packAndInstall(h.packageRoot,h.freshArtifactRoot('exports-pack'));

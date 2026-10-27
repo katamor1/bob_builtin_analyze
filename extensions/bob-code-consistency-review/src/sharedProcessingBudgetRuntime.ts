@@ -4,10 +4,10 @@ import { createHash } from "node:crypto"
 import type * as Runtime from "../../../packages/processing-budget-runtime/out"
 import type * as Ooxml from "../../../packages/processing-budget-runtime/out/validatedOoxml"
 
-const modules = ["generatedProcessingBudgetDefinition", "processingBudgetError", "processingBudgetProfile", "processingBudgetLedger", "index", "boundedDocumentError", "boundedDocumentRequest", "boundedDocumentFile", "boundedDocumentIo", "ooxmlPreflight", "ooxmlParserInput", "validatedOoxml"] as const
+const modules = ["generatedProcessingBudgetDefinition", "processingBudgetError", "processingBudgetProfile", "processingBudgetLedger", "index", "boundedDocumentError", "boundedDocumentRequest", "boundedDocumentFile", "boundedDocumentIo", "ooxmlPreflight", "ooxmlParserInput", "validatedOoxml", "documentBudget", "workbookBudget"] as const
 const compiledNames = modules.flatMap(name => [name + ".js", name + ".d.ts", name + ".js.map"]).sort()
 const runtimeNames = modules.map(name => name + ".js")
-const requiredApis = ["ProcessingBudgetLedger", "BoundedDocumentError", "readBoundedDocumentFile", "fingerprintBoundedDocumentFile"] as const
+const requiredApis = ["ProcessingBudgetLedger", "BoundedDocumentError", "readBoundedDocumentFile", "fingerprintBoundedDocumentFile", "ProcessingBudgetError", "normalizeProcessingBudgetProfile", "createDocumentOperation", "assertDocumentNotCancelled", "commitWorkbookBudget", "commitXlsxWorkbookBudget", "assertParsedXlsxWorkbookWithinBudget"] as const
 function buildRequired(): never { throw new Error("Processing runtime build required; run npm ci in the shared package and this extension, then npm run compile.") }
 function noAlias(file: string): void {
   const absolute = path.resolve(file), root = path.parse(absolute).root
@@ -74,3 +74,23 @@ export function createDocumentLedger(maximumFileBytes: number): ProcessingBudget
 export function loadXlsxCodec(): Promise<XlsxZipCodec> {
   return import("fflate")
 }
+
+export const ProcessingBudgetError = copied.root.ProcessingBudgetError
+export const normalizeProcessingBudgetProfile = copied.root.normalizeProcessingBudgetProfile
+export const createDocumentOperation = copied.root.createDocumentOperation
+export const assertDocumentNotCancelled = copied.root.assertDocumentNotCancelled
+export const commitWorkbookBudget = copied.root.commitWorkbookBudget
+export const commitXlsxWorkbookBudget = copied.root.commitXlsxWorkbookBudget
+export const assertParsedXlsxWorkbookWithinBudget = copied.root.assertParsedXlsxWorkbookWithinBudget
+export type SharedProcessingBudgetLimits = Runtime.ProcessingBudgetLimits
+export type DocumentOperation = Runtime.DocumentOperation
+export type DocumentOperationBase = Runtime.DocumentOperationBase
+export type DocumentOperationInput = Runtime.DocumentOperationInput
+export type DocumentSelectionRequest = Runtime.DocumentSelectionRequest
+export type DocumentAdmission = Runtime.DocumentAdmission
+export type DocumentOoxmlOptions = Runtime.DocumentOoxmlOptions
+export type WorkbookSheetBudget = Runtime.WorkbookSheetBudget
+export type WorkbookBudgetCommit = Runtime.WorkbookBudgetCommit
+export type XlsxWorkbookInspection = Runtime.XlsxWorkbookInspection
+export type XlsxWorkbookBudgetCommit = Runtime.XlsxWorkbookBudgetCommit
+export type BudgetedOoxmlParserInput = Ooxml.BudgetedOoxmlParserInput

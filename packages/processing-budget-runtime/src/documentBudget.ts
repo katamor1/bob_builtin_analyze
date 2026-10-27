@@ -4,6 +4,8 @@ import { ownedDocumentSnapshot, type BoundedDocumentSnapshot } from "./boundedDo
 import { assertOperationNotAborted, invalidInput, normalizeReadInput, ownData, validateSignal, type BoundedDocumentFingerprint, type BoundedDocumentReadInput } from "./boundedDocumentRequest"
 import { ProcessingBudgetLedger, type ProcessingBudgetLedgerReport } from "./processingBudgetLedger"
 import { type ProcessingBudgetProfile } from "./processingBudgetProfile"
+import { normalizeOoxmlStructuralLimits, prepareAdmittedOoxmlSnapshot, type OoxmlStructuralLimits, type XlsxZipCodec, type ValidatedOoxmlParserInput } from "./ooxmlParserInput"
+import { commitXlsxWorkbookBudget, type XlsxWorkbookInspection } from "./workbookBudget"
 
 declare const documentAdmissionBrand: unique symbol
 export interface DocumentAdmission {
@@ -30,10 +32,18 @@ export interface DocumentOperationBase {
   verifyAfterExternalRead(admission: DocumentAdmission): Promise<void>
   snapshot(): Readonly<ProcessingBudgetLedgerReport>
 }
+export type DocumentOoxmlOptions = { readonly structuralLimits: OoxmlStructuralLimits; readonly loadXlsxCodec: () => Promise<XlsxZipCodec> } &
+  ({ readonly documentKind: "docx" } | { readonly documentKind: "xlsx"; readonly xlsxBudget: { readonly headerRows: 0 | 1 } })
+export type BudgetedOoxmlParserInput = Omit<ValidatedOoxmlParserInput, "documentKind"> &
+  ({ readonly documentKind: "docx" } | { readonly documentKind: "xlsx"; readonly workbookInspection: XlsxWorkbookInspection })
+export interface DocumentOperation extends DocumentOperationBase {
+  withValidatedOoxml<T>(admission: DocumentAdmission, options: DocumentOoxmlOptions, parse: (input: BudgetedOoxmlParserInput) => Promise<T>): Promise<T>
+}
 interface AdmissionRecord {
   readonly operation: symbol
   readonly file: AdmittedDocumentFile
   readonly signal?: AbortSignal
+  readonly target: string
   state: "admitted" | "in_progress" | "completed" | "failed"
 }
 const admissions = new WeakMap<DocumentAdmission, AdmissionRecord>()
@@ -42,7 +52,7 @@ export function assertDocumentNotCancelled(signal?: AbortSignal): void {
   assertOperationNotAborted(validateSignal(signal))
 }
 
-export function createDocumentOperation(value: DocumentOperationInput): DocumentOperationBase {
+export function createDocumentOperation(value: DocumentOperationInput): DocumentOperation {
   const input = ownData(value, ["selectedDocumentCount", "profile"], ["signal"])
   const signal = validateSignal(input.signal)
   assertOperationNotAborted(signal)
@@ -66,6 +76,20 @@ export function createDocumentOperation(value: DocumentOperationInput): Document
     return Object.freeze({ ...normalized, target: `document-${index}-${digest}` })
   }
 
+  async function consumeAdmission<T>(handle: DocumentAdmission, consume: (snapshot: { bytes: Buffer; fingerprint: BoundedDocumentFingerprint }, record: AdmissionRecord) => Promise<T>): Promise<T> {
+    assertOperationNotAborted(signal)
+    const record = handle && typeof handle === "object" ? admissions.get(handle) : undefined
+    if (!record || record.operation !== identity || record.state !== "admitted") invalidInput()
+    record.state = "in_progress"
+    try {
+      assertOperationNotAborted(record.signal)
+      const result = await record.file.withSnapshot(snapshot => consume(snapshot, record))
+      assertOperationNotAborted(record.signal)
+      record.state = "completed"
+      return result
+    } catch (error) { record.state = "failed"; assertOperationNotAborted(record.signal); throw error }
+  }
+
   return Object.freeze({
     profile: ledger.profile, selectedDocumentCount: count, ...(signal === undefined ? {} : { signal }),
     async fingerprintSelection(index: number, request: DocumentSelectionRequest): Promise<DocumentAdmission> {
@@ -73,7 +97,7 @@ export function createDocumentOperation(value: DocumentOperationInput): Document
       const file = await admitBoundedDocumentFile(input)
       assertOperationNotAborted(input.signal)
       const handle = Object.freeze({ fingerprint: file.fingerprint }) as DocumentAdmission
-      admissions.set(handle, { operation: identity, file, signal: input.signal, state: "admitted" })
+      admissions.set(handle, { operation: identity, file, signal: input.signal, target: input.target, state: "admitted" })
       return handle
     },
     async readSelection(index: number, request: DocumentSelectionRequest): Promise<BoundedDocumentSnapshot> {
@@ -83,16 +107,36 @@ export function createDocumentOperation(value: DocumentOperationInput): Document
       return snapshot
     },
     async verifyAfterExternalRead(handle: DocumentAdmission): Promise<void> {
+      return consumeAdmission(handle, async () => undefined)
+    },
+    async withValidatedOoxml<T>(handle: DocumentAdmission, value: DocumentOoxmlOptions, parse: (input: BudgetedOoxmlParserInput) => Promise<T>): Promise<T> {
       assertOperationNotAborted(signal)
-      const record = handle && typeof handle === "object" ? admissions.get(handle) : undefined
-      if (!record || record.operation !== identity || record.state !== "admitted") invalidInput()
-      assertOperationNotAborted(record.signal)
-      record.state = "in_progress"
-      try {
-        await record.file.withSnapshot(async () => undefined)
+      const options = ownData(value, ["documentKind", "structuralLimits", "loadXlsxCodec"], ["xlsxBudget"])
+      const kind = options.documentKind
+      if ((kind !== "docx" && kind !== "xlsx") || typeof options.loadXlsxCodec !== "function" || typeof parse !== "function") invalidInput()
+      const structuralLimits = normalizeOoxmlStructuralLimits(options.structuralLimits)
+      let headerRows: 0 | 1 | undefined
+      if (kind === "xlsx") {
+        const budget = ownData(options.xlsxBudget, ["headerRows"])
+        if (budget.headerRows !== 0 && budget.headerRows !== 1) invalidInput()
+        headerRows = budget.headerRows
+      } else if (Object.hasOwn(options, "xlsxBudget")) invalidInput()
+      const loadCodec = options.loadXlsxCodec as () => Promise<XlsxZipCodec>
+      return consumeAdmission(handle, async ({ bytes }, record) => {
+        const onWorkbook = headerRows === undefined ? undefined : (inspection: XlsxWorkbookInspection) => {
+          commitXlsxWorkbookBudget({ ledger, workbookTarget: record.target, inspection, headerRows, cancellation: () => assertOperationNotAborted(record.signal) })
+        }
+        const prepared = await prepareAdmittedOoxmlSnapshot(bytes, kind, structuralLimits, loadCodec, record.signal, onWorkbook)
         assertOperationNotAborted(record.signal)
-        record.state = "completed"
-      } catch (error) { record.state = "failed"; throw error }
+        let input: BudgetedOoxmlParserInput
+        if (kind === "xlsx") {
+          if (!prepared.workbookInspection) invalidInput()
+          input = Object.freeze({ ...prepared, documentKind: "xlsx", workbookInspection: prepared.workbookInspection })
+        } else input = Object.freeze({ documentKind: "docx", parserInput: prepared.parserInput, normalization: prepared.normalization })
+        const result = await parse(input)
+        assertOperationNotAborted(record.signal)
+        return result
+      })
     },
     snapshot: () => ledger.snapshot()
   })

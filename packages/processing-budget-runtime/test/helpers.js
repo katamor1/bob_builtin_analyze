@@ -45,10 +45,10 @@ function npmCli() {
 }
 
 const consumerNames = ['workflow-register','bob-bazaar-review','bob-code-consistency-review'];
-const runtimeResult = {state:'passed',entry:'out/index.js',checks:['constructor','reserve_commit','release','snapshot','bounded_read','validated_ooxml','deep_import_rejected']};
+const runtimeResult = {state:'passed',entry:'out/index.js',checks:['constructor','reserve_commit','release','snapshot','bounded_read','validated_ooxml','deep_import_rejected','aggregate_operation','workbook_budget']};
 function expectedPayload() {
   const files=['package.json','README.md','contracts/processing-budget-definition.v1.json','schema/processing-budget-profile.v1.schema.json'];
-  for(const name of ['index','generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','boundedDocumentError','boundedDocumentRequest','boundedDocumentFile','boundedDocumentIo','ooxmlPreflight','ooxmlParserInput','validatedOoxml']) {
+  for(const name of ['index','generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','boundedDocumentError','boundedDocumentRequest','boundedDocumentFile','boundedDocumentIo','ooxmlPreflight','ooxmlParserInput','validatedOoxml','documentBudget','workbookBudget']) {
     for(const suffix of ['js','d.ts','js.map']) files.push('out/'+name+'.'+suffix);
   }
   return files.sort();
@@ -100,6 +100,13 @@ function packAndInstall(root, outputRoot) {
     const {withValidatedOoxmlParserInput}=require('@bob/processing-budget-runtime/validated-ooxml');let calls=0;
     const result=await withValidatedOoxmlParserInput({filePath,rootPath,maximumFileBytes,target:'parse',ledger:new ProcessingBudgetLedger(),expectedFingerprint,documentKind:'docx',structuralLimits:{maxEntries:5000,maxExpandedBytes:250*1048576},loadXlsxCodec:async()=>{throw Error('unexpected codec');}},async({parserInput})=>{calls++;assert.ok(parserInput.equals(fs.readFileSync(filePath)));return 'parsed';});
     assert.equal(result,'parsed');assert.equal(calls,1);assert.throws(()=>require('@bob/processing-budget-runtime/out/ooxmlParserInput'),e=>e.code==='ERR_PACKAGE_PATH_NOT_EXPORTED');
+    const operation=runtime.createDocumentOperation({selectedDocumentCount:1,profile:runtime.normalizeProcessingBudgetProfile()});
+    const admission=await operation.fingerprintSelection(0,{filePath,rootPath,maximumFileBytes});
+    await operation.withValidatedOoxml(admission,{documentKind:'docx',structuralLimits:{maxEntries:5000,maxExpandedBytes:250*1048576},loadXlsxCodec:async()=>{throw Error('docx codec');}},async input=>{assert.ok(input.parserInput.equals(fs.readFileSync(filePath)));});
+    assert.equal(operation.snapshot().categories.find(x=>x.category==='document_count').committed,1);
+    assert.equal(operation.snapshot().categories.find(x=>x.category==='total_document_bytes').committed,fs.statSync(filePath).size);
+    const book=runtime.commitWorkbookBudget({ledger:new ProcessingBudgetLedger(),workbookTarget:'packed-book',sheets:[{name:'S',rowCount:2}]});assert.deepEqual([book.sheetCount,book.totalRows],[1,2]);
+    assert.equal(runtime.createXlsxInspectionObserver,undefined);
     process.stdout.write(JSON.stringify({entry}));})().catch(e=>{console.error(e);process.exitCode=1;});`;
   const installedResolvedPath=JSON.parse(runNode(['-e',probe],consumerRoot)).entry;
   const receiptPath=path.join(outputRoot,'pack-proof.json');

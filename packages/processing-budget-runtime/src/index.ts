@@ -43,3 +43,5 @@ export {
 
 export { readBoundedDocumentFile, fingerprintBoundedDocumentFile, type BoundedDocumentSnapshot, type BoundedDocumentReadInput, type BoundedDocumentFingerprint, type BoundedDocumentIdentity } from "./boundedDocumentIo"
 export { BoundedDocumentError, type BoundedDocumentErrorCode, type BoundedDocumentErrorDetails } from "./boundedDocumentError"
+export { createDocumentOperation, assertDocumentNotCancelled, type DocumentOperation, type DocumentOperationBase, type DocumentOperationInput, type DocumentSelectionRequest, type DocumentAdmission, type DocumentOoxmlOptions } from "./documentBudget"
+export { commitWorkbookBudget, commitXlsxWorkbookBudget, assertParsedXlsxWorkbookWithinBudget, type WorkbookSheetBudget, type WorkbookBudgetCommit, type XlsxWorkbookInspection, type XlsxWorkbookBudgetCommit } from "./workbookBudget"

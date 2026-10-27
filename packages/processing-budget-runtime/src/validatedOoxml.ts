@@ -6,3 +6,4 @@ export {
   type ValidatedOoxmlParserInput,
   type XlsxZipCodec
 } from "./ooxmlParserInput"
+export type { BudgetedOoxmlParserInput } from "./documentBudget"
