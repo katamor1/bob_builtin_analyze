@@ -61,6 +61,7 @@ export function fileMaximum(value: unknown): number {
 }
 
 const abortedGetter = Object.getOwnPropertyDescriptor(AbortSignal.prototype, "aborted")?.get
+const reasonGetter = Object.getOwnPropertyDescriptor(AbortSignal.prototype, "reason")?.get
 export function validateSignal(value: unknown): AbortSignal | undefined {
   if (value === undefined) return undefined
   try {
@@ -73,6 +74,15 @@ export function validateSignal(value: unknown): AbortSignal | undefined {
 }
 export function assertNotAborted(signal: AbortSignal | undefined): void {
   if (signal && abortedGetter?.call(signal)) throw new BoundedDocumentError("bounded_document_cancelled")
+}
+
+// Operation cancellation retains the operator's Error identity. The ordinary
+// T14 API keeps its existing typed cancellation contract above.
+export function assertOperationNotAborted(signal: AbortSignal | undefined): void {
+  if (signal && abortedGetter?.call(signal)) {
+    const reason: unknown = reasonGetter?.call(signal)
+    throw reason instanceof Error ? reason : new BoundedDocumentError("bounded_document_cancelled")
+  }
 }
 
 export function fingerprint(value: unknown): BoundedDocumentFingerprint {
