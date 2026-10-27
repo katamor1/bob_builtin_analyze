@@ -1,6 +1,7 @@
 import { splitDocumentChunk } from "../documentChunk"
 import { DEFAULT_RULE_AUTHORING_LIMITS } from "../ruleAuthoringLimits"
 import type { DocumentChunkV1, RuleSourceExtractionStatus } from "../ruleAuthoringTypes"
+import { assertDocumentNotCancelled } from "../../sharedProcessingBudgetRuntime"
 
 type CheerioAPI = import("cheerio").CheerioAPI
 type CheerioModule = typeof import("cheerio")
@@ -9,6 +10,7 @@ type MammothModule = typeof import("mammoth")
 export interface DocxExtractionContext {
   sourceId: string
   maxChunkBytes: number
+  signal?: AbortSignal
 }
 
 export interface DocxExtractionResult {
@@ -27,12 +29,14 @@ export async function extractDocx(
   documentBuffer: Buffer,
   context: DocxExtractionContext
 ): Promise<DocxExtractionResult> {
+  assertDocumentNotCancelled(context.signal)
   const maxChunkBytes = boundedPositiveLimit(
     context.maxChunkBytes,
     DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes,
     "DOCX chunk byte limit"
   )
   const [mammoth, cheerio] = await Promise.all([loadMammoth(), loadCheerio()])
+  assertDocumentNotCancelled(context.signal)
   const conversion = await mammoth.convertToHtml(
     { buffer: documentBuffer },
     {
@@ -40,6 +44,7 @@ export async function extractDocx(
       convertImage: mammoth.images.imgElement(async () => ({ src: "" }))
     }
   )
+  assertDocumentNotCancelled(context.signal)
   const $ = cheerio.load(conversion.value)
   const warnings = new Set<string>()
   if (conversion.messages.length > 0) warnings.add("mammoth_warning")
@@ -124,6 +129,7 @@ export async function extractDocx(
   })
 
   const warningCodes = [...warnings].sort()
+  assertDocumentNotCancelled(context.signal)
   return {
     chunks,
     status: warningCodes.length === 0 ? "success" : "partial",

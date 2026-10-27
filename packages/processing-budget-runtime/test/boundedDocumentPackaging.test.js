@@ -35,6 +35,7 @@ test('extension_facade_uses_only_copied_js_and_rejects_missing_or_tampered_paylo
  const ts=require('typescript'),source=fs.readFileSync(facadePath,'utf8');
  for(const mode of ['shipped-js','missing','tampered','unknown']){const f=fixture(),dir=f.roots[0];assert.equal(copy(f,dir).status,0);const out=path.join(dir,'out'),dest=path.join(out,'shared-processing-budget-runtime');
   const entry=path.join(out,'sharedProcessingBudgetRuntime.js');fs.writeFileSync(entry,ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText);
+  const configSource=fs.readFileSync(path.resolve(h.packageRoot,'../../extensions/bob-bazaar-review/src/ruleAuthoring/ruleAuthoringLimits.ts'),'utf8'),configDirectory=path.join(out,'ruleAuthoring');fs.mkdirSync(configDirectory);fs.writeFileSync(path.join(configDirectory,'ruleAuthoringLimits.js'),ts.transpileModule(configSource,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText);
   for(const name of files.filter(n=>!n.endsWith('.js')))fs.unlinkSync(path.join(dest,name));
   if(mode==='missing')fs.unlinkSync(path.join(dest,'index.js'));if(mode==='tampered')fs.appendFileSync(path.join(dest,'index.js'),'\n');if(mode==='unknown')fs.writeFileSync(path.join(dest,'unknown.js'),'');
   if(mode!=='shipped-js'){assert.throws(()=>require(entry),/Processing runtime build required/);continue;}

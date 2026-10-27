@@ -1,12 +1,15 @@
 import { splitDocumentChunk } from "../documentChunk"
 import { DEFAULT_RULE_AUTHORING_LIMITS } from "../ruleAuthoringLimits"
 import type { DocumentChunkV1, RuleSourceExtractionStatus } from "../ruleAuthoringTypes"
+import { assertDocumentNotCancelled, assertParsedXlsxWorkbookWithinBudget, type XlsxWorkbookInspection } from "../../sharedProcessingBudgetRuntime"
 
 type ExcelFileModule = typeof import("read-excel-file/node")
 
 export interface XlsxExtractionContext {
   sourceId: string
   maxChunkBytes: number
+  signal?: AbortSignal
+  workbookInspection?: XlsxWorkbookInspection
 }
 
 export interface XlsxExtractionResult {
@@ -24,13 +27,17 @@ export async function extractXlsx(
   workbookBuffer: Buffer,
   context: XlsxExtractionContext
 ): Promise<XlsxExtractionResult> {
+  assertDocumentNotCancelled(context.signal)
   const maxChunkBytes = boundedPositiveLimit(
     context.maxChunkBytes,
     DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes,
     "XLSX chunk byte limit"
   )
   const readExcelFile = await loadExcelFile()
+  assertDocumentNotCancelled(context.signal)
   const workbook = await readExcelFile.default(workbookBuffer)
+  assertDocumentNotCancelled(context.signal)
+  if (context.workbookInspection) assertParsedXlsxWorkbookWithinBudget(workbook, context.workbookInspection)
   const chunks: DocumentChunkV1[] = []
 
   for (const sheet of workbook) {
@@ -60,6 +67,7 @@ export async function extractXlsx(
     }
   }
 
+  assertDocumentNotCancelled(context.signal)
   return {
     chunks,
     status: "success",

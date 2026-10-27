@@ -3,6 +3,7 @@ import * as path from "node:path"
 import { createHash } from "node:crypto"
 import type * as Runtime from "../../../packages/processing-budget-runtime/out"
 import type * as Ooxml from "../../../packages/processing-budget-runtime/out/validatedOoxml"
+import { DEFAULT_RULE_AUTHORING_LIMITS, type RuleAuthoringLimits } from "./ruleAuthoring/ruleAuthoringLimits"
 
 const modules = ["generatedProcessingBudgetDefinition", "processingBudgetError", "processingBudgetProfile", "processingBudgetLedger", "index", "boundedDocumentError", "boundedDocumentRequest", "boundedDocumentFile", "boundedDocumentIo", "ooxmlPreflight", "ooxmlParserInput", "validatedOoxml", "documentBudget", "workbookBudget"] as const
 const compiledNames = modules.flatMap(name => [name + ".js", name + ".d.ts", name + ".js.map"]).sort()
@@ -94,3 +95,36 @@ export type WorkbookBudgetCommit = Runtime.WorkbookBudgetCommit
 export type XlsxWorkbookInspection = Runtime.XlsxWorkbookInspection
 export type XlsxWorkbookBudgetCommit = Runtime.XlsxWorkbookBudgetCommit
 export type BudgetedOoxmlParserInput = Ooxml.BudgetedOoxmlParserInput
+
+export function normalizeRuleDocumentLimits(value: RuleAuthoringLimits): RuleAuthoringLimits {
+  if (!value || typeof value !== "object" || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) throw new BoundedDocumentError("bounded_document_input_invalid")
+  const descriptors = Object.getOwnPropertyDescriptors(value), keys = Object.keys(DEFAULT_RULE_AUTHORING_LIMITS) as (keyof RuleAuthoringLimits)[]
+  if (Reflect.ownKeys(descriptors).length !== keys.length || Reflect.ownKeys(descriptors).some(key => typeof key !== "string" || !keys.includes(key as keyof RuleAuthoringLimits))) throw new BoundedDocumentError("bounded_document_input_invalid")
+  const result: Record<string, number> = Object.create(null) as Record<string, number>
+  for (const key of keys) {
+    const descriptor = descriptors[key]
+    if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, "value")) throw new BoundedDocumentError("bounded_document_input_invalid")
+    const amount: unknown = descriptor.value
+    if (typeof amount !== "number" || !Number.isSafeInteger(amount) || amount < 0) throw new Error(`${key} must be a non-negative safe integer`)
+    result[key] = Math.min(amount, DEFAULT_RULE_AUTHORING_LIMITS[key])
+  }
+  return Object.freeze(result) as unknown as RuleAuthoringLimits
+}
+
+export function createRuleDocumentOperation(count: number, limits: RuleAuthoringLimits, signal?: AbortSignal): DocumentOperation {
+  assertDocumentNotCancelled(signal)
+  const bounded = normalizeRuleDocumentLimits(limits), total = bounded.maxAggregateSourceBytes
+  const profile = normalizeProcessingBudgetProfile({ limits: {
+    document_count: bounded.maxSourceFiles, single_document_bytes: Math.min(bounded.maxSourceBytes, total),
+    total_document_bytes: total, total_operation_input_bytes: Math.max(total, DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_operation_input_bytes)
+  } })
+  try { return createDocumentOperation({ selectedDocumentCount: count, profile, signal }) }
+  catch (error) {
+    if (error instanceof ProcessingBudgetError && error.details.constrainedCategory === "document_count") {
+      const diagnostic = new ProcessingBudgetError(error.code, `Rule source file count exceeds the ${bounded.maxSourceFiles}-file limit`, error.details)
+      Object.defineProperty(diagnostic, "cause", { value: error })
+      throw diagnostic
+    }
+    throw error
+  }
+}

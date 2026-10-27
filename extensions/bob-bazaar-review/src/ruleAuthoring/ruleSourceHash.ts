@@ -1,4 +1,4 @@
-import { fingerprintBoundedDocumentFile, type BoundedDocumentFingerprint } from "../sharedProcessingBudgetRuntime"
+import { fingerprintBoundedDocumentFile, assertDocumentNotCancelled, type BoundedDocumentFingerprint } from "../sharedProcessingBudgetRuntime"
 
 export type SourceFingerprint = BoundedDocumentFingerprint
 
@@ -10,8 +10,13 @@ const FINGERPRINT_FIELDS: ReadonlyArray<keyof SourceFingerprint> = [
   "sha256"
 ]
 
-export async function fingerprintSource(filePath: string, options: { maximumBytes: number; rootPath: string }): Promise<SourceFingerprint> {
-  return fingerprintBoundedDocumentFile({ filePath, rootPath: options.rootPath, maximumFileBytes: options.maximumBytes })
+export async function fingerprintSource(filePath: string, options: { maximumBytes: number; rootPath: string; signal?: AbortSignal }): Promise<SourceFingerprint> {
+  assertDocumentNotCancelled(options.signal)
+  try {
+    const result = await fingerprintBoundedDocumentFile({ filePath, rootPath: options.rootPath, maximumFileBytes: options.maximumBytes, signal: options.signal })
+    assertDocumentNotCancelled(options.signal)
+    return result
+  } catch (error) { assertDocumentNotCancelled(options.signal); throw error }
 }
 
 export function assertStableSourceFingerprint(before: SourceFingerprint, after: SourceFingerprint): void {

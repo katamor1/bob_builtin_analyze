@@ -5,10 +5,10 @@ const adapters={docx:require('../out/ruleAuthoring/extraction/docxExtractor'),xl
 async function fixture(t,kind,bytes){const root=await fs.mkdtemp(path.join(os.tmpdir(),'bob-bounded-ooxml-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));const filePath=path.join(root,'selected.'+kind);await fs.writeFile(filePath,bytes);return{root,filePath,bytes};}
 test('both_ooxml_kinds_use_shared_callback_and_discard_changed_result',async t=>{
  for(const [kind,bytes]of [['docx',createDocxFixture()],['xlsx',createXlsxFixture()]]){
-  const f=await fixture(t,kind,bytes),call=shared.withValidatedOoxmlParserInput;let callbacks=0,ledger;
-  const m=mock.method(shared,'withValidatedOoxmlParserInput',async(request,parse)=>{ledger=request.ledger;return call(request,async input=>{callbacks++;return parse(input);});});
-  const parser=mock.method(adapters[kind],kind==='docx'?'extractDocx':'extractXlsx',async input=>{assert.ok(Buffer.isBuffer(input));assert.ok(input.equals(bytes));const changed=Buffer.from(bytes);changed[40]^=1;await fs.writeFile(f.filePath,changed);return{chunks:[],status:'success',warnings:[],extractor:{id:'mutation-probe',version:'1'}};});
-  try{await assert.rejects(()=>api.extractRuleDocument({filePath:f.filePath}),e=>e.code==='bounded_document_source_changed');assert.equal(callbacks,1);assert.ok(ledger.snapshot().categories.every(c=>c.used===0));}finally{m.mock.restore();parser.mock.restore();}
+  const f=await fixture(t,kind,bytes),create=shared.createRuleDocumentOperation;let callbacks=0,operation;
+  const m=mock.method(shared,'createRuleDocumentOperation',(...args)=>{operation=create(...args);return operation;});
+  const parser=mock.method(adapters[kind],kind==='docx'?'extractDocx':'extractXlsx',async input=>{callbacks++;assert.ok(Buffer.isBuffer(input));assert.ok(input.equals(bytes));const changed=Buffer.from(bytes);changed[40]^=1;await fs.writeFile(f.filePath,changed);return{chunks:[],status:'success',warnings:[],extractor:{id:'mutation-probe',version:'1'}};});
+  try{await assert.rejects(()=>api.extractRuleDocument({filePath:f.filePath}),e=>e.code==='bounded_document_source_changed');assert.equal(callbacks,1);assert.equal(operation.snapshot().categories.find(c=>c.category==='total_document_bytes').committed,bytes.length);assert.ok(operation.snapshot().categories.every(c=>c.reserved===0));}finally{m.mock.restore();parser.mock.restore();}
  }
 });
 test('external_selected_source_is_allowed_within_selected_parent',async t=>{
@@ -20,6 +20,6 @@ test('malformed_archive_never_loads_parser_or_codec',async t=>{
  try{await assert.rejects(()=>api.extractRuleDocument({filePath:f.filePath}),e=>e.code==='bounded_document_archive_invalid');assert.deepEqual([parsers,codecs],[0,0]);}finally{p.mock.restore();c.mock.restore();}
 });
 test('pdf_and_legacy_keep_status_and_receive_bounded_fingerprints',async t=>{
- const hash=require('../out/ruleAuthoring/ruleSourceHash'),original=hash.fingerprintSource,observed=[];const m=mock.method(hash,'fingerprintSource',async(filePath,options)=>{observed.push(options?.maximumBytes);return original(filePath,options);});
- try{for(const kind of ['doc','xls','pdf']){const f=await fixture(t,kind,Buffer.from('legacy')),r=await api.extractRuleDocument({filePath:f.filePath,pdf:{runner:async()=>({stdout:Buffer.alloc(0),stderr:Buffer.alloc(0),exitCode:0})}});assert.equal(r.status,kind==='pdf'?'requires_ocr':'requires_conversion');}assert.deepEqual(observed,Array(6).fill(25*1048576));}finally{m.mock.restore();}
+ const create=shared.createRuleDocumentOperation,operations=[];const m=mock.method(shared,'createRuleDocumentOperation',(...args)=>{const op=create(...args);operations.push(op);return op;});
+ try{for(const kind of ['doc','xls','pdf']){const f=await fixture(t,kind,Buffer.from('legacy')),r=await api.extractRuleDocument({filePath:f.filePath,pdf:{runner:async()=>({stdout:Buffer.alloc(0),stderr:Buffer.alloc(0),exitCode:0})}});assert.equal(r.status,kind==='pdf'?'requires_ocr':'requires_conversion');}assert.equal(operations.length,3);for(const op of operations){assert.equal(op.profile.limits.single_document_bytes,25*1048576);assert.equal(op.snapshot().categories.find(c=>c.category==='total_document_bytes').committed,6);assert.ok(op.snapshot().categories.every(c=>c.reserved===0));}}finally{m.mock.restore();}
 });

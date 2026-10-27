@@ -1,10 +1,7 @@
 import * as path from "node:path"
 import { DEFAULT_RULE_AUTHORING_LIMITS, type RuleAuthoringLimits } from "../ruleAuthoringLimits"
-import {
-  assertStableSourceFingerprint,
-  fingerprintSource,
-  type SourceFingerprint
-} from "../ruleSourceHash"
+import type { SourceFingerprint } from "../ruleSourceHash"
+import { createRuleDocumentOperation, normalizeRuleDocumentLimits, assertDocumentNotCancelled, BoundedDocumentError, ProcessingBudgetError, type DocumentOperation, type DocumentAdmission } from "../../sharedProcessingBudgetRuntime"
 import {
   assignSourceIds,
   buildRuleSourceManifest,
@@ -26,6 +23,7 @@ type LocalDocumentMediaType = RuleSourceMediaType | "doc" | "xls"
 export interface RuleDocumentExtractionRequest {
   filePath: string
   logicalName?: string
+  signal?: AbortSignal
   pdf?: Omit<PdfExtractionOptions, "sourceId" | "maxChunkBytes" | "maxOutputBytes">
 }
 
@@ -71,6 +69,9 @@ export interface RuleDocumentBatchResult {
 }
 
 interface FingerprintedRequest {
+  selectionIndex: number
+  admission: DocumentAdmission
+  signal?: AbortSignal
   request: RuleDocumentExtractionRequest
   absolutePath: string
   logicalName: string
@@ -84,7 +85,10 @@ interface PreparedRequest extends FingerprintedRequest {
 interface ExtractionContext {
   limits: RuleAuthoringLimits
   sourceId?: string
-  beforeFingerprint?: SourceFingerprint
+  operation: DocumentOperation
+  selectionIndex: number
+  admission?: DocumentAdmission
+  signal?: AbortSignal
   rootPath?: string
 }
 
@@ -93,21 +97,29 @@ const LEGACY_EXTRACTOR = Object.freeze({ id: "legacy-office", version: "1" })
 export async function extractRuleDocument(
   request: RuleDocumentExtractionRequest
 ): Promise<DocumentExtractionResult> {
-  return extractRuleDocumentWithContext(request, { limits: DEFAULT_RULE_AUTHORING_LIMITS })
+  const selected = validatedRequest(request), signal = selected.signal ?? selected.pdf?.signal
+  assertDocumentNotCancelled(signal)
+  const limits = boundedRuleAuthoringLimits(DEFAULT_RULE_AUTHORING_LIMITS)
+  const operation = createRuleDocumentOperation(1, limits, signal)
+  const result = await extractRuleDocumentWithContext(selected, { limits, operation, selectionIndex: 0, signal })
+  assertDocumentNotCancelled(signal)
+  return result
 }
 
 async function extractRuleDocumentWithContext(
   request: RuleDocumentExtractionRequest,
   context: ExtractionContext
 ): Promise<DocumentExtractionResult> {
+  assertDocumentNotCancelled(context.signal)
   const limits = context.limits
   const absolutePath = path.resolve(request.filePath)
   const logicalName = request.logicalName ?? path.basename(absolutePath)
   assertLogicalName(logicalName)
   const mediaType = classifySelectedPath(absolutePath, logicalName)
   const rootPath = context.rootPath ?? path.dirname(absolutePath)
-  const fingerprintOptions = { maximumBytes: limits.maxSourceBytes, rootPath }
-  const before = context.beforeFingerprint ?? await fingerprintSource(absolutePath, fingerprintOptions)
+  const admission = context.admission ?? await admitSource(context.operation, context.selectionIndex, absolutePath, rootPath, context.signal, limits)
+  assertDocumentNotCancelled(context.signal)
+  const before = admission.fingerprint
   const byteSize = fingerprintByteSize(before)
   if (byteSize > limits.maxSourceBytes) {
     throw new Error(`Rule source exceeds the ${limits.maxSourceBytes}-byte per-source limit`)
@@ -129,24 +141,25 @@ async function extractRuleDocumentWithContext(
       extractor: { ...LEGACY_EXTRACTOR }
     }
   } else if (mediaType === "docx" || mediaType === "xlsx") {
-    extracted = await withRuleOoxmlParserInput(absolutePath, before, mediaType, limits, async ({ parserInput }) => {
-      return mediaType === "docx"
-        ? extractDocx(parserInput, { sourceId, maxChunkBytes: limits.maxChunkBytes })
-        : extractXlsx(parserInput, { sourceId, maxChunkBytes: limits.maxChunkBytes })
-    }, { rootPath, target: sourceId })
+    extracted = await withRuleOoxmlParserInput(absolutePath, before, mediaType, limits, async ({ parserInput, ...prepared }) => {
+      assertDocumentNotCancelled(context.signal)
+      if (mediaType === "docx") return extractDocx(parserInput, { sourceId, maxChunkBytes: limits.maxChunkBytes, signal: context.signal })
+      if (prepared.documentKind !== "xlsx") throw new BoundedDocumentError("bounded_document_kind_mismatch")
+      return extractXlsx(parserInput, { sourceId, maxChunkBytes: limits.maxChunkBytes, signal: context.signal, workbookInspection: prepared.workbookInspection })
+    }, { rootPath, target: sourceId, operation: context.operation, admission })
   } else {
     extracted = await extractPdf(absolutePath, {
       ...request.pdf,
+      signal: context.signal,
       sourceId,
       maxChunkBytes: limits.maxChunkBytes,
       maxOutputBytes: limits.maxPdfOutputBytes
     })
   }
 
-  if (mediaType !== "docx" && mediaType !== "xlsx") {
-    const after = await fingerprintSource(absolutePath, fingerprintOptions)
-    assertStableSourceFingerprint(before, after)
-  }
+  assertDocumentNotCancelled(context.signal)
+  if (mediaType !== "docx" && mediaType !== "xlsx") await context.operation.verifyAfterExternalRead(admission)
+  assertDocumentNotCancelled(context.signal)
   const shareable = (mediaType === "docx" || mediaType === "xlsx" || mediaType === "pdf") &&
     (extracted.status === "success" || extracted.status === "partial")
   return {
@@ -166,32 +179,30 @@ async function extractRuleDocumentWithContext(
 export async function extractRuleDocuments(
   requests: readonly RuleDocumentExtractionRequest[],
   existingManifest: RuleSourceManifestV1 | undefined,
-  limits: RuleAuthoringLimits = DEFAULT_RULE_AUTHORING_LIMITS
+  limits: RuleAuthoringLimits = DEFAULT_RULE_AUTHORING_LIMITS,
+  options?: { signal?: AbortSignal }
 ): Promise<RuleDocumentBatchResult> {
+  const common = ownRuleData(options ?? {}, [], ["signal"]).signal as AbortSignal | undefined
+  assertDocumentNotCancelled(common)
+  const sourceArray = requestArray(requests), effectiveLimits = boundedRuleAuthoringLimits(limits)
+  const operation = createRuleDocumentOperation(sourceArray.count, effectiveLimits, common)
   if (existingManifest) assertCanonicalExistingManifest(existingManifest)
-  const effectiveLimits = boundedRuleAuthoringLimits(limits)
-  if (requests.length > effectiveLimits.maxSourceFiles) {
-    throw new Error(`Rule source file count exceeds the ${effectiveLimits.maxSourceFiles}-file limit`)
+  const selected = sourceArray.values().map(value => {
+    const request = validatedRequest(value), signal = common ?? request.signal ?? request.pdf?.signal
+    return Object.freeze({ ...request, signal })
+  })
+  const assertActive = () => { assertDocumentNotCancelled(common); for (const item of selected) assertDocumentNotCancelled(item.signal) }
+  assertActive()
+  const fingerprinted: FingerprintedRequest[] = []
+  for (const [selectionIndex, request] of selected.entries()) {
+    assertActive()
+    const absolutePath = path.resolve(request.filePath), logicalName = request.logicalName ?? path.basename(absolutePath)
+    assertLogicalName(logicalName)
+    const admission = await admitSource(operation, selectionIndex, absolutePath, path.dirname(absolutePath), request.signal, effectiveLimits)
+    assertActive()
+    fingerprinted.push({ selectionIndex, admission, signal: request.signal, request, absolutePath, logicalName, fingerprint: admission.fingerprint })
   }
 
-  const fingerprinted = await Promise.all(requests.map(async (request): Promise<FingerprintedRequest> => {
-    const absolutePath = path.resolve(request.filePath)
-    const logicalName = request.logicalName ?? path.basename(absolutePath)
-    assertLogicalName(logicalName)
-    const fingerprint = await fingerprintSource(absolutePath, { maximumBytes: effectiveLimits.maxSourceBytes, rootPath: path.dirname(absolutePath) })
-    const byteSize = fingerprintByteSize(fingerprint)
-    if (byteSize > effectiveLimits.maxSourceBytes) {
-      throw new Error(`Rule source exceeds the ${effectiveLimits.maxSourceBytes}-byte per-source limit`)
-    }
-    return { request, absolutePath, logicalName, fingerprint }
-  }))
-  const aggregateBytes = fingerprinted.reduce(
-    (total, item) => total + fingerprintByteSize(item.fingerprint),
-    0
-  )
-  if (!Number.isSafeInteger(aggregateBytes) || aggregateBytes > effectiveLimits.maxAggregateSourceBytes) {
-    throw new Error(`Rule source aggregate bytes exceed the ${effectiveLimits.maxAggregateSourceBytes}-byte limit`)
-  }
   const prepared: PreparedRequest[] = fingerprinted.map((item) => ({
     ...item,
     mediaType: classifySelectedPath(item.absolutePath, item.logicalName)
@@ -246,6 +257,7 @@ export async function extractRuleDocuments(
   for (const item of canonical) {
     const sourceId = sourceIds.get(item.fingerprint.sha256)
     if (!sourceId) throw new Error("Source ID assignment failed")
+    assertActive()
     documents.push(await extractRuleDocumentWithContext({
       ...item.request,
       filePath: item.absolutePath,
@@ -253,7 +265,7 @@ export async function extractRuleDocuments(
     }, {
       limits: effectiveLimits,
       sourceId,
-      beforeFingerprint: item.fingerprint
+      operation, selectionIndex: item.selectionIndex, admission: item.admission, signal: item.signal
     }))
   }
 
@@ -293,6 +305,7 @@ export async function extractRuleDocuments(
     code
   })))
 
+  assertActive()
   return {
     manifest,
     documents,
@@ -367,27 +380,43 @@ function assertCanonicalExistingManifest(manifest: RuleSourceManifestV1): void {
   }
 }
 
-function boundedRuleAuthoringLimits(limits: RuleAuthoringLimits): RuleAuthoringLimits {
-  return {
-    maxSourceFiles: boundedLimit(limits.maxSourceFiles, DEFAULT_RULE_AUTHORING_LIMITS.maxSourceFiles, "maxSourceFiles"),
-    maxSourceBytes: boundedLimit(limits.maxSourceBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxSourceBytes, "maxSourceBytes"),
-    maxAggregateSourceBytes: boundedLimit(limits.maxAggregateSourceBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxAggregateSourceBytes, "maxAggregateSourceBytes"),
-    maxChunkBytes: boundedLimit(limits.maxChunkBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes, "maxChunkBytes"),
-    maxSourceIndexBytes: boundedLimit(limits.maxSourceIndexBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxSourceIndexBytes, "maxSourceIndexBytes"),
-    maxSelectedEvidenceBytes: boundedLimit(limits.maxSelectedEvidenceBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxSelectedEvidenceBytes, "maxSelectedEvidenceBytes"),
-    maxProposalBytes: boundedLimit(limits.maxProposalBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes, "maxProposalBytes"),
-    maxPdfOutputBytes: boundedLimit(limits.maxPdfOutputBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxPdfOutputBytes, "maxPdfOutputBytes"),
-    maxOoxmlEntries: boundedLimit(limits.maxOoxmlEntries, DEFAULT_RULE_AUTHORING_LIMITS.maxOoxmlEntries, "maxOoxmlEntries"),
-    maxOoxmlDeclaredUncompressedBytes: boundedLimit(limits.maxOoxmlDeclaredUncompressedBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxOoxmlDeclaredUncompressedBytes, "maxOoxmlDeclaredUncompressedBytes"),
-    maxRuleOperations: boundedLimit(limits.maxRuleOperations, DEFAULT_RULE_AUTHORING_LIMITS.maxRuleOperations, "maxRuleOperations"),
-    maxProjectContextOperations: boundedLimit(limits.maxProjectContextOperations, DEFAULT_RULE_AUTHORING_LIMITS.maxProjectContextOperations, "maxProjectContextOperations"),
-    maxPromptAddendumOperations: boundedLimit(limits.maxPromptAddendumOperations, DEFAULT_RULE_AUTHORING_LIMITS.maxPromptAddendumOperations, "maxPromptAddendumOperations"),
-    maxProjectContextBytes: boundedLimit(limits.maxProjectContextBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxProjectContextBytes, "maxProjectContextBytes"),
-    maxPromptAddendumBytes: boundedLimit(limits.maxPromptAddendumBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxPromptAddendumBytes, "maxPromptAddendumBytes")
-  }
-}
+function boundedRuleAuthoringLimits(limits: RuleAuthoringLimits): RuleAuthoringLimits { return normalizeRuleDocumentLimits(limits) }
 
-function boundedLimit(value: number, ceiling: number, label: string): number {
-  if (!Number.isSafeInteger(value) || value < 0) throw new Error(`${label} must be a non-negative safe integer`)
-  return Math.min(value, ceiling)
+function ownRuleData(value: unknown, required: readonly string[], optional: readonly string[]): Record<string, unknown> {
+  const fail = (): never => { throw new BoundedDocumentError("bounded_document_input_invalid") }
+  if (!value || typeof value !== "object" || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) fail()
+  const descriptors = Object.getOwnPropertyDescriptors(value), allowed = new Set([...required, ...optional])
+  if (Reflect.ownKeys(descriptors).some(key => typeof key !== "string" || !allowed.has(key)) || required.some(key => !Object.hasOwn(descriptors, key))) fail()
+  const result: Record<string, unknown> = Object.create(null) as Record<string, unknown>
+  for (const key of Object.keys(descriptors)) { const descriptor = descriptors[key]; if (!descriptor.enumerable || !Object.hasOwn(descriptor, "value")) fail(); result[key] = descriptor.value }
+  return result
+}
+function validatedRequest(value: unknown): RuleDocumentExtractionRequest {
+  const data = ownRuleData(value, ["filePath"], ["logicalName", "pdf", "signal", "limits", "sourceId"])
+  if (typeof data.filePath !== "string" || (data.logicalName !== undefined && typeof data.logicalName !== "string")) throw new BoundedDocumentError("bounded_document_input_invalid")
+  const pdf = data.pdf == null ? undefined : Object.freeze(ownRuleData(data.pdf, [], ["sourceId", "command", "timeoutMs", "maxOutputBytes", "maxChunkBytes", "signal", "runner"]))
+  // Legacy JavaScript hints remain inert; neither identity nor budgets may be
+  // supplied through a per-document request, and no nested hint is evaluated.
+  return Object.freeze({ filePath: data.filePath, logicalName: data.logicalName, pdf, signal: data.signal ?? undefined }) as unknown as RuleDocumentExtractionRequest
+}
+function requestArray(value: readonly RuleDocumentExtractionRequest[]): { count: number; values(): unknown[] } {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) throw new BoundedDocumentError("bounded_document_input_invalid")
+  const descriptors = Object.getOwnPropertyDescriptors(value) as unknown as Record<string, PropertyDescriptor>, count = descriptors.length.value as number
+  return { count, values() {
+    if (Reflect.ownKeys(descriptors).length !== count + 1) throw new BoundedDocumentError("bounded_document_input_invalid")
+    const output: unknown[] = []
+    for (let index = 0; index < count; index++) { const descriptor = descriptors[String(index)]; if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, "value")) throw new BoundedDocumentError("bounded_document_input_invalid"); output.push(descriptor.value) }
+    return output
+  } }
+}
+async function admitSource(operation: DocumentOperation, index: number, filePath: string, rootPath: string, signal: AbortSignal | undefined, limits: RuleAuthoringLimits): Promise<DocumentAdmission> {
+  try { return await operation.fingerprintSelection(index, { filePath, rootPath, maximumFileBytes: limits.maxSourceBytes, signal }) }
+  catch (error) {
+    assertDocumentNotCancelled(signal)
+    if (error instanceof ProcessingBudgetError && ["total_document_bytes", "total_operation_input_bytes"].includes(error.details.constrainedCategory ?? "")) {
+      const diagnostic = new ProcessingBudgetError(error.code, `Rule sources exceed the ${limits.maxAggregateSourceBytes}-byte aggregate limit`, error.details)
+      Object.defineProperty(diagnostic, "cause", { value: error }); throw diagnostic
+    }
+    throw error
+  }
 }
