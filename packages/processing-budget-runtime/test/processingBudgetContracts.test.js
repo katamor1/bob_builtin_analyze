@@ -102,3 +102,8 @@ test('t14_io_graph_is_closed_and_has_no_product_or_dynamic_runtime_imports',()=>
  assert.throws(()=>inspect('boundedDocumentIo','const x = require("anything");'),/dynamic runtime/);
  assert.throws(()=>inspect('boundedDocumentIo','fetch("https://example.invalid");'),/unknown runtime/);
 });
+
+
+test('aggregate_private_helpers_are_not_published_from_either_entry',()=>{
+ const root=fs.readFileSync(path.join(packageRoot,'src/index.ts'),'utf8'),subpath=fs.readFileSync(path.join(packageRoot,'src/validatedOoxml.ts'),'utf8');for(const name of ['createXlsxInspectionObserver','prepareAdmittedOoxmlSnapshot','admitBoundedDocumentFile','withOperationDocumentSnapshot']){assert.doesNotMatch(root,new RegExp('\\b'+name+'\\b'));assert.doesNotMatch(subpath,new RegExp('\\b'+name+'\\b'));}assert.doesNotMatch(subpath,/export\s*\*/);
+});
