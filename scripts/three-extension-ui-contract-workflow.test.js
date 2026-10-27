@@ -83,3 +83,5 @@ test("dedicated UI contract workflow checks out and verifies the exact triggerin
 })
 
 test("T14 payload GUI queue proof stays separate from final visual UAT",()=>{ const source=fs.readFileSync(path.join(repoRoot,"scripts/t14-bounded-document-installed-extension-host.test.js"),"utf8"); assert.match(source,/createRuleAuthoringGuiHost/); assert.match(source,/guiLoggedOriginalErrorCount/); assert.match(source,/nextQueuedOperationSucceeded/); assert.match(source,/productActivationProbe: "not_run"/); assert.doesNotMatch(source,/executeCommand\(.*(?:openReviewGui|runBob)/); });
+
+test('T15 reuses the installed GUI probe while final visual UAT stays not_run',()=>{const source=fs.readFileSync(path.join(repoRoot,'scripts/t15-aggregate-installed-extension-host.test.js'),'utf8');assert.match(source,/runGuiProbe/);assert.match(source,/installed_gui_error_is_logged_once_and_queue_recovers/);assert.match(source,/productActivationProbe: "not_run"/);assert.doesNotMatch(source,/executeCommand\(.*(?:openReviewGui|runBob)/);});

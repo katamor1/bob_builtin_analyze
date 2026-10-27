@@ -162,3 +162,5 @@ test("code consistency triage operator smoke remains a separate Linux and Window
 })
 
 test("document payload host pins the same runtime and uses owned profiles",()=>{ const source=readRepoFile("scripts","t14-bounded-document-installed-smoke.mjs"); assert.match(source,/version:'1\.106\.1'/); assert.match(source,/reuseMachineInstall:false/); assert.match(source,/extensionDevelopmentPath:\[/); assert.match(source,/--user-data-dir=/); assert.match(source,/--extensions-dir=/); assert.match(source,/productActivationProbe:'not_run'/); const workflow=readRepoFile(".github","workflows","processing-budget-runtime.yml"); assert.match(workflow,/@vscode\/test-cli@0\.0\.12 @vscode\/test-electron@2\.5\.2/); });
+
+test('aggregate document payload pins the same isolated native host',()=>{const source=readRepoFile('scripts','t15-aggregate-installed-smoke.mjs');for(const token of ["version:'1.106.1'",'reuseMachineInstall:false','--user-data-dir=','--extensions-dir=',"productActivationProbe:'not_run'",'hostExit=await runTests'])assert.ok(source.includes(token),token);});
