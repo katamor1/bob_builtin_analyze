@@ -942,3 +942,41 @@ test('t14_completion_literal_lf_survives_autocrlf_checkout',async()=>{
  const {mkdtempSync,realpathSync}=await import('node:fs'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),{execFileSync}=await import('node:child_process'),root=fileURLToPath(new URL('../../../',import.meta.url)),temp=mkdtempSync(join(realpathSync(tmpdir()),'t14-completion-lf-')),relative='docs/release-evidence/proc-t14-bounded-doc-completion-2026-10-24.json'
  execFileSync('git',['-c','core.autocrlf=true','checkout-index','--prefix='+temp.replaceAll('\\','/')+'/','--',relative],{cwd:root,windowsHide:true,maxBuffer:8*1024*1024});const checked=readFileSync(join(temp,relative)),indexed=execFileSync('git',['show',':'+relative],{cwd:root,windowsHide:true,maxBuffer:8*1024*1024});assert.ok(checked.equals(indexed));assert.equal(checked.at(-1),10);assert.equal(checked.includes(13),false)
 })
+
+// T15 source observation remains byte fixed; this branch only records metadata.
+const t15Completion=()=>json('../../../docs/release-evidence/proc-t15-aggregate-completion-2026-10-26.json')
+const throughT15=()=>{const c=throughT14();c.completionObservations.push(t15Completion());return c}
+const t15Source='a547a3282790ae070bc37617b104528ae5b095ad',t15Main='479a39d6627daa019fcec95bbb5c1ee334671723',t15Tree='727877fbc24901cfef8814608838ff2dd0809d48'
+test('through_t15_keeps_14_prefix_and_projects_13_of_20',()=>{
+ const old=projectIntegrationStatus(throughT14()),p=projectIntegrationStatus(throughT15())
+ assert.deepEqual(p.completionReferences.slice(0,14),old.completionReferences)
+ assert.deepEqual([p.completionReferences.length,p.slices.length,p.slices.filter(x=>x.state==='VERIFIED').length,p.nextSliceId],[15,20,13,'PROC-T16-INPUT-PROCESS'])
+ assert.equal(p.acceptedMainSha,t15Main);assert.ok(p.slices.every(x=>x.observedActivationStatus==='inactive'));assert.deepEqual(p.activeSliceIds,[])
+})
+test('foundation_requires_all_three_accepted_source_observations',()=>{
+ for(const c of [throughT13(),throughT14()])assert.equal(projectIntegrationStatus(c).boundaries.find(x=>x.id==='PROCESSING-FOUNDATION').state,'planned')
+ const c=throughT15();assert.equal(projectIntegrationStatus(c).boundaries.find(x=>x.id==='PROCESSING-FOUNDATION').state,'VERIFIED')
+ for(const missing of ['PROC-T13-LEDGER','PROC-T14-BOUNDED-DOC']){const bad=throughT15();bad.completionObservations=bad.completionObservations.filter(r=>r.boundaryId!==missing);assert.throws(()=>projectIntegrationStatus(bad),TypeError)}
+ const forged=projectIntegrationStatus(throughT14());forged.boundaries.find(x=>x.id==='PROCESSING-FOUNDATION').state='VERIFIED';assert.throws(()=>deriveNextSlice({programIndex:buildProgramIndex(),statusProjection:forged}),TypeError)
+})
+test('t15_rejects_metadata_subject_waiver_wrong_artifact_and_missing_host_case',async()=>{
+ const {validateT15Completion}=await import('../featureIntegrationStatusPolicy.mjs');assert.equal(typeof validateT15Completion,'function');const original=t15Completion();validateT15Completion(original);validateCompletionObservation(original,{programIndex:buildProgramIndex(),evidenceDigests:digests(original)})
+ assert.deepEqual([original.sourceHeadSha,original.acceptedMainSha,original.acceptedTreeSha,original.pullRequestNumber],[t15Source,t15Main,t15Tree,202])
+ for(const mutate of [r=>r.acceptedMainSha='b'.repeat(40),r=>r.sourceHeadSha=t15Main,r=>r.source.metadataIsNotSourceSubject=false,r=>r.mergeParents.reverse(),r=>r.ci.waiver={approved:true},r=>r.ci.mode='waived',r=>r.ci.candidate.head=t15Main,r=>r.ci.actualMain.head=t15Source,r=>r.ci.actualMain.workflows.pop(),r=>r.ci.actualMain.workflows[0].jobs[0].guard.actualHeadSha=t15Source,r=>r.installedUat.actualMain.platforms[0].caseCount=16,r=>r.installedUat.actualMain.platforms[0].loadedModules=27,r=>r.installedUat.actualMain.platforms[1].parserEntries=7,r=>r.installedUat.actualMain.platforms[0].sourceFixedParserFiles=582,r=>r.packages.bazaar.vsix=r.installedUat.candidate.platforms[0].vsix[0].vsix,r=>r.packages.consistency.sourceHeadSha='c'.repeat(40),r=>r.source.rawByteAccounting='source_plus_expanded',r=>r.source.packedPayloadFiles=45,r=>r.runtimeActivation=true,r=>r.review.remaining.important=1,r=>r.finalProgramUat='passed']){const bad=structuredClone(original);mutate(bad);assert.throws(()=>validateT15Completion(bad),TypeError)}
+})
+test('t15_portable_replay_has_no_original_host_access',async()=>{
+ const {validateT15Completion}=await import('../featureIntegrationStatusPolicy.mjs');assert.equal(typeof validateT15Completion,'function');const original=t15Completion(),filesystem=await import('node:fs'),{syncBuiltinESMExports}=await import('node:module'),patched=['readFileSync','statSync','lstatSync','openSync','readdirSync','realpathSync'],old=Object.fromEntries(patched.map(k=>[k,filesystem.default[k]]));let accesses=0
+ try{for(const k of patched)filesystem.default[k]=()=>{accesses++;throw Error('historical host must never be read')};syncBuiltinESMExports();validateT15Completion(original);assert.equal(accesses,0)}finally{for(const k of patched)filesystem.default[k]=old[k];syncBuiltinESMExports()}
+ for(const mutate of [r=>r.extra=true,r=>r.externalEvidence[0].bytes++,r=>r.externalEvidence[0].sha256='0'.repeat(64),r=>r.externalEvidence.push(r.externalEvidence[0]),r=>r.externalEvidence.pop(),r=>r.aggregateDocument.rawAccounting.sha256='0'.repeat(64),r=>r.aggregateDocument.workbookAtomicity.bytes=0,r=>r.preservation.protectedContentsRead=true,r=>r.installedUat.actualMain.platforms[0].joinProof=r.installedUat.candidate.platforms[0].joinProof]){const bad=structuredClone(original);mutate(bad);assert.throws(()=>validateT15Completion(bad),TypeError)}
+ const observed=digests(original);observed[original.externalEvidence[0].id].bytes++;assert.throws(()=>validateCompletionObservation(original,{programIndex:buildProgramIndex(),evidenceDigests:observed}),TypeError)
+})
+test('t15_completion_literal_lf_survives_autocrlf_checkout',async()=>{
+ validateCompletionObservation(t15Completion(),{programIndex:buildProgramIndex(),evidenceDigests:digests(t15Completion())})
+ const {mkdtempSync,realpathSync}=await import('node:fs'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),{execFileSync}=await import('node:child_process'),root=fileURLToPath(new URL('../../../',import.meta.url)),temp=mkdtempSync(join(realpathSync(tmpdir()),'t15-completion-lf-')),relative='docs/release-evidence/proc-t15-aggregate-completion-2026-10-26.json'
+ execFileSync('git',['-c','core.autocrlf=true','checkout-index','--prefix='+temp.replaceAll('\\','/')+'/','--',relative],{cwd:root,windowsHide:true,maxBuffer:8*1024*1024});const checked=readFileSync(join(temp,relative)),indexed=execFileSync('git',['show',':'+relative],{cwd:root,windowsHide:true,maxBuffer:8*1024*1024});assert.ok(checked.equals(indexed));assert.equal(checked.at(-1),10);assert.equal(checked.includes(13),false)
+})
+test('t15_generator_reads_one_literal_source_completion',async()=>{
+ const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/proc-t15-aggregate-completion-2026-10-26.json',import.meta.url));let reads=0,output
+ await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:b=>{output=JSON.parse(b)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,15);assert.equal(output.acceptedMainSha,t15Main);assert.equal(output.nextSliceId,'PROC-T16-INPUT-PROCESS')
+ for(const changed of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replaceAll('\n','\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?changed:readFileSync(p),writeStdout:()=>assert.fail('invalid T15 literal must not project status')}))
+})
