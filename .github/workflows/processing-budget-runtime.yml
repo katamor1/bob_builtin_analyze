@@ -115,7 +115,10 @@ jobs:
           NODE
 
       - name: Install standalone package
-        run: npm ci --ignore-scripts --no-audit --no-fund --prefix packages/processing-budget-runtime
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund --prefix packages/processing-budget-runtime
+          npm ci --prefix extensions/bob-bazaar-review
+          npm ci --prefix extensions/bob-code-consistency-review
 
       - name: Test standalone package and installed consumers
         run: npm test --prefix packages/processing-budget-runtime
@@ -123,8 +126,6 @@ jobs:
       - name: Build and package companion runtime artifacts
         run: |
           set -euo pipefail
-          npm ci --prefix extensions/bob-bazaar-review
-          npm ci --prefix extensions/bob-code-consistency-review
           npm run package --prefix extensions/bob-bazaar-review
           npm run package:policy --prefix extensions/bob-bazaar-review
           npm run package:smoke --prefix extensions/bob-bazaar-review
@@ -169,7 +170,7 @@ jobs:
           if-no-files-found: error
 
       - name: Verify literal admission and current product limits
-        run: node --test tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/boundedDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/gateRMainAdmissionPolicy.test.mjs scripts/exact-head-ci-contract.test.js
+        run: node --test tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/boundedDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/gateRMainAdmissionPolicy.test.mjs scripts/exact-head-ci-contract.test.js --test-concurrency=1
 
       - name: Bind actual installed package evidence
         id: evidence

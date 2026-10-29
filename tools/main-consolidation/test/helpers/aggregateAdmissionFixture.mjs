@@ -8,7 +8,13 @@ import {readGateRContainedFile,validateGateRPath} from '../../gateRData.mjs';
 const sourceRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../../..'),base='a826dc20c0e71f472401adf644ca8cc777b74c58';
 const t13='tools/main-consolidation/processing-budget-source-admission.json',t14='tools/main-consolidation/bounded-document-source-admission.json',t15='tools/main-consolidation/aggregate-document-source-admission.json';
 function gitAt(root,...args){return execFileSync('git',args,{cwd:root,encoding:'utf8',maxBuffer:32*1024*1024,stdio:['pipe','pipe','pipe']}).trim();}
-function historical(relative){return execFileSync('git',['show',base+':'+relative],{cwd:sourceRoot,maxBuffer:32*1024*1024,stdio:['pipe','pipe','pipe']});}
+const historicalBytes=new Map();
+function historical(relative){
+ // These paths and the M2 commit are fixed by the literal historical admissions.
+ // Every fixture still hashes/stages its own bytes; never expose the cached Buffer.
+ if(!historicalBytes.has(relative))historicalBytes.set(relative,execFileSync('git',['show',base+':'+relative],{cwd:sourceRoot,maxBuffer:32*1024*1024,stdio:['pipe','pipe','pipe']}));
+ return Buffer.from(historicalBytes.get(relative));
+}
 function selected(...admissions){return admissions.flatMap(a=>[...a.sourceRows,...a.controlRows].map(row=>row.path));}
 export function stageAdmissionFixtureIndex(stage){
  try{return stage();}catch(error){

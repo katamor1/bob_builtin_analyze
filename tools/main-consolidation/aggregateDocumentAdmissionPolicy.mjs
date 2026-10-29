@@ -10,8 +10,8 @@ const T14_ADMISSION='tools/main-consolidation/bounded-document-source-admission.
 const BASE='a826dc20c0e71f472401adf644ca8cc777b74c58',TREE='fa3a7ed1ea9aca00965ebe16d786096033d5f39e';
 function freeze(value){if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;}
 // Literal reviewed M2 before/after and historical bindings; never caller supplied.
-export const AGGREGATE_DOCUMENT_SOURCE_ADMISSION_SHA256="ed1fcbc2785bc132e82812f06c10680adf6b7ad04c5f97ea0412d34e989f3b4d";
-export const AGGREGATE_DOCUMENT_SOURCE_COVERAGE_SHA256="b586e3e95941d74248335611124961738d5dc6e85de49145eb1c46afe4d295d3";
+export const AGGREGATE_DOCUMENT_SOURCE_ADMISSION_SHA256="aa61d94f8c2c34854aa1fc193d15b45a9edddfaa7f109336f099d0ca90721617";
+export const AGGREGATE_DOCUMENT_SOURCE_COVERAGE_SHA256="cd3a294a3b15523c68167affec00700c198a6eff4d27230d19ff2b3e0197ba3f";
 export const AGGREGATE_DOCUMENT_HISTORICAL_BINDINGS=freeze({
   "tools/main-consolidation/registry-bridge-source-admission.json": {
     "blobSha": "c03c3477038bb1a96aa339e9c9a0b4868055cc85",

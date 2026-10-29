@@ -142,7 +142,7 @@ export function assertParsedXlsxWorkbookWithinBudget(parsed: readonly { sheet: s
 interface XmlTag { readonly name: string; readonly attributes: Readonly<Record<string, string>> }
 interface SheetDeclaration { readonly name: string; readonly relationshipId: string }
 interface Relationship { readonly target: string; readonly type: string; readonly external: boolean }
-interface PartFacts { root: string; sheets: readonly SheetDeclaration[]; relationships: ReadonlyMap<string, Relationship>; rowSpan: number }
+interface PartFacts { root: string; sheets: readonly SheetDeclaration[]; relationships: ReadonlyMap<string, Relationship>; rowSpan: number; dimensionLastRow: number }
 type Part = { facts: PartFacts } | { failed: true }
 
 // Called only with entries already checked by the existing ZIP owner. Errors
@@ -175,7 +175,11 @@ export function createXlsxInspectionObserver(): { observeEntry(name: string, val
         const target = resolveTarget("xl/workbook.xml", relationship.target)
         if (targets.has(target)) unsafe()
         targets.add(target)
-        const rowSpan = required(target, "worksheet").rowSpan
+        const facts = required(target, "worksheet"), rowSpan = facts.rowSpan
+        // Both pinned parsers allocate through the dimension's terminal row,
+        // then trim empty rows. It must not exceed the admitted reference span.
+        // A genuinely empty sheet allocates no rows in either parser.
+        if (rowSpan > 0 && facts.dimensionLastRow > rowSpan) unsafe()
         return Object.freeze({ name: sheet.name, partName: target, rowSpan })
       })
       return Object.freeze({ sheets: Object.freeze(sheets) })
@@ -185,7 +189,7 @@ export function createXlsxInspectionObserver(): { observeEntry(name: string, val
 
 function inspectPart(entry: string, bytes: Uint8Array): PartFacts {
   const sheets: SheetDeclaration[] = [], relationships = new Map<string, Relationship>()
-  let row = 0, rowSpan = 0
+  let row = 0, rowSpan = 0, dimensionLastRow = 0
   const root = scanXml(bytes, tag => {
     const local = localName(tag.name)
     if (entry === "xl/workbook.xml" && local === "sheet") {
@@ -197,6 +201,14 @@ function inspectPart(entry: string, bytes: Uint8Array): PartFacts {
       const id = requiredAttribute(tag, "Id")
       if (relationships.has(id)) unsafe()
       relationships.set(id, Object.freeze({ target: requiredAttribute(tag, "Target"), type: requiredAttribute(tag, "Type"), external: attribute(tag, "TargetMode")?.toLowerCase() === "external" }))
+    }
+    if (local === "dimension") {
+      const reference = attribute(tag, "ref")
+      if (reference) {
+        const match = /^[A-Za-z]+([1-9][0-9]*)(?::[A-Za-z]+([1-9][0-9]*))?$/.exec(reference)
+        if (!match) unsafe()
+        dimensionLastRow = Math.max(dimensionLastRow, positiveDecimal(match[2] ?? match[1]))
+      }
     }
     if (local === "row") {
       const explicit = attribute(tag, "r")
@@ -212,7 +224,7 @@ function inspectPart(entry: string, bytes: Uint8Array): PartFacts {
       }
     }
   })
-  return { root, sheets: Object.freeze(sheets), relationships, rowSpan }
+  return { root, sheets: Object.freeze(sheets), relationships, rowSpan, dimensionLastRow }
 }
 
 function localName(value: string): string { return value.slice(value.lastIndexOf(":") + 1) }

@@ -1,6 +1,10 @@
 {
   "adaptationDecisions": [
     {
+      "decision": "Dimensions never alter reference-based row accounting. Both pinned parsers allocate through rightBottom.row and trim before returning; reject required nonempty worksheet dimensions beyond inspected span before parser invocation. Preserve empty sheets and absent/understated dimensions, header0/1 and unchanged parser bytes. The current guard is a reviewed compatibility correction, not inherited archive authority.",
+      "id": "dimension_materialization_guard"
+    },
+    {
       "decision": "Commit the full logical count before reference paths; charge raw C once per selection, including duplicates, and retain admitted usage after parser failure. Reuse the accepted T14 physical checks and preserve normal T14 release semantics.",
       "id": "logical_operation_admission"
     },
@@ -472,7 +476,7 @@
       "sourceItemId": "source-0079608c934fd2c8521b4c4b",
       "targets": [
         {
-          "blobSha": "fbf7d2b4a38ee40e72d34703900132a70020eeed",
+          "blobSha": "a96f490857ad7d19653a64186a139451e2bc204e",
           "mode": "100644",
           "path": "packages/processing-budget-runtime/test/xlsxWorkbookBudget.test.js",
           "symbols": [
@@ -502,6 +506,14 @@
         },
         {
           "name": "sparse_explicit_implicit_cell_rows_ignore_dimension",
+          "path": "packages/processing-budget-runtime/test/xlsxWorkbookBudget.test.js"
+        },
+        {
+          "name": "real_pinned_xlsx_parsers_reject_dimension_allocation_before_parser",
+          "path": "packages/processing-budget-runtime/test/xlsxWorkbookBudget.test.js"
+        },
+        {
+          "name": "dimension_claims_cannot_expand_span_and_empty_sheets_keep_zero_rows",
           "path": "packages/processing-budget-runtime/test/xlsxWorkbookBudget.test.js"
         }
       ],
@@ -1101,6 +1113,14 @@
         {
           "name": "sparse_explicit_implicit_cell_rows_ignore_dimension",
           "path": "packages/processing-budget-runtime/test/xlsxWorkbookBudget.test.js"
+        },
+        {
+          "name": "real_pinned_xlsx_parsers_reject_dimension_allocation_before_parser",
+          "path": "packages/processing-budget-runtime/test/xlsxWorkbookBudget.test.js"
+        },
+        {
+          "name": "dimension_claims_cannot_expand_span_and_empty_sheets_keep_zero_rows",
+          "path": "packages/processing-budget-runtime/test/xlsxWorkbookBudget.test.js"
         }
       ],
       "testPaths": [
@@ -1206,7 +1226,7 @@
       "sourceItemId": "source-a542dff0e366e0cd08fb9506",
       "targets": [
         {
-          "blobSha": "c0bdf51c8f77ccd0c9c7825204dce5399252882e",
+          "blobSha": "02c97632351c0552e169292d2ea29b10d1000d28",
           "mode": "100644",
           "path": "packages/processing-budget-runtime/src/workbookBudget.ts",
           "symbols": [
@@ -1239,6 +1259,14 @@
         },
         {
           "name": "sparse_explicit_implicit_cell_rows_ignore_dimension",
+          "path": "packages/processing-budget-runtime/test/xlsxWorkbookBudget.test.js"
+        },
+        {
+          "name": "real_pinned_xlsx_parsers_reject_dimension_allocation_before_parser",
+          "path": "packages/processing-budget-runtime/test/xlsxWorkbookBudget.test.js"
+        },
+        {
+          "name": "dimension_claims_cannot_expand_span_and_empty_sheets_keep_zero_rows",
           "path": "packages/processing-budget-runtime/test/xlsxWorkbookBudget.test.js"
         }
       ],

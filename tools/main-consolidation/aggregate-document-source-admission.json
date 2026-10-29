@@ -14,14 +14,14 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "b2edcb88077e5ca858d1328d0d82c05edd061438",
+      "afterBlobSha": "98562effc2cc2bdcd99f45d64769a85b4793bf78",
       "beforeBlobSha": "7b067cc32363afb56137e4ed673a943b0d6477e1",
       "mode": "100644",
       "path": ".github/workflows/processing-budget-runtime.yml",
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "3d3a5aaec0a8b324ea22a1b1b8ddfa53e8fc354c",
+      "afterBlobSha": "fd54aa05aee8c94aa32a41ce14bad11acedf8e1b",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "docs/release-evidence/proc-t15-aggregate-source-coverage-2026-10-26.json",
@@ -56,7 +56,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "e8568c8eba1d268140b60971a01f8adfb06fe9a0",
+      "afterBlobSha": "157014dade2e8633c09b6eff49ea7832fcb993c3",
       "beforeBlobSha": "0a605efc62b9354a2df9f2d6e6a9ec355a694b5c",
       "mode": "100644",
       "path": "scripts/processing-runtime-build-workflow.test.js",
@@ -105,7 +105,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "6a6fceefba71136898349ad22f2f5e845784cded",
+      "afterBlobSha": "3802572d7e8c0af65133d5010bbd63012e3431ec",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs",
@@ -126,7 +126,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "0b5eacf93df5b911cdef5ac9787fdbf35512f42a",
+      "afterBlobSha": "ebf58fd3d2ce0ea4991c7a8c7b8d4c05de536487",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "tools/main-consolidation/test/helpers/aggregateAdmissionFixture.mjs",
@@ -141,7 +141,7 @@
     }
   ],
   "schemaVersion": "bob-builtin-analyze/aggregate-document-source-admission/v1",
-  "sourceCoverageDigest": "b586e3e95941d74248335611124961738d5dc6e85de49145eb1c46afe4d295d3",
+  "sourceCoverageDigest": "cd3a294a3b15523c68167affec00700c198a6eff4d27230d19ff2b3e0197ba3f",
   "sourceRows": [
     {
       "afterBlobSha": "70fbcc3b839aacbfff8478494f999f530bd700e6",
@@ -440,7 +440,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "c0bdf51c8f77ccd0c9c7825204dce5399252882e",
+      "afterBlobSha": "02c97632351c0552e169292d2ea29b10d1000d28",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "packages/processing-budget-runtime/src/workbookBudget.ts",
@@ -547,7 +547,7 @@
       ]
     },
     {
-      "afterBlobSha": "fbf7d2b4a38ee40e72d34703900132a70020eeed",
+      "afterBlobSha": "a96f490857ad7d19653a64186a139451e2bc204e",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "packages/processing-budget-runtime/test/xlsxWorkbookBudget.test.js",

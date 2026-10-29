@@ -60,3 +60,9 @@ test('workflow_builds_before_host_tooling_and_runs_t15_on_both_os',()=>{
 test('companion_vsix_excludes_development_payload_before_manifest',()=>{
  for(const name of ['bob-bazaar-review','bob-code-consistency-review']){const source=fs.readFileSync(path.join(root,'extensions',name,'.vscodeignore'),'utf8');assert.ok(source.split(/\r?\n/).includes('out/shared-processing-budget-runtime/*.d.ts'),name);assert.ok(source.split(/\r?\n/).includes('out/**/*.map'),name);}
 });
+
+test('real_pinned_parser_regression_has_locked_consumers_before_standalone_test',()=>{
+ const source=workflow('processing-budget-runtime'),guard=source.indexOf('run: node scripts/verify-ci-head.js'),standalone=source.indexOf('run: npm test --prefix packages/processing-budget-runtime');
+ for(const extension of ['bob-bazaar-review','bob-code-consistency-review']){const command='npm ci --prefix extensions/'+extension,install=source.indexOf(command);assert.ok(guard<install&&install<standalone,extension+' pinned parser dependencies must precede the real-parser regression');assert.equal(source.split(command).length-1,1);}
+ assert.ok(standalone<source.indexOf('createArtifactManifest'));assert.ok(source.indexOf('createArtifactManifest')<source.indexOf('npm install --no-save'));
+});
