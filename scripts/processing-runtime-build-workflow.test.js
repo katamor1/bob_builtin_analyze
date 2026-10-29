@@ -18,8 +18,8 @@ test("every_companion_build_prepares_shared_dependencies_first", () => {
   const runtime = workflow("processing-budget-runtime")
   assert.match(runtime, /timeout-minutes: 20/)
   for (const extension of ["bob-bazaar-review", "bob-code-consistency-review"]) assert.ok(runtime.includes("npm run package --prefix extensions/" + extension))
-  assert.match(runtime, /xvfb-run -a node scripts\/t14-bounded-document-installed-smoke.mjs/)
-  assert.match(runtime, /node scripts\/t14-bounded-document-installed-smoke.mjs --artifacts/)
+  assert.match(runtime, /xvfb-run -a node scripts\/t15-aggregate-installed-smoke.mjs/)
+  assert.match(runtime, /node scripts\/t15-aggregate-installed-smoke.mjs --artifacts/)
   const contract = JSON.parse(fs.readFileSync(path.join(root, "tools/main-consolidation/exact-head-ci-contract.json")))
   assert.equal(contract.workflows.flatMap(x => x.jobs).length, 18)
 })
@@ -35,7 +35,7 @@ test("boundary_policy_rejects_path_parser_deep_import_and_unawaited_callback", t
   const mutations = [
     ["bob-code-consistency-review", "analyzers/documentDocxExtractor.ts", source => source.replace("{ buffer: documentBuffer }", '{ path: "source.docx" }')],
     ["bob-code-consistency-review", "analyzers/documentExtractor.ts", source => source + '\nimport { prepare } from "../../../packages/processing-budget-runtime/out/ooxmlParserInput"\n'],
-    ["bob-code-consistency-review", "analyzers/documentExtractor.ts", source => source.replace("return withValidatedOoxmlParserInput(", "withValidatedOoxmlParserInput(")],
+    ["bob-code-consistency-review", "analyzers/documentExtractor.ts", source => source.replace("return operation.withValidatedOoxml(", "operation.withValidatedOoxml(")],
     ["bob-bazaar-review", "ruleAuthoring/extraction/documentExtractor.ts", source => source.replace("extractDocx(parserInput,", 'extractDocx(Buffer.from("unverified"),')],
     ["bob-code-consistency-review", "core/reviewInputDiscovery.ts", source => source + '\nconst extraParser = () => require("mammoth")\n']
   ]
@@ -51,4 +51,23 @@ test("boundary_policy_rejects_path_parser_deep_import_and_unawaited_callback", t
 test("clean_parser_contracts_and_artifact_inputs_precede_mutating_host_tooling",()=>{
  const source=workflow("processing-budget-runtime"),pack=source.indexOf("- name: Build and package companion runtime artifacts"),contracts=source.indexOf("- name: Verify document build and artifact contracts"),prepare=source.indexOf("- name: Prepare installed document artifacts"),tooling=source.indexOf("- name: Install pinned document host tooling after packaging"),host=source.indexOf("- name: Verify installed document runtime on Ubuntu");
  assert.ok(pack<contracts&&contracts<prepare&&prepare<tooling&&tooling<host,"clean npm-ci parser bytes must be tested/captured before no-save tooling mutates their layout");
+});
+
+test('workflow_builds_before_host_tooling_and_runs_t15_on_both_os',()=>{
+ const source=workflow('processing-budget-runtime');for(const event of ['pull_request','push']){const start=source.indexOf('  '+event+':'),end=source.indexOf(event==='pull_request'?'  push:':'  workflow_dispatch:');const block=source.slice(start,end);for(const entry of ['scripts/t15-aggregate-installed*','tools/main-consolidation/aggregateDocumentAdmissionPolicy.mjs','tools/main-consolidation/aggregate-document-source-admission.json','tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs','docs/release-evidence/proc-t15-aggregate-source-coverage-2026-10-26.json'])assert.ok(block.includes('"'+entry+'"'),entry);}
+ assert.match(source,/xvfb-run -a node scripts\/t15-aggregate-installed-smoke\.mjs/);assert.match(source,/name: t15-aggregate-\$\{\{ matrix\.os \}\}/);assert.ok(source.indexOf('createArtifactManifest')<source.indexOf('npm install --no-save'));assert.match(source,/scripts\/t14-bounded-document-installed-smoke\.test\.mjs/);assert.match(source,/scripts\/t15-aggregate-installed-smoke\.test\.mjs/);
+});
+test('companion_vsix_excludes_development_payload_before_manifest',()=>{
+ for(const name of ['bob-bazaar-review','bob-code-consistency-review']){const source=fs.readFileSync(path.join(root,'extensions',name,'.vscodeignore'),'utf8');assert.ok(source.split(/\r?\n/).includes('out/shared-processing-budget-runtime/*.d.ts'),name);assert.ok(source.split(/\r?\n/).includes('out/**/*.map'),name);}
+});
+
+test('real_pinned_parser_regression_has_locked_consumers_before_standalone_test',()=>{
+ const source=workflow('processing-budget-runtime'),guard=source.indexOf('run: node scripts/verify-ci-head.js'),standalone=source.indexOf('run: npm test --prefix packages/processing-budget-runtime');
+ for(const extension of ['bob-bazaar-review','bob-code-consistency-review']){const command='npm ci --prefix extensions/'+extension,install=source.indexOf(command);assert.ok(guard<install&&install<standalone,extension+' pinned parser dependencies must precede the real-parser regression');assert.equal(source.split(command).length-1,1);}
+ assert.ok(standalone<source.indexOf('createArtifactManifest'));assert.ok(source.indexOf('createArtifactManifest')<source.indexOf('npm install --no-save'));
+});
+
+test('runtime_installs_workflow_schema_owner_before_admission',()=>{
+ const source=workflow('processing-budget-runtime'),guard=source.indexOf('run: node scripts/verify-ci-head.js'),command='npm ci --ignore-scripts --no-audit --no-fund --prefix extensions/workflow-register',install=source.indexOf(command),admission=source.indexOf('- name: Verify literal admission and current product limits');
+ assert.ok(guard<install&&install<admission,'the gate R schema test resolves Ajv from the Workflow owner');assert.equal(source.split(command).length-1,1);
 });

@@ -30,7 +30,17 @@ function sourceInputs(){
 }
 function withBuildLock(operation){
  ensureDir(cache);const lock=path.join(cache,'build.lock');const started=Date.now();let fd;
- while(fd===undefined){try{fd=fs.openSync(lock,'wx');}catch(e){if(e.code!=='EEXIST')throw e;noFollow(lock);if(Date.now()-started>30000)fail('build is locked; retained lock requires inspection');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,40);}}
+ while(fd===undefined){
+  if(Date.now()-started>30000)fail('build is locked; retained lock requires inspection');
+  try{fd=fs.openSync(lock,'wx');}catch(e){
+   if(e.code!=='EEXIST')throw e;
+   try{noFollow(lock);}catch(inspect){
+    if(inspect.code!=='ENOENT'||typeof inspect.path!=='string'||path.resolve(inspect.path)!==lock)throw inspect;
+    noFollow(cache);continue;
+   }
+   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,40);
+  }
+ }
  try{fs.writeFileSync(fd,JSON.stringify({pid:process.pid}));return operation();}finally{fs.closeSync(fd);noFollow(lock);fs.unlinkSync(lock);}
 }
 function freshStaging(prefix){

@@ -1,3 +1,4 @@
+import { assertDocumentNotCancelled, assertParsedXlsxWorkbookWithinBudget, type XlsxWorkbookInspection } from "../sharedProcessingBudgetRuntime"
 import { toPosixPath } from "../core/fileSystem"
 import type { ReviewProcessingLimits } from "../core/limits"
 import {
@@ -20,10 +21,15 @@ export async function extractXlsxChunks(
   evidenceType: string,
   selectors: string[],
   warnings: string[],
-  limits: ReviewProcessingLimits
+  limits: ReviewProcessingLimits,
+  options?: { signal?: AbortSignal; workbookInspection?: XlsxWorkbookInspection }
 ): Promise<ExtractedChunk[]> {
+  assertDocumentNotCancelled(options?.signal)
   const readExcelFile = await loadExcelFile()
+  assertDocumentNotCancelled(options?.signal)
   const workbook = await readExcelFile.default(workbookBuffer)
+  assertDocumentNotCancelled(options?.signal)
+  if (options?.workbookInspection) assertParsedXlsxWorkbookWithinBudget(workbook, options.workbookInspection)
   const sheetsByName = new Map(workbook.map((sheet) => [sheet.sheet, sheet] as const))
   const sheetNames = workbook.map((sheet) => sheet.sheet)
   const allSelectedSheets = item.sheets && item.sheets.length > 0 ? item.sheets : sheetNames
@@ -59,6 +65,7 @@ export async function extractXlsxChunks(
     }
   }
 
+  assertDocumentNotCancelled(options?.signal)
   return matchingChunks(chunks, selectors)
 }
 

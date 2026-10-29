@@ -44,3 +44,24 @@ void fingerprint; void parseDocument
 import { prepareOoxmlParserInput } from "../.."
 // @ts-expect-error parser callback must receive validated input
 withValidatedOoxmlParserInput({}, async (input: string) => input)
+
+import { createDocumentOperation, commitWorkbookBudget, commitXlsxWorkbookBudget, assertParsedXlsxWorkbookWithinBudget, type DocumentOperation, type DocumentAdmission, type DocumentOoxmlOptions, type XlsxWorkbookInspection } from "../.."
+import type { BudgetedOoxmlParserInput } from "../../out/validatedOoxml"
+const operation: DocumentOperation = createDocumentOperation({ selectedDocumentCount: 0, profile })
+async function parseBudgeted(admission: DocumentAdmission, options: DocumentOoxmlOptions): Promise<number> {
+  return operation.withValidatedOoxml(admission, options, async (input: BudgetedOoxmlParserInput) => {
+    if (input.documentKind === "xlsx") assertParsedXlsxWorkbookWithinBudget([], input.workbookInspection)
+    return input.parserInput.byteLength
+  })
+}
+function workbookTypes(inspection: XlsxWorkbookInspection): void {
+  commitWorkbookBudget({ ledger, workbookTarget: "typed", sheets: [{ name: "S", rowCount: 2 }] })
+  commitXlsxWorkbookBudget({ ledger, workbookTarget: "typed-xlsx", inspection, headerRows: 1 })
+}
+// @ts-expect-error operation ledger is not a caller-owned public capability
+void operation.ledger
+// @ts-expect-error plain fingerprints cannot forge a branded admission
+const forgedAdmission: DocumentAdmission = { fingerprint: { byteSize: "0", mtimeNs: "0", device: "0", inode: "0", sha256: "0".repeat(64) } }
+// @ts-expect-error budgeted xlsx requires an explicit header policy
+const missingWorkbookPolicy: DocumentOoxmlOptions = { documentKind: "xlsx", structuralLimits: { maxEntries: 5000, maxExpandedBytes: 262144000 }, loadXlsxCodec: async () => ({ strToU8: (_text: string) => new Uint8Array(0), zipSync: (_entries: Record<string, Uint8Array>) => new Uint8Array(0) }) }
+void parseBudgeted; void workbookTypes; void forgedAdmission; void missingWorkbookPolicy

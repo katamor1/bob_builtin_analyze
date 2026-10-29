@@ -16,11 +16,11 @@ test('source_change_after_parse_discards_all_chunks',async t=>{
  const root=fixture(t);for(const [name,bytes]of [['source.docx',createDocxFixture()],['source.xlsx',createXlsxFixture()]]){
   const filePath=path.join(root,name);fs.writeFileSync(filePath,bytes);const method=name.endsWith('docx')?'extractDocxChunks':'extractXlsxChunks',adapter=require('../out/analyzers/'+(name.endsWith('docx')?'documentDocxExtractor':'documentXlsxExtractor'));let calls=0;
   const m=mock.method(adapter,method,async buffer=>{calls++;assert.ok(Buffer.isBuffer(buffer));const changed=Buffer.from(bytes);changed[40]^=1;fs.writeFileSync(filePath,changed);return[{evidenceType:'requirement',ref:'REQ-MUTATED',text:'must discard'}];});
-  try{const r=await extractDocuments(input([name]),{workspaceRoot:root});assert.equal(calls,1);assert.deepEqual([r.evidence.length,r.excerptsMarkdown],[0,'']);assert.ok(r.warnings.some(w=>w.includes('bounded document source changed')));}finally{m.mock.restore();}
+  try{await assert.rejects(()=>extractDocuments(input([name]),{workspaceRoot:root}),e=>e.code==='bounded_document_source_changed');assert.equal(calls,1);}finally{m.mock.restore();}
  }
 });
 test('fifty_mib_source_is_not_rejected_by_default_parent_budget',async t=>{
- const root=fixture(t),bytes=Buffer.alloc(50*1048576,97);Buffer.from('# REQ-FIFTY\n').copy(bytes);fs.writeFileSync(path.join(root,'large.md'),bytes);let seen;const original=shared.readBoundedDocumentFile,m=mock.method(shared,'readBoundedDocumentFile',async request=>{seen=request.ledger.profile.limits;return original(request);});
+ const root=fixture(t),bytes=Buffer.alloc(50*1048576,97);Buffer.from('# REQ-FIFTY\n').copy(bytes);fs.writeFileSync(path.join(root,'large.md'),bytes);let seen;const original=shared.createReviewDocumentOperation,m=mock.method(shared,'createReviewDocumentOperation',(...args)=>{const operation=original(...args);seen=operation.profile.limits;return operation;});
  try{const r=await extractDocuments(input(['large.md']),{workspaceRoot:root,limits:{maxDocumentBytes:50*1048576}});assert.equal(seen?.single_document_bytes,50*1048576);assert.equal(seen.total_document_bytes,50*1048576);assert.equal(seen.total_operation_input_bytes,64*1048576);assert.ok(r.evidence.length>0);assert.equal(r.warnings.some(x=>x.includes('failed to extract')),false);}finally{m.mock.restore();}
 });
 test('valid_source_still_truncates_excerpt_and_aggregate_output',async t=>{

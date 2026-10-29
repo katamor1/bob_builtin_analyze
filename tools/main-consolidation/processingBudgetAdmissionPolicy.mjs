@@ -1,4 +1,5 @@
-import {applyBoundedDocumentSourceAdmission,validateBoundedDocumentRepository} from './boundedDocumentAdmissionPolicy.mjs';
+import {applyAggregateDocumentSourceAdmission,validateAggregateDocumentRepository} from './aggregateDocumentAdmissionPolicy.mjs';
+import {applyBoundedDocumentSourceAdmission} from './boundedDocumentAdmissionPolicy.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -184,13 +185,15 @@ export function processingBudgetT13SourceFiles(){
  return [...a.sourceRows.map(x=>({path:x.path,mode:x.mode,blobSha:x.afterBlobSha})),...a.controlRows].map(x=>({...x})).sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);
 }
 // Reviewed current layers are applied separately; the T13 base remains immutable.
-export function processingBudgetCurrentSourceFiles(){return applyBoundedDocumentSourceAdmission(fs.readFileSync(path.join(ROOT,'tools/main-consolidation/bounded-document-source-admission.json')),{domain:'processing_budget',baseFiles:processingBudgetT13SourceFiles()});}
+export function processingBudgetT14SourceFiles(){return applyBoundedDocumentSourceAdmission(fs.readFileSync(path.join(ROOT,'tools/main-consolidation/bounded-document-source-admission.json')),{domain:'processing_budget',baseFiles:processingBudgetT13SourceFiles()});}
+
+export function processingBudgetCurrentSourceFiles(){return applyAggregateDocumentSourceAdmission(fs.readFileSync(path.join(ROOT,'tools/main-consolidation/aggregate-document-source-admission.json')),{domain:'processing_budget',baseFiles:processingBudgetT14SourceFiles()});}
 
 export function validateProcessingBudgetRepository(root=ROOT){
  root=path.resolve(root);if(!fs.lstatSync(root).isDirectory()||fs.lstatSync(root).isSymbolicLink())fail('repository root');
  for(const [relative,expected] of Object.entries(baselines))if(gateRDigest(fs.readFileSync(safeFile(root,relative)))!==expected)fail('unchanged Owner/Discovery baseline');
  validateProcessingBudgetSourceAdmission(read(root,ADMISSION));validateProcessingBudgetCoverage(read(root,COVERAGE));
- validateBoundedDocumentRepository(root);
+ validateAggregateDocumentRepository(root);
  const git=(args,input)=>execFileSync('git',args,{cwd:root,input,encoding:'utf8',maxBuffer:16*1024*1024,stdio:['pipe','pipe','pipe']}).trim();
  const expected=processingBudgetCurrentSourceFiles(),controls=[ADMISSION,'tools/main-consolidation/processingBudgetAdmissionPolicy.mjs'];
  const required=[...new Set([...expected.map(row=>row.path),...controls])].sort();

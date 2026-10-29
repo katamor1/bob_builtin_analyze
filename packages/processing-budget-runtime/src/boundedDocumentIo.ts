@@ -10,11 +10,14 @@ export interface BoundedDocumentSnapshot {
 }
 
 export async function readBoundedDocumentFile(input: BoundedDocumentReadInput): Promise<BoundedDocumentSnapshot> {
-  return withBoundedDocumentSnapshot(input, async ({ bytes, fingerprint }) => {
-    const owned = Buffer.from(bytes)
-    const { sha256, ...identity } = fingerprint
-    return Object.freeze({ byteLength: bytes.length, sha256, identity: Object.freeze(identity), copyBytes: () => Buffer.from(owned) })
-  })
+  return withBoundedDocumentSnapshot(input, async ({ bytes, fingerprint }) => ownedDocumentSnapshot(bytes, fingerprint))
+}
+
+// Package-private value conversion shared by the normal and operation owners.
+export function ownedDocumentSnapshot(bytes: Buffer, fingerprint: BoundedDocumentFingerprint): BoundedDocumentSnapshot {
+  const owned = Buffer.from(bytes)
+  const { sha256, ...identity } = fingerprint
+  return Object.freeze({ byteLength: bytes.length, sha256, identity: Object.freeze(identity), copyBytes: () => Buffer.from(owned) })
 }
 
 export async function fingerprintBoundedDocumentFile(input: { filePath: string, rootPath: string, maximumFileBytes: number, signal?: AbortSignal }): Promise<BoundedDocumentFingerprint> {

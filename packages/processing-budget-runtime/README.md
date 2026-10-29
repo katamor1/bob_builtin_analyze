@@ -23,3 +23,12 @@ Run `npm ci`, `npm test` and `npm pack`. Tests exercise a real tarball installed
 Development preparation: run `npm ci` in this package and each companion extension. Each extension uses its local `node scripts/build-shared-runtime.js` wrapper for `npm run compile`: the fixed package compiler builds a staged, hash-verified twelve-module runtime, the extension compiles, then the canonical copier publishes the same 36 compiled files plus a manifest into its owned `out/shared-processing-budget-runtime`. Missing tooling or a stale payload fails with a build-required error; no install or source runtime fallback occurs. Build/copy operations share an exclusive lock. Unknown output files and aliases are rejected; replaced owned outputs are retained under `node_modules/.cache/bob-processing-runtime`.
 
 The package has exactly 40 paths and no production dependencies. Only root and `./validated-ooxml` exports are public. VSIX packaging keeps the twelve runtime JS files and manifest; existing exclusions remove declaration files and maps. Runtime validation verifies the shipped JS hashes without requiring excluded development files.
+
+
+## Operation document admission
+
+Create a fresh `createDocumentOperation({selectedDocumentCount,profile,signal})` per extraction. The complete count commits before selections are resolved. `fingerprintSelection(index,request)` returns an opaque, single-use admission. `withValidatedOoxml(admission,options,parse)` repeats every physical/ZIP check while charging each selection's source bytes once. XLSX requires `xlsxBudget:{headerRows:0|1}`; its callback includes immutable full-span inspection for parser materialization checks. `readSelection` directly admits bounded Markdown-style input; `verifyAfterExternalRead` verifies PDF/legacy stability.
+
+Committed count/raw/workbook usage remains after a later failure. Only a pending workbook reservation group rolls back. Normal T14 bounded/callback APIs retain their original release-on-failure accounting. Workbook data helpers do not validate a caller's filesystem or confer parser-input trust. Cancellation preserves an Error reason in operation APIs. No deep imports, caller-provided parser buffers, or skip-validation flags are public.
+
+The tarball contains 14 modules (46 paths); extensions copy 42 compiled development files and ship 14 JS modules plus their manifest. Parser versions, production dependencies (zero), and source/expanded structural caps are unchanged.

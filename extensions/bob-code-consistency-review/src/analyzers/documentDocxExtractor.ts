@@ -1,3 +1,4 @@
+import { assertDocumentNotCancelled } from "../sharedProcessingBudgetRuntime"
 import { firstKnownId, matchingChunks, rowsToMarkdown, type ExtractedChunk } from "./documentExtractionCommon"
 
 type CheerioAPI = import("cheerio").CheerioAPI
@@ -7,9 +8,13 @@ type MammothModule = typeof import("mammoth")
 let cheerioModulePromise: Promise<CheerioModule> | undefined
 let mammothModulePromise: Promise<MammothModule> | undefined
 
-export async function extractDocxChunks(documentBuffer: Buffer, evidenceType: string, selectors: string[]): Promise<ExtractedChunk[]> {
+export async function extractDocxChunks(documentBuffer: Buffer, evidenceType: string, selectors: string[], options?: { signal?: AbortSignal }): Promise<ExtractedChunk[]> {
+  assertDocumentNotCancelled(options?.signal)
   const [mammoth, cheerio] = await Promise.all([loadMammoth(), loadCheerio()])
-  const html = (await mammoth.convertToHtml({ buffer: documentBuffer })).value
+  assertDocumentNotCancelled(options?.signal)
+  const converted = await mammoth.convertToHtml({ buffer: documentBuffer })
+  assertDocumentNotCancelled(options?.signal)
+  const html = converted.value
   const $ = cheerio.load(html)
   const chunks: ExtractedChunk[] = []
   const headingPath: string[] = []
@@ -50,6 +55,7 @@ export async function extractDocxChunks(documentBuffer: Buffer, evidenceType: st
     }
   })
 
+  assertDocumentNotCancelled(options?.signal)
   return matchingChunks(chunks, selectors)
 }
 

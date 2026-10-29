@@ -5,6 +5,7 @@ test/**
 tests/**
 *.ts
 out/**/*.map
+out/shared-processing-budget-runtime/*.d.ts
 *.tsbuildinfo
 tsconfig.json
 package-lock.json

@@ -3,7 +3,8 @@ import { constants as fileFlags, type BigIntStats } from "node:fs"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { BoundedDocumentError, type BoundedDocumentErrorCode } from "./boundedDocumentError"
-import { assertNotAborted, normalizeReadInput, type BoundedDocumentFingerprint, type BoundedDocumentReadInput } from "./boundedDocumentRequest"
+import { assertNotAborted, assertOperationNotAborted, normalizeReadInput, type BoundedDocumentFingerprint, type BoundedDocumentReadInput } from "./boundedDocumentRequest"
+import { ProcessingBudgetError } from "./processingBudgetError"
 import type { ProcessingBudgetReservation } from "./processingBudgetLedger"
 
 function changed(): never { throw new BoundedDocumentError("bounded_document_source_changed", { phase: "verify" }) }
@@ -55,13 +56,13 @@ async function readExactly(file: fs.FileHandle, buffer: Buffer, position = 0): P
     offset += read.bytesRead
   }
 }
-async function verify(file: fs.FileHandle, input: BoundedDocumentReadInput, before: BigIntStats, initial: BoundedDocumentFingerprint, root: { root: string, stat: BigIntStats }): Promise<void> {
-  assertNotAborted(input.signal)
+async function verify(file: fs.FileHandle, input: BoundedDocumentReadInput, before: BigIntStats, initial: BoundedDocumentFingerprint, root: { root: string, stat: BigIntStats }, check: () => void): Promise<void> {
+  check()
   sameStat(before, await file.stat({ bigint: true }))
   const hash = createHash("sha256")
   const chunk = Buffer.alloc(Math.min(65536, Number(before.size)))
   for (let offset = 0; offset < Number(before.size); offset += chunk.length) {
-    assertNotAborted(input.signal)
+    check()
     const view = chunk.subarray(0, Math.min(chunk.length, Number(before.size) - offset))
     await readExactly(file, view, offset)
     hash.update(view)
@@ -71,13 +72,49 @@ async function verify(file: fs.FileHandle, input: BoundedDocumentReadInput, befo
   const currentRoot = await sourcePath(input, root.stat)
   if (currentRoot.root !== root.root) changed()
   sameStat(before, await fs.lstat(input.filePath, { bigint: true }))
-  assertNotAborted(input.signal)
+  check()
 }
 
-export async function withBoundedDocumentSnapshot<T>(value: BoundedDocumentReadInput, consume: (snapshot: { bytes: Buffer, fingerprint: BoundedDocumentFingerprint }) => Promise<T>): Promise<T> {
+type OwnedSnapshot = { bytes: Buffer, fingerprint: BoundedDocumentFingerprint }
+type Accounting = "normal" | "admission" | "admitted"
+
+export async function withBoundedDocumentSnapshot<T>(value: BoundedDocumentReadInput, consume: (snapshot: OwnedSnapshot) => Promise<T>): Promise<T> {
+  return withSnapshot(value, consume, "normal")
+}
+
+// Neither entry point is exported by the package root or its subpath. An
+// admitted reread is available only as a closure issued after a charged read.
+export async function withOperationDocumentSnapshot<T>(value: BoundedDocumentReadInput, consume: (snapshot: OwnedSnapshot) => Promise<T>): Promise<T> {
+  return withSnapshot(value, consume, "admission")
+}
+export interface AdmittedDocumentFile {
+  readonly fingerprint: BoundedDocumentFingerprint
+  withSnapshot<T>(consume: (snapshot: OwnedSnapshot) => Promise<T>): Promise<T>
+}
+export async function admitBoundedDocumentFile(value: BoundedDocumentReadInput): Promise<AdmittedDocumentFile> {
+  const input = normalizeReadInput(value)
+  const fingerprint = await withOperationDocumentSnapshot(input, async ({ fingerprint }) => Object.freeze({ ...fingerprint }))
+  const admitted = Object.freeze({ ...input, expectedFingerprint: fingerprint })
+  return Object.freeze({ fingerprint, withSnapshot: <T>(consume: (snapshot: OwnedSnapshot) => Promise<T>) => withSnapshot(admitted, consume, "admitted") })
+}
+
+function assertAggregateCapacity(input: BoundedDocumentReadInput, amount: number): void {
+  const report = input.ledger.snapshot()
+  for (const category of ["total_document_bytes", "total_operation_input_bytes"] as const) {
+    const row = report.categories.find(item => item.category === category)
+    if (!row || row.scope !== "operation") throw new ProcessingBudgetError("processing_budget_internal_invariant", "document operation aggregate report missing")
+    if (amount > row.remaining) throw new ProcessingBudgetError("processing_budget_exceeded", "document operation aggregate budget exceeded", {
+      targetCategory: "single_document_bytes", target: input.target, constrainedCategory: category, limit: row.limit,
+      ...(amount <= Number.MAX_SAFE_INTEGER - row.used ? { observed: row.used + amount } : {})
+    })
+  }
+}
+
+async function withSnapshot<T>(value: BoundedDocumentReadInput, consume: (snapshot: OwnedSnapshot) => Promise<T>, accounting: Accounting): Promise<T> {
   const input = normalizeReadInput(value)
   if (typeof consume !== "function") throw new BoundedDocumentError("bounded_document_input_invalid")
-  assertNotAborted(input.signal)
+  const check = () => accounting === "normal" ? assertNotAborted(input.signal) : assertOperationNotAborted(input.signal)
+  check()
   let file: fs.FileHandle | undefined
   let reservation: ProcessingBudgetReservation | undefined
   let failed = false
@@ -94,17 +131,23 @@ export async function withBoundedDocumentSnapshot<T>(value: BoundedDocumentReadI
       expectedMatches(input.expectedFingerprint, asFingerprint(before, input.expectedFingerprint.sha256))
     }
     byteLength = Number(before.size)
-    reservation = input.ledger.reserveForTarget("single_document_bytes", input.target, byteLength)
-    assertNotAborted(input.signal)
+    if (accounting !== "admitted") {
+      if (accounting === "admission") assertAggregateCapacity(input, byteLength)
+      reservation = input.ledger.reserveForTarget("single_document_bytes", input.target, byteLength)
+    }
+    check()
     const bytes = Buffer.alloc(byteLength)
     await fileOperation(() => readExactly(file!, bytes))
     const fingerprint = asFingerprint(before, createHash("sha256").update(bytes).digest("hex"))
     sameStat(before, await fileOperation(() => file!.stat({ bigint: true })))
     if (input.expectedFingerprint) expectedMatches(input.expectedFingerprint, fingerprint)
-    assertNotAborted(input.signal)
+    check()
     result = await consume({ bytes, fingerprint })
-    await fileOperation(() => verify(file!, input, before, fingerprint, root))
-  } catch (error) { failed = true; primary = error }
+    await fileOperation(() => verify(file!, input, before, fingerprint, root, check))
+  } catch (error) {
+    failed = true; primary = error
+    if (accounting !== "normal") { try { check() } catch (reason) { primary = reason } }
+  }
   finally {
     if (file) {
       try { await file.close() } catch {
@@ -112,16 +155,18 @@ export async function withBoundedDocumentSnapshot<T>(value: BoundedDocumentReadI
       }
     }
     if (!failed) {
-      try { assertNotAborted(input.signal) } catch (error) { failed = true; primary = error }
+      try { check() } catch (error) { failed = true; primary = error }
     }
     if (failed && reservation) {
       try { reservation.release() } catch { /* Preserve the first failure; the real ledger finalizes atomically. */ }
     }
   }
   if (failed) throw primary
-  try { reservation!.commit(byteLength) } catch (error) {
-    try { reservation!.release() } catch { /* Retain the commit failure. */ }
-    throw error
+  if (reservation) {
+    try { reservation.commit(byteLength) } catch (error) {
+      try { reservation.release() } catch { /* Retain the commit failure. */ }
+      throw error
+    }
   }
   return result as T
 }
