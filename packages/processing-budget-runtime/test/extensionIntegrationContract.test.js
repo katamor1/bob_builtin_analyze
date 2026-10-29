@@ -15,7 +15,7 @@ function boundaryFixture(){const root=h.freshArtifactRoot('aggregate-boundary');
 test('coordinators_use_budgeted_operations_and_xlsx_inspection_before_parser',()=>{
  const root=boundaryFixture(),policy=require('../scripts/check-document-boundary');assert.doesNotThrow(()=>policy.checkDocumentBoundaries(root));
 });
-test('ast_policy_rejects_unawaited_member_callback_and_arbitrary_inspection',()=>{
+for(const useCrlf of [false,true])test('ast_policy_rejects_unawaited_member_callback_and_arbitrary_inspection'+(useCrlf?'_crlf':''),()=>{
  const root=boundaryFixture(),policy=require('../scripts/check-document-boundary'),ts=require('typescript');assert.doesNotThrow(()=>policy.checkDocumentBoundaries(root));
  const c='bob-code-consistency-review/src/',b='bob-bazaar-review/src/';
  const mutations=[
@@ -36,7 +36,8 @@ test('ast_policy_rejects_unawaited_member_callback_and_arbitrary_inspection',()=
   [c+'analyzers/documentExtractor.ts',s=>s.replace('headerRows: 1 as const','headerRows: 0 as const')],
   [b+'ruleAuthoring/extraction/ooxmlArchive.ts',s=>s.replace('headerRows: 0','headerRows: 1')]
  ];
- for(const [relative,mutate]of mutations){const file=path.join(root,'extensions',relative),original=fs.readFileSync(file,'utf8'),changed=mutate(original);assert.notEqual(changed,original,relative);assert.equal(ts.createSourceFile(file,changed,ts.ScriptTarget.Latest,true).parseDiagnostics.length,0,relative);fs.writeFileSync(file,changed);try{assert.throws(()=>policy.checkDocumentBoundaries(root),/document boundary:/,relative);}finally{fs.writeFileSync(file,original);}}
+ if(useCrlf)for(const relative of new Set(mutations.map(([relative])=>relative))){const file=path.join(root,'extensions',relative);fs.writeFileSync(file,fs.readFileSync(file,'utf8').replaceAll('\r\n','\n').replaceAll('\n','\r\n'));}
+ for(const [relative,mutate]of mutations){const file=path.join(root,'extensions',relative),original=fs.readFileSync(file,'utf8'),input=original.replaceAll('\r\n','\n'),changed=mutate(input);assert.notEqual(changed,input,relative);assert.equal(ts.createSourceFile(file,changed,ts.ScriptTarget.Latest,true).parseDiagnostics.length,0,relative);fs.writeFileSync(file,changed);try{assert.throws(()=>policy.checkDocumentBoundaries(root),/document boundary:/,relative);}finally{fs.writeFileSync(file,original);}}
 });
 test('legacy_discovery_keeps_normal_t14_owner_without_aggregate_scope_creep',()=>{
  const root=boundaryFixture(),policy=require('../scripts/check-document-boundary'),file=path.join(root,'extensions/bob-code-consistency-review/src/core/reviewInputDiscovery.ts'),source=fs.readFileSync(file,'utf8');assert.match(source,/withValidatedOoxmlParserInput/);assert.doesNotMatch(source,/createDocumentOperation|withValidatedOoxml\(/);assert.doesNotThrow(()=>policy.checkDocumentBoundaries(root));fs.appendFileSync(file,'\nconst alias = withValidatedOoxmlParserInput;\n');assert.throws(()=>policy.checkDocumentBoundaries(root),/document boundary:/);

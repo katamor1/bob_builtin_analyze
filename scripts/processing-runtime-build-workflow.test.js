@@ -66,3 +66,8 @@ test('real_pinned_parser_regression_has_locked_consumers_before_standalone_test'
  for(const extension of ['bob-bazaar-review','bob-code-consistency-review']){const command='npm ci --prefix extensions/'+extension,install=source.indexOf(command);assert.ok(guard<install&&install<standalone,extension+' pinned parser dependencies must precede the real-parser regression');assert.equal(source.split(command).length-1,1);}
  assert.ok(standalone<source.indexOf('createArtifactManifest'));assert.ok(source.indexOf('createArtifactManifest')<source.indexOf('npm install --no-save'));
 });
+
+test('runtime_installs_workflow_schema_owner_before_admission',()=>{
+ const source=workflow('processing-budget-runtime'),guard=source.indexOf('run: node scripts/verify-ci-head.js'),command='npm ci --ignore-scripts --no-audit --no-fund --prefix extensions/workflow-register',install=source.indexOf(command),admission=source.indexOf('- name: Verify literal admission and current product limits');
+ assert.ok(guard<install&&install<admission,'the gate R schema test resolves Ajv from the Workflow owner');assert.equal(source.split(command).length-1,1);
+});

@@ -14,7 +14,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "98562effc2cc2bdcd99f45d64769a85b4793bf78",
+      "afterBlobSha": "cd905bb568607ac9610d44c1931195e33782f6b3",
       "beforeBlobSha": "7b067cc32363afb56137e4ed673a943b0d6477e1",
       "mode": "100644",
       "path": ".github/workflows/processing-budget-runtime.yml",
@@ -56,7 +56,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "157014dade2e8633c09b6eff49ea7832fcb993c3",
+      "afterBlobSha": "2b30d77bde316561caced6ae013a290caacfe76a",
       "beforeBlobSha": "0a605efc62b9354a2df9f2d6e6a9ec355a694b5c",
       "mode": "100644",
       "path": "scripts/processing-runtime-build-workflow.test.js",
@@ -481,7 +481,7 @@
       ]
     },
     {
-      "afterBlobSha": "ba38f450c9cb2f6c46369a3710fd808bbde20de4",
+      "afterBlobSha": "32bcd1bd7dce7b621fa8c9d3fb95873a4b4b991a",
       "beforeBlobSha": "b15c11548f9062d09844b2dd306c7bb1dc86ee8b",
       "mode": "100644",
       "path": "packages/processing-budget-runtime/test/extensionIntegrationContract.test.js",

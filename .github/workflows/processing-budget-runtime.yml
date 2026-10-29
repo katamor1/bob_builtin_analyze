@@ -117,6 +117,7 @@ jobs:
       - name: Install standalone package
         run: |
           npm ci --ignore-scripts --no-audit --no-fund --prefix packages/processing-budget-runtime
+          npm ci --ignore-scripts --no-audit --no-fund --prefix extensions/workflow-register
           npm ci --prefix extensions/bob-bazaar-review
           npm ci --prefix extensions/bob-code-consistency-review
 
