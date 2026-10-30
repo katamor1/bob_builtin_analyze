@@ -631,7 +631,7 @@ test('generator_consumes_r1_once_and_rejects_r1_byte_drift',async()=>{
  let reads=0,output
  await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}})
  assert.equal(reads,1,'generator must read accepted R1 completion once')
- assert.equal(output.completionReferences.length,14);assert.equal(output.slices.find(r=>r.sliceId==='WF2-R1-PROVENANCE').state,'VERIFIED');assert.equal(output.nextSliceId,'PROC-T15-AGGREGATE')
+ assert.equal(output.completionReferences.length,15);assert.equal(output.slices.find(r=>r.sliceId==='WF2-R1-PROVENANCE').state,'VERIFIED');assert.equal(output.nextSliceId,'PROC-T16-INPUT-PROCESS')
  for(const suffix of [Buffer.from('\n'),Buffer.from('\r\n'),Buffer.from(' ')]){
   await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?Buffer.concat([readFileSync(p),suffix]):readFileSync(p),writeStdout:()=>assert.fail('R1 byte drift must never emit projection')}))
  }
@@ -702,7 +702,7 @@ test('rejects_r2_as_conditional_or_runtime_activation_authority',()=>{
 
 test('generator_reads_literal_r2_once_and_refuses_missing_or_noncanonical_bytes',async()=>{
  const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/wf2-r2-completion-2026-10-18.json',import.meta.url));let reads=0,output
- await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,14);assert.equal(output.nextSliceId,'PROC-T15-AGGREGATE')
+ await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,15);assert.equal(output.nextSliceId,'PROC-T16-INPUT-PROCESS')
  await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>{if(p===target)throw new Error('missing R2');return readFileSync(p)},writeStdout:()=>assert.fail('missing R2 must not emit')}))
  for(const changed of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replace(/\n/g,'\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?changed:readFileSync(p),writeStdout:()=>assert.fail('R2 byte drift must not emit')}))
 })
@@ -770,7 +770,7 @@ test('owner lifecycle rejects old-prefix changes nonprefix collections and later
 test('owner generator reads one literal LF completion and rejects missing or noncanonical bytes',async()=>{
  const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/reg-bridge-owner-version-lifecycle-completion-2026-10-19.json',import.meta.url));let reads=0,output
  await runGenerator(['--print'],{readFile:async file=>{if(file===target)reads++;return readFileSync(file)},writeStdout:bytes=>{output=JSON.parse(bytes)}})
- assert.equal(reads,1);assert.equal(output.completionReferences.length,14);assert.equal(output.nextSliceId,'PROC-T15-AGGREGATE')
+ assert.equal(reads,1);assert.equal(output.completionReferences.length,15);assert.equal(output.nextSliceId,'PROC-T16-INPUT-PROCESS')
  await assert.rejects(()=>runGenerator(['--print'],{readFile:async file=>{if(file===target)throw Error('missing owner completion');return readFileSync(file)},writeStdout:()=>assert.fail('missing owner must not emit')}))
  for(const bytes of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replace(/\n/g,'\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async file=>file===target?bytes:readFileSync(file),writeStdout:()=>assert.fail('owner byte drift must not emit')}))
 })
@@ -843,7 +843,7 @@ test('discovery_rejects_json_claims_metadata_subject_and_actual_evidence_tamper'
 test('discovery_generator_reads_literal_canonical_source_completion',async()=>{
  const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/reg-bridge-discovery-evidence-completion-2026-10-20.json',import.meta.url));let reads=0,output
  await runGenerator(['--print'],{readFile:async file=>{if(file===target)reads++;return readFileSync(file)},writeStdout:bytes=>{output=JSON.parse(bytes)}})
- assert.equal(reads,1);assert.equal(output.completionReferences.length,14);assert.equal(output.acceptedMainSha,t14Main);assert.equal(output.nextSliceId,'PROC-T15-AGGREGATE')
+ assert.equal(reads,1);assert.equal(output.completionReferences.length,15);assert.equal(output.acceptedMainSha,t15Main);assert.equal(output.nextSliceId,'PROC-T16-INPUT-PROCESS')
  await assert.rejects(()=>runGenerator(['--print'],{readFile:async file=>{if(file===target)throw Error('missing Discovery completion');return readFileSync(file)},writeStdout:()=>assert.fail('missing completion emitted')}))
  for(const bytes of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replace(/\n/g,'\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async file=>file===target?bytes:readFileSync(file),writeStdout:()=>assert.fail('noncanonical Discovery emitted')}))
 })
@@ -889,7 +889,7 @@ test('t13_does_not_complete_processing_foundation_or_activate_runtime',()=>{
 
 test('t13_generator_requires_one_canonical_completion',async()=>{
  const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/proc-t13-ledger-completion-2026-10-23.json',import.meta.url));let reads=0,output
- await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,14);assert.equal(output.nextSliceId,'PROC-T15-AGGREGATE');assert.equal(output.acceptedMainSha,t14Main)
+ await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,15);assert.equal(output.nextSliceId,'PROC-T16-INPUT-PROCESS');assert.equal(output.acceptedMainSha,t15Main)
  await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>{if(p===target)throw Error('missing T13');return readFileSync(p)},writeStdout:()=>assert.fail('missing T13 emitted')}))
  for(const bytes of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replace(/\n/g,'\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?bytes:readFileSync(p),writeStdout:()=>assert.fail('noncanonical T13 emitted')}))
 })
@@ -978,5 +978,5 @@ test('t15_completion_literal_lf_survives_autocrlf_checkout',async()=>{
 test('t15_generator_reads_one_literal_source_completion',async()=>{
  const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/proc-t15-aggregate-completion-2026-10-26.json',import.meta.url));let reads=0,output
  await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:b=>{output=JSON.parse(b)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,15);assert.equal(output.acceptedMainSha,t15Main);assert.equal(output.nextSliceId,'PROC-T16-INPUT-PROCESS')
- for(const changed of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replaceAll('\n','\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?changed:readFileSync(p),writeStdout:()=>assert.fail('invalid T15 literal must not project status')}))
+ for(const changed of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replaceAll('\n','\r\n'))]){let emitted=0;await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?changed:readFileSync(p),writeStdout:()=>{emitted++}}));assert.equal(emitted,0)}
 })
