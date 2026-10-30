@@ -3,7 +3,7 @@ import {fileURLToPath} from 'node:url'
 import {buildProgramIndex} from './featureIntegrationProgramPolicy.mjs'
 import {renderIntegrationStatus} from './featureIntegrationStatusPolicy.mjs'
 import {parseArguments} from './create-feature-integration-program-index.mjs'
-import {parseCanonicalArtifact} from './featureSelectionSourcePolicy.mjs'
+import {digest,parseCanonicalArtifact} from './featureSelectionSourcePolicy.mjs'
 const LEDGER=fileURLToPath(new URL('../../docs/release-evidence/feature-selection-ledger-2026-08-23.json',import.meta.url))
 const COMPLETION=fileURLToPath(new URL('../../docs/release-evidence/wave0a-completion-2026-10-01.json',import.meta.url))
 const WAVE0B_COMPLETION=fileURLToPath(new URL('../../docs/release-evidence/wave0b-completion-2026-10-03.json',import.meta.url))
@@ -19,10 +19,13 @@ const OWNER_COMPLETION=fileURLToPath(new URL('../../docs/release-evidence/reg-br
 const DISCOVERY_COMPLETION=fileURLToPath(new URL('../../docs/release-evidence/reg-bridge-discovery-evidence-completion-2026-10-20.json',import.meta.url))
 const T13_COMPLETION=fileURLToPath(new URL('../../docs/release-evidence/proc-t13-ledger-completion-2026-10-23.json',import.meta.url))
 const T14_COMPLETION=fileURLToPath(new URL('../../docs/release-evidence/proc-t14-bounded-doc-completion-2026-10-24.json',import.meta.url))
+const T15_COMPLETION=fileURLToPath(new URL('../../docs/release-evidence/proc-t15-aggregate-completion-2026-10-26.json',import.meta.url))
+// Retain the source capture's original bytes, including its pretty JSON format.
+function parseT15Source(bytes){const literal=Buffer.from(bytes);if(digest(literal)!=='59606e5e39ee9143e9a0fb63e1f4040bea68ab20fd8dd2376e73ebbcf21216aa')throw new TypeError('T15 literal source completion drift');return JSON.parse(literal)}
 const OUTPUT=fileURLToPath(new URL('../../docs/release-evidence/feature-integration-status.json',import.meta.url))
 export async function runGenerator(argv,{readFile:readInput,writeStdout}) {
  const {mode}=parseArguments(argv)
- const inputs={programIndex:buildProgramIndex(),ledger:parseCanonicalArtifact(await readInput(LEDGER)),completionObservations:[parseCanonicalArtifact(await readInput(COMPLETION)),parseCanonicalArtifact(await readInput(WAVE0B_COMPLETION)),parseCanonicalArtifact(await readInput(P4_COMPLETION)),parseCanonicalArtifact(await readInput(P5_COMPLETION)),parseCanonicalArtifact(await readInput(P6_COMPLETION)),parseCanonicalArtifact(await readInput(P7_COMPLETION)),parseCanonicalArtifact(await readInput(GATE_P_COMPLETION)),parseCanonicalArtifact(await readInput(GATE_R_COMPLETION)),parseCanonicalArtifact(await readInput(R1_COMPLETION)),parseCanonicalArtifact(await readInput(R2_COMPLETION)),parseCanonicalArtifact(await readInput(OWNER_COMPLETION)),parseCanonicalArtifact(await readInput(DISCOVERY_COMPLETION)),parseCanonicalArtifact(await readInput(T13_COMPLETION)),parseCanonicalArtifact(await readInput(T14_COMPLETION))]}
+ const inputs={programIndex:buildProgramIndex(),ledger:parseCanonicalArtifact(await readInput(LEDGER)),completionObservations:[parseCanonicalArtifact(await readInput(COMPLETION)),parseCanonicalArtifact(await readInput(WAVE0B_COMPLETION)),parseCanonicalArtifact(await readInput(P4_COMPLETION)),parseCanonicalArtifact(await readInput(P5_COMPLETION)),parseCanonicalArtifact(await readInput(P6_COMPLETION)),parseCanonicalArtifact(await readInput(P7_COMPLETION)),parseCanonicalArtifact(await readInput(GATE_P_COMPLETION)),parseCanonicalArtifact(await readInput(GATE_R_COMPLETION)),parseCanonicalArtifact(await readInput(R1_COMPLETION)),parseCanonicalArtifact(await readInput(R2_COMPLETION)),parseCanonicalArtifact(await readInput(OWNER_COMPLETION)),parseCanonicalArtifact(await readInput(DISCOVERY_COMPLETION)),parseCanonicalArtifact(await readInput(T13_COMPLETION)),parseCanonicalArtifact(await readInput(T14_COMPLETION)),parseT15Source(await readInput(T15_COMPLETION))]}
  const bytes=renderIntegrationStatus(inputs)
  if(mode==='print') return writeStdout(bytes)
  if(!Buffer.from(await readInput(OUTPUT)).equals(bytes)) throw new Error('integration status drift')
