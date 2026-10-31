@@ -62,9 +62,17 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: CollectG
   }
   const vcs = normalizeVcs(reviewInput.review.vcs)
   const vcsRoot = resolveVcsRoot(options.workspaceRoot, reviewInput.review.vcs_root)
-  const collected = vcs === "bazaar"
-    ? await collectBazaarDiff(reviewInput, { ...options, vcsRoot, limits, signal, rawDiffLimit: operation.profile.limits.raw_diff_bytes })
-    : await collectStandardGitDiff(reviewInput, { ...options, vcsRoot, limits, signal, rawDiffLimit: operation.profile.limits.raw_diff_bytes })
+  let collected: CollectedDiff
+  try {
+    collected = vcs === "bazaar"
+      ? await collectBazaarDiff(reviewInput, { ...options, vcsRoot, limits, signal, rawDiffLimit: operation.profile.limits.raw_diff_bytes })
+      : await collectStandardGitDiff(reviewInput, { ...options, vcsRoot, limits, signal, rawDiffLimit: operation.profile.limits.raw_diff_bytes })
+  } catch (error) {
+    // The transport has settled. Apply the operation reason outside raw-output
+    // parsing, since an operator's Error can itself be a stdout-limit error.
+    if (error instanceof ExternalProcessError && error.kind === "cancelled") assertDocumentNotCancelled(signal)
+    throw error
+  }
   assertDocumentNotCancelled(signal)
   return finalizeDiffProcessingBudget(collected.diff, operation, collected.rawDiffOverflow)
 }

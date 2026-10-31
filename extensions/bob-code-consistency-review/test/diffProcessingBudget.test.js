@@ -207,3 +207,95 @@ test('utf8_boundary_and_bazaar_incomplete_metadata',async()=>{
  const tiny=makeOperation({limits:{single_document_bytes:0,total_document_bytes:0,raw_diff_bytes:5,document_excerpt_bytes:0,bob_input_bytes:0,total_operation_input_bytes:5}}),result=finalizeDiffProcessingBudget(diff([],'日本語\nmore'),tiny);
  assert.ok(Buffer.byteLength(result.unifiedDiff,'utf8')<=5);assert.ok(!result.unifiedDiff.includes('\ufffd'));
 });
+
+async function rejectedVcsAwait(vcs, stage, reason) {
+  const runner = require('../out/core/externalProcessRunner')
+  const factory = require('../out/core/processingBudgetPipeline')
+  const limits = require('../out/core/limits').normalizeReviewProcessingLimits()
+  const original = runner.runExternalProcess, controller = new AbortController()
+  const operation = factory.createPipelineProcessingOperation(limits, undefined, controller.signal)
+  operation.reserve('total_operation_input_bytes', 7).commit()
+  let targetCalled = false, commandSettled = false
+  runner.runExternalProcess = async options => {
+    const current = vcs === 'bazaar' ? 'bazaar' : options.args[0] === 'rev-parse' ? 'revision'
+      : options.args.includes('--name-status') ? 'metadata' : options.args.includes('--numstat') ? 'numstat' : 'raw'
+    if (current === stage) {
+      targetCalled = true
+      await new Promise(resolve => setImmediate(resolve))
+      controller.abort(reason)
+      commandSettled = true
+      throw new runner.ExternalProcessError('cancelled after settlement', 'cancelled', options.command, options.args, options.cwd)
+    }
+    const stdout = current === 'revision' ? 'a'.repeat(40) + '\n' : current === 'metadata' ? 'M\0src/a.c\0' : current === 'numstat' ? '1\t0\tsrc/a.c\0' : ''
+    return { stdout: Buffer.from(stdout), stderr: Buffer.alloc(0), exitCode: 0 }
+  }
+  try {
+    await assert.rejects(() => collectGitDiff({ review: { vcs, base: '1', head: '2' } }, {
+      workspaceRoot: process.cwd(), processingOperation: operation, signal: controller.signal
+    }), error => {
+      assert.equal(targetCalled, true); assert.equal(commandSettled, true)
+      if (reason instanceof Error) assert.strictEqual(error, reason)
+      else assert.equal(error.code, 'bounded_document_cancelled')
+      return true
+    })
+    assert.equal(operation.snapshot().categories.find(row => row.category === 'total_operation_input_bytes').committed, 7)
+    assert.ok(operation.snapshot().categories.every(row => row.reserved === 0))
+  } finally { runner.runExternalProcess = original }
+}
+
+// Break: a rejected revision/metadata/raw/Bazaar await bypasses the owner's cancellation reason.
+test('active_vcs_await_preserves_error_reason_after_settlement', async () => {
+  for (const [vcs, stage] of [['git', 'revision'], ['git', 'metadata'], ['git', 'raw'], ['bazaar', 'bazaar']]) {
+    await rejectedVcsAwait(vcs, stage, new Error('owned cancellation ' + stage))
+  }
+  const runner = require('../out/core/externalProcessRunner')
+  const structuredReason = new runner.ExternalProcessError('operator stdout failure', 'bufferExceeded', 'worker', [], process.cwd(), Buffer.from('cause\n'), Buffer.alloc(0), undefined, 'stdout')
+  await rejectedVcsAwait('git', 'raw', structuredReason)
+  await rejectedVcsAwait('bazaar', 'bazaar', structuredReason)
+})
+
+test('active_vcs_await_converts_non_error_reason_to_typed_cancellation', async () => {
+  for (const [vcs, stage] of [['git', 'revision'], ['git', 'metadata'], ['git', 'raw'], ['bazaar', 'bazaar']]) {
+    await rejectedVcsAwait(vcs, stage, 0)
+  }
+})
+
+// Break: translating cancellation rejects before the real command process has settled.
+test('active_vcs_real_child_settlement_precedes_owned_cancellation', async () => {
+  const factory = require('../out/core/processingBudgetPipeline'), limits = require('../out/core/limits').normalizeReviewProcessingLimits()
+  const originalSpawn = childProcess.spawn
+  for (const vcs of ['git', 'bazaar']) for (const reason of [new Error('real child cancellation'), null]) {
+    const controller = new AbortController(), operation = factory.createPipelineProcessingOperation(limits, undefined, controller.signal)
+    let child, calls = 0
+    childProcess.spawn = (command, args, options) => {
+      if (command !== 'git' && command !== 't16-bzr-probe') return originalSpawn(command, args, options)
+      calls++
+      child = originalSpawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], options)
+      queueMicrotask(() => controller.abort(reason))
+      return child
+    }
+    try {
+      await assert.rejects(() => collectGitDiff({ review: { vcs, base: '1', head: '2' } }, {
+        workspaceRoot: process.cwd(), processingOperation: operation, signal: controller.signal, bzrPath: 't16-bzr-probe'
+      }), error => { if (reason instanceof Error) assert.strictEqual(error, reason); else assert.equal(error.code, 'bounded_document_cancelled'); return true })
+      assert.equal(calls, 1); assert.ok(child.pid)
+      assert.throws(() => process.kill(child.pid, 0), error => error.code === 'ESRCH')
+      assert.ok(operation.snapshot().categories.every(row => row.reserved === 0))
+    } finally { childProcess.spawn = originalSpawn }
+  }
+})
+
+// Break: a later abort replaces a different already-rejected command failure, including a falsey one.
+test('unrelated_vcs_rejection_keeps_first_failure_despite_later_abort', async () => {
+  const runner = require('../out/core/externalProcessRunner'), original = runner.runExternalProcess
+  try {
+    for (const first of [undefined, null, false, 0, new runner.ExternalProcessError('original failure', 'spawnFailure', 'bzr', [], process.cwd())]) {
+      const controller = new AbortController()
+      runner.runExternalProcess = () => new Promise((_resolve, reject) => { reject(first); controller.abort(new Error('later abort')) })
+      let rejected = false
+      try { await collectGitDiff({ review: { vcs: 'bazaar', base: '1', head: '2' } }, { workspaceRoot: process.cwd(), signal: controller.signal }) }
+      catch (error) { rejected = true; assert.strictEqual(error, first) }
+      assert.equal(rejected, true)
+    }
+  } finally { runner.runExternalProcess = original }
+})
