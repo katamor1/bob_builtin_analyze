@@ -130,7 +130,8 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     traceability,
     contextBudgetArtifact: contextBudget.artifact,
     limits,
-    workflowRunId: input.workflowRunId
+    workflowRunId: input.workflowRunId,
+    processingOperation
   })
 
   const packageObservation: ArtifactObservation = {

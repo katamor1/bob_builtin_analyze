@@ -1,9 +1,14 @@
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { createHash, randomUUID } from "node:crypto"
+import { assertDocumentNotCancelled, assertProcessingOperation, type ProcessingOperation, type ProcessingBudgetReservation } from "../sharedProcessingBudgetRuntime"
+import { createPipelineProcessingOperation } from "./processingBudgetPipeline"
+import { assembleMandatoryFirstBobInput, reserveMandatoryFirstBobInput } from "./reviewPackageBudgets"
+import { collectManagedReviewFiles, cleanManagedPackageOutputs, createReviewPackageWriter, type ReviewPackageWriter } from "./reviewPackageWriter"
+export { computeManagedReviewPackageBytes } from "./reviewPackageWriter"
 import type { ContextBudgetArtifact } from "../evidenceScope/contextBudgetArtifact"
-import { applyTemplate, loadPromptTemplates } from "../templates/templateLoader"
-import { relativePosix, writeJsonFile, writeTextFile } from "./fileSystem"
+import { loadPromptTemplates } from "../templates/templateLoader"
+import { relativePosix } from "./fileSystem"
 import { normalizeReviewProcessingLimits, truncateUtf8Text, type ReviewProcessingLimits } from "./limits"
 import type { CodeAnalysisResult } from "./analysisTypes"
 import type { DiffSummary } from "./diffTypes"
@@ -12,25 +17,7 @@ import type { ReviewInput } from "./reviewTypes"
 import type { TraceabilityResult } from "./traceabilityResultTypes"
 
 const PRIVACY_NOTICE_JA = "生成物は社内設計書・顧客仕様・ソースコード・raw diff を含む可能性があります。"
-const MANAGED_PACKAGE_OUTPUTS = [
-  "prompts",
-  "code-slices",
-  "tables",
-  "input-normalized.json",
-  "changed-files.json",
-  "changed-symbols.json",
-  "document-index.json",
-  "evidence-index.json",
-  "traceability-map.json",
-  "context-budget-report.json",
-  "manifest.yaml",
-  "change-summary.md",
-  "diff-context.md",
-  "document-excerpts.md",
-  "traceability-map.md",
-  "deterministic-checks.md",
-  "bob-input.md"
-]
+
 
 export async function buildReviewPackage(input: {
   workspaceRoot: string
@@ -43,77 +30,92 @@ export async function buildReviewPackage(input: {
   contextBudgetArtifact?: ContextBudgetArtifact
   limits?: Partial<ReviewProcessingLimits>
   workflowRunId?: string
+  processingOperation?: ProcessingOperation
 }): Promise<string[]> {
   const { outDir, reviewInput, diff, documents, codeAnalysis, traceability } = input
+  if (input.processingOperation) assertProcessingOperation(input.processingOperation)
+  assertDocumentNotCancelled(input.processingOperation?.signal)
   const limits = normalizeReviewProcessingLimits(input.limits)
-  const packageWarnings: string[] = []
-  const generationId = randomUUID()
-  await fs.mkdir(outDir, { recursive: true })
-  await cleanManagedPackageOutputs(outDir)
-  await writePrompts(outDir)
-  await writeCodeSlices(outDir, codeAnalysis)
-  await writeTables(outDir, documents)
+  const processingOperation = input.processingOperation ?? createPipelineProcessingOperation(limits)
+  assertProcessingOperation(processingOperation)
+  assertDocumentNotCancelled(processingOperation.signal)
+  const writer = createReviewPackageWriter({ outDir, operation: processingOperation })
+  const packageWarnings: string[] = [], generationId = randomUUID()
+  let bobReservation: ProcessingBudgetReservation | undefined
+  try {
+    await fs.mkdir(outDir, { recursive: true })
+    await cleanManagedPackageOutputs(outDir)
+    const evidence = [...documents.evidence, ...codeAnalysis.evidence]
+    const changeSummary = buildChangeSummary(reviewInput, diff, codeAnalysis, documents)
+    const diffContext = buildDiffContext(diff, codeAnalysis, limits, packageWarnings)
+    const templates = await loadPromptTemplates()
+    const maximumBytes = Math.min(limits.maxBobInputBytes, processingOperation.profile.limits.bob_input_bytes)
+    const values = {
+      "prompt.system": templates.system,
+      "prompt.task": templates.task,
+      "prompt.output_format": templates.outputFormat,
+      "review.summary": buildReviewSummary(reviewInput, diff),
+      change_summary: changeSummary,
+      deterministic_checks: buildDeterministicChecks(documents, codeAnalysis, traceability, packageWarnings),
+      document_excerpts: documents.excerptsMarkdown,
+      diff_context: diffContext,
+      changed_symbols_summary: codeAnalysis.summaryMarkdown,
+      traceability_map: traceability.markdown,
+      evidence_index_summary: evidenceIndexSummary(evidence)
+    }
+    const bobOptions = { maximumBytes, template: templates.bobInputTemplate, values,
+      truncatableKeys: ["document_excerpts", "diff_context", "changed_symbols_summary", "traceability_map", "evidence_index_summary"] }
+    const initial = assembleMandatoryFirstBobInput(bobOptions)
+    if (initial.truncated) {
+      packageWarnings.push(`bob-input.md exceeded maxBobInputBytes (${initial.originalBytes} > ${maximumBytes}); truncated.`)
+      values.deterministic_checks = buildDeterministicChecks(documents, codeAnalysis, traceability, packageWarnings)
+    }
+    const bobInput = reserveMandatoryFirstBobInput({ ...bobOptions, operation: processingOperation })
+    bobReservation = bobInput.reservation
 
-  const evidence = [...documents.evidence, ...codeAnalysis.evidence]
-  await writeJsonFile(path.join(outDir, "input-normalized.json"), reviewInput)
-  await writeJsonFile(path.join(outDir, "changed-files.json"), { vcs: diff.vcs ?? "git", vcsRoot: diff.vcsRoot, files: diff.files, warnings: diff.warnings })
-  await writeJsonFile(path.join(outDir, "changed-symbols.json"), {
-    symbols: codeAnalysis.changedSymbols,
-    functions: codeAnalysis.functions,
-    defines: codeAnalysis.defines,
-    globals: codeAnalysis.globals,
-    call_graph: codeAnalysis.callGraph,
-    rt_forbidden_candidates: codeAnalysis.rtForbiddenCandidates,
-    warnings: codeAnalysis.warnings
-  })
-  await writeJsonFile(path.join(outDir, "document-index.json"), { documents: documents.documents, warnings: documents.warnings })
-  await writeJsonFile(path.join(outDir, "evidence-index.json"), { evidence: evidence.map(stripEvidenceText) })
-  await writeJsonFile(path.join(outDir, "traceability-map.json"), { rows: traceability.rows, warnings: traceability.warnings })
-  if (input.contextBudgetArtifact) {
-    await writeJsonFile(path.join(outDir, "context-budget-report.json"), input.contextBudgetArtifact)
+    await writer.writeText("prompts/system.md", templates.system)
+    await writer.writeText("prompts/task.md", templates.task)
+    await writer.writeText("prompts/output-format.md", templates.outputFormat)
+    await writeCodeSlices(writer, codeAnalysis)
+    await writeTables(writer, documents)
+    await writer.writeJson("input-normalized.json", reviewInput)
+    await writer.writeJson("changed-files.json", { vcs: diff.vcs ?? "git", vcsRoot: diff.vcsRoot, files: diff.files, warnings: diff.warnings })
+    await writer.writeJson("changed-symbols.json", {
+      symbols: codeAnalysis.changedSymbols, functions: codeAnalysis.functions,
+      defines: codeAnalysis.defines, globals: codeAnalysis.globals,
+      call_graph: codeAnalysis.callGraph, rt_forbidden_candidates: codeAnalysis.rtForbiddenCandidates,
+      warnings: codeAnalysis.warnings
+    })
+    await writer.writeJson("document-index.json", { documents: documents.documents, warnings: documents.warnings })
+    await writer.writeJson("evidence-index.json", { evidence: evidence.map(stripEvidenceText) })
+    await writer.writeJson("traceability-map.json", { rows: traceability.rows, warnings: traceability.warnings })
+    if (input.contextBudgetArtifact) await writer.writeJson("context-budget-report.json", input.contextBudgetArtifact)
+    await writer.writeText("change-summary.md", changeSummary)
+    await writer.writeText("diff-context.md", diffContext)
+    await writer.writeText("document-excerpts.md", documents.excerptsMarkdown)
+    await writer.writeText("traceability-map.md", traceability.markdown)
+    await writer.writeText("manifest.yaml", buildManifest(reviewInput, diff, evidence, input.workspaceRoot,
+      outDir, input.contextBudgetArtifact, packageWarnings, generationId, input.workflowRunId))
+    await writer.writeText("deterministic-checks.md", values.deterministic_checks)
+    await writer.writeText("bob-input.md", bobInput.text)
+    await writer.measure()
+    if ((await fs.stat(path.join(outDir, "bob-input.md"))).size !== bobInput.retainedBytes) {
+      throw new Error("Bob input output size changed")
+    }
+    assertDocumentNotCancelled(processingOperation.signal)
+    // No asynchronous work between the final check and this reservation group.
+    bobReservation.commit()
+    writer.commit()
+    return packageWarnings
+  } catch (error) {
+    writer.release()
+    bobReservation?.release()
+    try { await cleanManagedPackageOutputs(outDir) }
+    catch { console.error("Review package cleanup failed; managed outputs may be incomplete.") }
+    throw error
   }
-
-  const changeSummary = buildChangeSummary(reviewInput, diff, codeAnalysis, documents)
-  const diffContext = buildDiffContext(diff, codeAnalysis, limits, packageWarnings)
-  let deterministicChecks = buildDeterministicChecks(documents, codeAnalysis, traceability, packageWarnings)
-
-  await writeTextFile(path.join(outDir, "change-summary.md"), changeSummary)
-  await writeTextFile(path.join(outDir, "diff-context.md"), diffContext)
-  await writeTextFile(path.join(outDir, "document-excerpts.md"), documents.excerptsMarkdown)
-  await writeTextFile(path.join(outDir, "traceability-map.md"), traceability.markdown)
-
-  const templates = await loadPromptTemplates()
-  const bobInputSource = applyTemplate(templates.bobInputTemplate, {
-    "prompt.system": templates.system,
-    "prompt.task": templates.task,
-    "prompt.output_format": templates.outputFormat,
-    "review.summary": buildReviewSummary(reviewInput, diff),
-    change_summary: changeSummary,
-    deterministic_checks: deterministicChecks,
-    document_excerpts: documents.excerptsMarkdown,
-    diff_context: diffContext,
-    changed_symbols_summary: codeAnalysis.summaryMarkdown,
-    traceability_map: traceability.markdown,
-    evidence_index_summary: evidenceIndexSummary(evidence)
-  })
-  const bobInput = limitBobInput(bobInputSource, limits, packageWarnings)
-  deterministicChecks = buildDeterministicChecks(documents, codeAnalysis, traceability, packageWarnings)
-
-  await writeTextFile(path.join(outDir, "manifest.yaml"), buildManifest(
-    reviewInput,
-    diff,
-    evidence,
-    input.workspaceRoot,
-    outDir,
-    input.contextBudgetArtifact,
-    packageWarnings,
-    generationId,
-    input.workflowRunId
-  ))
-  await writeTextFile(path.join(outDir, "deterministic-checks.md"), deterministicChecks)
-  await writeTextFile(path.join(outDir, "bob-input.md"), bobInput)
-  return packageWarnings
 }
+
 
 function buildManifest(
   reviewInput: ReviewInput,
@@ -197,11 +199,7 @@ export function computeReviewPackageInputHash(
 }
 
 export async function computeManagedReviewPackageContentHash(outDir: string): Promise<string> {
-  const files: Array<{ relativePath: string; absolutePath: string }> = []
-  for (const managedPath of MANAGED_PACKAGE_OUTPUTS) {
-    await collectManagedFiles(outDir, managedPath, files)
-  }
-  files.sort((left, right) => left.relativePath.localeCompare(right.relativePath))
+  const files = await collectManagedReviewFiles(outDir)
   const hash = createHash("sha256")
   for (const file of files) {
     const bytes = await fs.readFile(file.absolutePath)
@@ -213,31 +211,6 @@ export async function computeManagedReviewPackageContentHash(outDir: string): Pr
     hash.update("\0")
   }
   return `sha256:${hash.digest("hex")}`
-}
-
-async function collectManagedFiles(
-  outDir: string,
-  relativePath: string,
-  target: Array<{ relativePath: string; absolutePath: string }>
-): Promise<void> {
-  const absolutePath = path.join(outDir, ...relativePath.split("/"))
-  let stat
-  try {
-    stat = await fs.lstat(absolutePath)
-  } catch (error) {
-    if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") return
-    throw error
-  }
-  if (stat.isSymbolicLink()) throw new Error(`managed review package output must not be a symbolic link: ${relativePath}`)
-  if (stat.isFile()) {
-    target.push({ relativePath, absolutePath })
-    return
-  }
-  if (!stat.isDirectory()) throw new Error(`managed review package output has unsupported file type: ${relativePath}`)
-  const entries = await fs.readdir(absolutePath, { withFileTypes: true })
-  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-    await collectManagedFiles(outDir, `${relativePath}/${entry.name}`, target)
-  }
 }
 
 function sourceRevision(diff: DiffSummary): string {
@@ -262,13 +235,6 @@ function sha256Prefixed(value: unknown): string {
 
 function yamlScalar(value: string): string {
   return /^[A-Za-z0-9_.:/@+-]+$/.test(value) ? value : JSON.stringify(value)
-}
-
-async function cleanManagedPackageOutputs(outDir: string): Promise<void> {
-  // 生成 package の鮮度を保つため、管理対象の既知ファイルだけを消し、ユーザーが置いた補助ファイルは残す。
-  await Promise.all(MANAGED_PACKAGE_OUTPUTS.map((item) =>
-    fs.rm(path.join(outDir, item), { recursive: true, force: true })
-  ))
 }
 
 function buildReviewSummary(reviewInput: ReviewInput, diff: DiffSummary): string {
@@ -345,14 +311,6 @@ function buildDeterministicChecks(documents: DocumentExtractionResult, codeAnaly
   ].join("\n")
 }
 
-function limitBobInput(text: string, limits: ReviewProcessingLimits, packageWarnings: string[]): string {
-  const suffix = "\n\n[truncated: maxBobInputBytes]\n"
-  const limited = truncateUtf8Text(text, limits.maxBobInputBytes, suffix)
-  if (!limited.truncated) return text
-  packageWarnings.push(`bob-input.md exceeded maxBobInputBytes (${limited.originalBytes} > ${limits.maxBobInputBytes}); truncated.`)
-  return limited.text
-}
-
 function evidenceIndexSummary(evidence: EvidenceRef[]): string {
   return evidence.map((item) => `- ${item.evidence_id}: ${item.type} ${item.ref}${item.source ? ` (${item.source})` : ""}`).join("\n")
 }
@@ -367,21 +325,12 @@ function hasDuplicateEvidenceIds(evidence: EvidenceRef[]): boolean {
   return new Set(ids).size !== ids.length
 }
 
-async function writePrompts(outDir: string): Promise<void> {
-  const templates = await loadPromptTemplates()
-  const promptDir = path.join(outDir, "prompts")
-  await Promise.all([
-    writeTextFile(path.join(promptDir, "system.md"), templates.system),
-    writeTextFile(path.join(promptDir, "task.md"), templates.task),
-    writeTextFile(path.join(promptDir, "output-format.md"), templates.outputFormat)
-  ])
+async function writeCodeSlices(writer: ReviewPackageWriter, codeAnalysis: CodeAnalysisResult): Promise<void> {
+  for (const slice of codeAnalysis.codeSlices) await writer.writeText(`code-slices/${slice.evidence_id}.md`, slice.markdown)
 }
 
-async function writeCodeSlices(outDir: string, codeAnalysis: CodeAnalysisResult): Promise<void> {
-  await Promise.all(codeAnalysis.codeSlices.map((slice) => writeTextFile(path.join(outDir, "code-slices", `${slice.evidence_id}.md`), slice.markdown)))
-}
-
-async function writeTables(outDir: string, documents: DocumentExtractionResult): Promise<void> {
-  const tableExcerpts = documents.evidence.filter((item) => item.text?.includes("|"))
-  await Promise.all(tableExcerpts.map((item) => writeTextFile(path.join(outDir, "tables", `${item.evidence_id}.md`), `# ${item.evidence_id}\n\n${item.text ?? ""}\n`)))
+async function writeTables(writer: ReviewPackageWriter, documents: DocumentExtractionResult): Promise<void> {
+  for (const item of documents.evidence.filter(item => item.text?.includes("|"))) {
+    await writer.writeText(`tables/${item.evidence_id}.md`, `# ${item.evidence_id}\n\n${item.text ?? ""}\n`)
+  }
 }

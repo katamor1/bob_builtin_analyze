@@ -49,3 +49,8 @@ test('ast_policy_rejects_detached_processing_owner',()=>{
  fs.appendFileSync(file,'\nconst detached = createPipelineProcessingOperation(normalizeReviewProcessingLimits(undefined));\n');
  assert.throws(()=>policy.checkDocumentBoundaries(root),/document boundary:/);
 });
+
+// Break: the final package producer resets the shared operation.
+test('ast_policy_requires_package_owner_forwarding',()=>{
+ const root=boundaryFixture(),policy=require('../scripts/check-document-boundary'),file=path.join(root,'extensions/bob-code-consistency-review/src/core/pipeline.ts'),source=fs.readFileSync(file,'utf8').replaceAll('\r\n','\n'),changed=source.replace('workflowRunId: input.workflowRunId,\n    processingOperation','workflowRunId: input.workflowRunId');assert.notEqual(changed,source);fs.writeFileSync(file,changed);assert.throws(()=>policy.checkDocumentBoundaries(root),/document boundary:/);
+});

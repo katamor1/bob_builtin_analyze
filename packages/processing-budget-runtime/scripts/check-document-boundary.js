@@ -82,7 +82,7 @@ function checkProcessingOwnership(tree, key) {
     return ts.isShorthandPropertyAssignment(fields[0]) ? fields[0].name : ts.isPropertyAssignment(fields[0]) ? fields[0].initializer : undefined
   }
   if (key.endsWith("core/pipeline.ts")) {
-    for (const [name, position] of [["validateReviewInput", 4], ["collectGitDiff", 1], ["extractDocuments", 1]]) {
+    for (const [name, position] of [["validateReviewInput", 4], ["collectGitDiff", 1], ["extractDocuments", 1], ["buildReviewPackage", 0]]) {
       const uses = calls.filter(node => identifier(node.expression, name))
       if (uses.length !== 1 || !identifier(property(uses[0].arguments[position], "processingOperation"), "processingOperation")) fail("pipeline processing owner forwarding")
       if (name === "extractDocuments" && !identifier(property(uses[0].arguments[position], "operation"), "operation")) fail("pipeline document owner forwarding")
