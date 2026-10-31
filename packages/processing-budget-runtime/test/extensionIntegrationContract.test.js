@@ -42,3 +42,10 @@ for(const useCrlf of [false,true])test('ast_policy_rejects_unawaited_member_call
 test('legacy_discovery_keeps_normal_t14_owner_without_aggregate_scope_creep',()=>{
  const root=boundaryFixture(),policy=require('../scripts/check-document-boundary'),file=path.join(root,'extensions/bob-code-consistency-review/src/core/reviewInputDiscovery.ts'),source=fs.readFileSync(file,'utf8');assert.match(source,/withValidatedOoxmlParserInput/);assert.doesNotMatch(source,/createDocumentOperation|withValidatedOoxml\(/);assert.doesNotThrow(()=>policy.checkDocumentBoundaries(root));fs.appendFileSync(file,'\nconst alias = withValidatedOoxmlParserInput;\n');assert.throws(()=>policy.checkDocumentBoundaries(root),/document boundary:/);
 });
+
+// Break: a second pipeline owner can reset aggregate consumption between stages.
+test('ast_policy_rejects_detached_processing_owner',()=>{
+ const root=boundaryFixture(),policy=require('../scripts/check-document-boundary'),file=path.join(root,'extensions/bob-code-consistency-review/src/core/pipeline.ts');
+ fs.appendFileSync(file,'\nconst detached = createPipelineProcessingOperation(normalizeReviewProcessingLimits(undefined));\n');
+ assert.throws(()=>policy.checkDocumentBoundaries(root),/document boundary:/);
+});

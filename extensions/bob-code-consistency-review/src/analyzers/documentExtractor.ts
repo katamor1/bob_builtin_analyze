@@ -1,4 +1,5 @@
-import { BoundedDocumentError, ProcessingBudgetError, createReviewDocumentOperation, createReviewDocumentProfile, normalizeProcessingBudgetProfile, assertDocumentNotCancelled, loadXlsxCodec, type DocumentOperation, type SharedProcessingBudgetLimits } from "../sharedProcessingBudgetRuntime"
+import { createPipelineProcessingOperation } from "../core/processingBudgetPipeline"
+import { BoundedDocumentError, ProcessingBudgetError, createReviewDocumentProfile, assertDocumentNotCancelled, loadXlsxCodec, assertProcessingOperation, type ProcessingOperation, type DocumentOperation, type SharedProcessingBudgetLimits } from "../sharedProcessingBudgetRuntime"
 import * as path from "node:path"
 import { resolveWorkspacePathStrict, toPosixPath } from "../core/fileSystem"
 import { decodeTextBuffer } from "../core/textEncoding"
@@ -29,6 +30,7 @@ export interface DocumentExtractionOptions {
   signal?: AbortSignal
   processingBudgetLimits?: Readonly<Partial<SharedProcessingBudgetLimits>>
   operation?: DocumentOperation
+  processingOperation?: ProcessingOperation
 }
 
 export function countDocumentSelections(reviewInput: ReviewInput): number {
@@ -41,20 +43,31 @@ export function countDocumentSelections(reviewInput: ReviewInput): number {
 }
 
 export async function extractDocuments(reviewInput: ReviewInput, options: DocumentExtractionOptions): Promise<DocumentExtractionResult> {
-  const signal = options.signal ?? options.operation?.signal
+  assertDocumentNotCancelled(options.signal)
+  if (options.processingOperation !== undefined) {
+    assertProcessingOperation(options.processingOperation)
+    assertDocumentNotCancelled(options.processingOperation.signal)
+  }
+  const limits = normalizeReviewProcessingLimits(options.limits)
+  if (options.operation && !options.processingOperation) throw new BoundedDocumentError("bounded_document_input_invalid", { phase: "input" })
+  const processingOperation = options.processingOperation ?? createPipelineProcessingOperation(limits, options.processingBudgetLimits, options.signal)
+  assertProcessingOperation(processingOperation)
+  const signal = processingOperation.signal ?? options.signal
   assertDocumentNotCancelled(signal)
+  if ((options.signal && processingOperation.signal && options.signal !== processingOperation.signal)
+    || JSON.stringify(processingOperation.profile) !== JSON.stringify(createReviewDocumentProfile(limits, options.processingBudgetLimits))) {
+    throw new BoundedDocumentError("bounded_document_input_invalid", { phase: "input" })
+  }
+  const count = countDocumentSelections(reviewInput)
+  const operation = options.operation ?? processingOperation.documents(count)
+  processingOperation.assertDocuments(operation)
+  if (operation.selectedDocumentCount !== count) throw new BoundedDocumentError("bounded_document_input_invalid", { phase: "input" })
   const documents: DocumentMeta[] = []
   const evidence: EvidenceRef[] = []
   const excerpts: string[] = []
   const warnings: string[] = []
   const counters = new Map<string, number>()
-  const limits = normalizeReviewProcessingLimits(options.limits)
-  const count = countDocumentSelections(reviewInput)
-  const operation = options.operation ?? createReviewDocumentOperation(count, limits, options.processingBudgetLimits, signal)
-  if (operation.selectedDocumentCount !== count || (options.signal && operation.signal && options.signal !== operation.signal) ||
-      JSON.stringify(normalizeProcessingBudgetProfile(operation.profile)) !== JSON.stringify(createReviewDocumentProfile(limits, options.processingBudgetLimits))) {
-    throw new BoundedDocumentError("bounded_document_input_invalid", { phase: "input" })
-  }
+  const excerptLimit = Math.min(limits.maxBobInputBytes, processingOperation.profile.limits.document_excerpt_bytes)
   let selectionIndex = 0
   let excerptMarkdownBytes = 0
   let aggregateBudgetExhausted = false
@@ -109,7 +122,7 @@ export async function extractDocuments(reviewInput: ReviewInput, options: Docume
         const limitedChunk = limitChunkText(chunk, item.path, warnings, limits)
         const evidenceId = nextEvidenceId(typeInfo.prefix, counters)
         const separatorBytes = excerpts.length > 0 ? Buffer.byteLength("\n", "utf8") : 0
-        const remainingBytes = Math.max(0, limits.maxBobInputBytes - excerptMarkdownBytes - separatorBytes)
+        const remainingBytes = Math.max(0, excerptLimit - excerptMarkdownBytes - separatorBytes)
         const aggregateFit = fitExcerptWithinAggregateBudget(
           evidenceId,
           item.path,
@@ -119,12 +132,12 @@ export async function extractDocuments(reviewInput: ReviewInput, options: Docume
           remainingBytes
         )
         if (!aggregateFit) {
-          warnings.push(`document excerpts exhausted aggregate maxBobInputBytes (${limits.maxBobInputBytes}); remaining excerpts skipped.`)
+          warnings.push(`document excerpts exhausted aggregate maxBobInputBytes / document_excerpt_bytes (${excerptLimit}); remaining excerpts skipped.`)
           aggregateBudgetExhausted = true
           break
         }
         if (aggregateFit.truncated) {
-          warnings.push(`${toPosixPath(item.path)} ${chunk.ref} exceeded aggregate maxBobInputBytes (${limits.maxBobInputBytes}); excerpt truncated and remaining excerpts skipped.`)
+          warnings.push(`${toPosixPath(item.path)} ${chunk.ref} exceeded aggregate maxBobInputBytes / document_excerpt_bytes (${excerptLimit}); excerpt truncated and remaining excerpts skipped.`)
           aggregateBudgetExhausted = true
         }
 
@@ -152,7 +165,10 @@ export async function extractDocuments(reviewInput: ReviewInput, options: Docume
   }
 
   assertDocumentNotCancelled(signal)
-  return { documents, excerptsMarkdown: excerpts.join("\n"), evidence, warnings }
+  const excerptsMarkdown = excerpts.join("\n"), actualBytes = Buffer.byteLength(excerptsMarkdown, "utf8")
+  if (actualBytes !== excerptMarkdownBytes) throw new ProcessingBudgetError("processing_budget_internal_invariant", "document excerpt byte accounting mismatch")
+  processingOperation.reserve("document_excerpt_bytes", actualBytes).commit()
+  return { documents, excerptsMarkdown, evidence, warnings }
 }
 
 function selectorList(item: ArtifactRef): string[] {
