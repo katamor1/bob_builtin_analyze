@@ -472,7 +472,7 @@
       "sourceItemId": "source-05f184a5094441d208a847c2",
       "targets": [
         {
-          "blobSha": "6f09e0b1dd444cbde072791b3da07ed7352998fd",
+          "blobSha": "b7f39a1c6a356deebc850b97f2ba70a6626c3899",
           "mode": "100644",
           "path": "extensions/bob-code-consistency-review/src/core/gitDiffCollector.ts",
           "symbols": [
@@ -520,6 +520,22 @@
         },
         {
           "name": "utf8_boundary_and_bazaar_incomplete_metadata",
+          "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js"
+        },
+        {
+          "name": "active_vcs_await_preserves_error_reason_after_settlement",
+          "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js"
+        },
+        {
+          "name": "active_vcs_await_converts_non_error_reason_to_typed_cancellation",
+          "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js"
+        },
+        {
+          "name": "active_vcs_real_child_settlement_precedes_owned_cancellation",
+          "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js"
+        },
+        {
+          "name": "unrelated_vcs_rejection_keeps_first_failure_despite_later_abort",
           "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js"
         },
         {
@@ -1271,7 +1287,7 @@
       "sourceItemId": "source-aa14b45b9a62c15e216b1e7a",
       "targets": [
         {
-          "blobSha": "6f09e0b1dd444cbde072791b3da07ed7352998fd",
+          "blobSha": "b7f39a1c6a356deebc850b97f2ba70a6626c3899",
           "mode": "100644",
           "path": "extensions/bob-code-consistency-review/src/core/gitDiffCollector.ts",
           "symbols": []
@@ -1320,6 +1336,22 @@
         },
         {
           "name": "utf8_boundary_and_bazaar_incomplete_metadata",
+          "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js"
+        },
+        {
+          "name": "active_vcs_await_preserves_error_reason_after_settlement",
+          "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js"
+        },
+        {
+          "name": "active_vcs_await_converts_non_error_reason_to_typed_cancellation",
+          "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js"
+        },
+        {
+          "name": "active_vcs_real_child_settlement_precedes_owned_cancellation",
+          "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js"
+        },
+        {
+          "name": "unrelated_vcs_rejection_keeps_first_failure_despite_later_abort",
           "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js"
         },
         {
@@ -1611,7 +1643,7 @@
       "sourceItemId": "source-dda090c32e79effef12b5905",
       "targets": [
         {
-          "blobSha": "5c015907ccca1fab4ea7a05f10a10e6aa750c2b4",
+          "blobSha": "28ff8a16521f303c607a3be8ed48fe8fb1de4d4b",
           "mode": "100644",
           "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js",
           "symbols": [
@@ -1659,6 +1691,22 @@
         },
         {
           "name": "utf8_boundary_and_bazaar_incomplete_metadata",
+          "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js"
+        },
+        {
+          "name": "active_vcs_await_preserves_error_reason_after_settlement",
+          "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js"
+        },
+        {
+          "name": "active_vcs_await_converts_non_error_reason_to_typed_cancellation",
+          "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js"
+        },
+        {
+          "name": "active_vcs_real_child_settlement_precedes_owned_cancellation",
+          "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js"
+        },
+        {
+          "name": "unrelated_vcs_rejection_keeps_first_failure_despite_later_abort",
           "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js"
         }
       ],

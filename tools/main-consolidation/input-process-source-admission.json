@@ -21,7 +21,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "c8aceed501f5c3455781a543420cc5fdb081aae7",
+      "afterBlobSha": "4cd220c3eff8579cc2c0958e9706239a2e2c626b",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "docs/release-evidence/proc-t16-input-process-source-coverage-2026-10-31.json",
@@ -141,7 +141,7 @@
     }
   ],
   "schemaVersion": "bob-builtin-analyze/input-process-source-admission/v1",
-  "sourceCoverageDigest": "7d94a8118bd565426e963194b53d88a8b28f733cf4d1547769c07a0cac3a7bb1",
+  "sourceCoverageDigest": "519c7cc30469f3661505e7803ee137a1c4436b52723b9f365949b74b8b7bf59b",
   "sourceRows": [
     {
       "afterBlobSha": "c1a99c82e58dc367008ac7cfeb6ae8f943a506bc",
@@ -248,7 +248,7 @@
       ]
     },
     {
-      "afterBlobSha": "6f09e0b1dd444cbde072791b3da07ed7352998fd",
+      "afterBlobSha": "b7f39a1c6a356deebc850b97f2ba70a6626c3899",
       "beforeBlobSha": "34bab5ce105682c1d3d53d201f04a1877e30bb26",
       "mode": "100644",
       "path": "extensions/bob-code-consistency-review/src/core/gitDiffCollector.ts",
@@ -353,7 +353,7 @@
       ]
     },
     {
-      "afterBlobSha": "5c015907ccca1fab4ea7a05f10a10e6aa750c2b4",
+      "afterBlobSha": "28ff8a16521f303c607a3be8ed48fe8fb1de4d4b",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js",
