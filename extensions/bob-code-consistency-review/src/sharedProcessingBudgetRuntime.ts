@@ -8,7 +8,7 @@ import type * as Ooxml from "../../../packages/processing-budget-runtime/out/val
 const modules = ["generatedProcessingBudgetDefinition", "processingBudgetError", "processingBudgetProfile", "processingBudgetLedger", "index", "boundedDocumentError", "boundedDocumentRequest", "boundedDocumentFile", "boundedDocumentIo", "ooxmlPreflight", "ooxmlParserInput", "validatedOoxml", "documentBudget", "workbookBudget"] as const
 const compiledNames = modules.flatMap(name => [name + ".js", name + ".d.ts", name + ".js.map"]).sort()
 const runtimeNames = modules.map(name => name + ".js")
-const requiredApis = ["ProcessingBudgetLedger", "BoundedDocumentError", "readBoundedDocumentFile", "fingerprintBoundedDocumentFile", "ProcessingBudgetError", "normalizeProcessingBudgetProfile", "createDocumentOperation", "assertDocumentNotCancelled", "commitWorkbookBudget", "commitXlsxWorkbookBudget", "assertParsedXlsxWorkbookWithinBudget"] as const
+const requiredApis = ["ProcessingBudgetLedger", "BoundedDocumentError", "readBoundedDocumentFile", "fingerprintBoundedDocumentFile", "ProcessingBudgetError", "normalizeProcessingBudgetProfile", "createDocumentOperation", "assertDocumentNotCancelled", "commitWorkbookBudget", "commitXlsxWorkbookBudget", "assertParsedXlsxWorkbookWithinBudget", "createProcessingOperation", "assertProcessingOperation"] as const
 function buildRequired(): never { throw new Error("Processing runtime build required; run npm ci in the shared package and this extension, then npm run compile.") }
 function noAlias(file: string): void {
   const absolute = path.resolve(file), root = path.parse(absolute).root
@@ -114,17 +114,25 @@ export function createReviewDocumentProfile(limits: ReviewProcessingLimits, over
     }
   }
   const publicLimits = normalizeReviewProcessingLimits(limits)
-  const totalDocument = checked.total_document_bytes ?? Math.max(publicLimits.maxDocumentBytes, DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_document_bytes)
+  const requestedTotalDocument = checked.total_document_bytes ?? Math.max(publicLimits.maxDocumentBytes, DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_document_bytes)
+  const rawDiff = Math.min(publicLimits.maxRawDiffBytes, checked.raw_diff_bytes ?? publicLimits.maxRawDiffBytes)
+  const excerpt = Math.min(publicLimits.maxBobInputBytes, checked.document_excerpt_bytes ?? publicLimits.maxBobInputBytes)
+  const bob = Math.min(publicLimits.maxBobInputBytes, checked.bob_input_bytes ?? publicLimits.maxBobInputBytes)
+  const totalOperation = checked.total_operation_input_bytes ?? Math.max(DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_operation_input_bytes, requestedTotalDocument, rawDiff, excerpt, bob)
+  const totalDocument = Math.min(requestedTotalDocument, totalOperation)
   const totalSheets = checked.total_sheets ?? Math.max(publicLimits.maxWorkbookSheets, DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_sheets)
   const totalRows = checked.total_rows ?? Math.max(publicLimits.maxRowsPerSheet, DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_rows)
   return normalizeProcessingBudgetProfile({ limits: {
     ...checked,
     total_document_bytes: totalDocument,
-    total_operation_input_bytes: checked.total_operation_input_bytes ?? Math.max(totalDocument, DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_operation_input_bytes),
+    total_operation_input_bytes: totalOperation,
     total_sheets: totalSheets, total_rows: totalRows,
     single_document_bytes: Math.min(publicLimits.maxDocumentBytes, checked.single_document_bytes ?? publicLimits.maxDocumentBytes, totalDocument),
     sheets_per_workbook: Math.min(publicLimits.maxWorkbookSheets, checked.sheets_per_workbook ?? publicLimits.maxWorkbookSheets, totalSheets),
-    rows_per_sheet: Math.min(publicLimits.maxRowsPerSheet, checked.rows_per_sheet ?? publicLimits.maxRowsPerSheet, totalRows)
+    rows_per_sheet: Math.min(publicLimits.maxRowsPerSheet, checked.rows_per_sheet ?? publicLimits.maxRowsPerSheet, totalRows),
+    raw_diff_bytes: Math.min(rawDiff, totalOperation),
+    document_excerpt_bytes: Math.min(excerpt, totalOperation),
+    bob_input_bytes: Math.min(bob, totalOperation)
   } })
 }
 
@@ -132,3 +140,10 @@ export function createReviewDocumentOperation(count: number, limits: ReviewProce
   assertDocumentNotCancelled(signal)
   return createDocumentOperation({ selectedDocumentCount: count, profile: createReviewDocumentProfile(limits, processingBudgetLimits), signal })
 }
+
+export const createProcessingOperation = copied.root.createProcessingOperation
+export const assertProcessingOperation: typeof Runtime.assertProcessingOperation = copied.root.assertProcessingOperation
+export type ProcessingOperation = Runtime.ProcessingOperation
+export type ProcessingOperationInput = Runtime.ProcessingOperationInput
+export type ProcessingBudgetReservation = Runtime.ProcessingBudgetReservation
+export type ProcessingBudgetProfile = Runtime.ProcessingBudgetProfile

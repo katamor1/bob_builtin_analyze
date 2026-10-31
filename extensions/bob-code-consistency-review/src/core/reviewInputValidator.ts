@@ -1,11 +1,11 @@
-import { assertDocumentNotCancelled } from "../sharedProcessingBudgetRuntime"
-import * as fs from "node:fs/promises"
+import { assertDocumentNotCancelled, type ProcessingOperation } from "../sharedProcessingBudgetRuntime"
 import * as path from "node:path"
 import YAML from "yaml"
 import { pathExists, resolveWorkspacePathStrict } from "./fileSystem"
 import { DEFAULT_REVIEW_PROCESSING_LIMITS, normalizeReviewProcessingLimits } from "./limits"
 import { formatSchemaErrors, loadSchemaValidator } from "./schemaLoader"
-import { decodeTextBuffer } from "./textEncoding"
+import { readStableReviewInputText } from "./stableReviewInput"
+import { createPipelineProcessingOperation } from "./processingBudgetPipeline"
 import type { ReviewInput } from "./reviewTypes"
 
 export const MAX_REVIEW_INPUT_ARTIFACT_REFERENCES = 500
@@ -15,12 +15,13 @@ export async function validateReviewInput(
   workspaceRoot = process.cwd(),
   textEncoding = "auto",
   maxInputBytes = DEFAULT_REVIEW_PROCESSING_LIMITS.maxDocumentBytes,
-  options?: { signal?: AbortSignal; beforeArtifactPaths?: (reviewInput: ReviewInput) => void }
+  options?: { signal?: AbortSignal; beforeArtifactPaths?: (reviewInput: ReviewInput) => void; processingOperation?: ProcessingOperation }
 ): Promise<ReviewInput> {
   assertDocumentNotCancelled(options?.signal)
   const resolvedInputPath = resolveWorkspacePathStrict(workspaceRoot, inputPath, "reviewInputPath")
   const inputByteLimit = normalizeReviewProcessingLimits({ maxDocumentBytes: maxInputBytes }).maxDocumentBytes
-  const raw = await readReviewInputWithinLimit(resolvedInputPath, textEncoding, inputByteLimit)
+  const operation = options?.processingOperation ?? createPipelineProcessingOperation(normalizeReviewProcessingLimits({ maxDocumentBytes: inputByteLimit }), undefined, options?.signal)
+  const raw = await readStableReviewInputText({ filePath: resolvedInputPath, textEncoding, maximumBytes: inputByteLimit, operation, signal: options?.signal })
   assertDocumentNotCancelled(options?.signal)
   const parsed = YAML.parse(raw) as unknown
 
@@ -52,32 +53,6 @@ export async function validateReviewInput(
   }
 
   return reviewInput
-}
-
-async function readReviewInputWithinLimit(filePath: string, textEncoding: string, maxBytes: number): Promise<string> {
-  const handle = await fs.open(filePath, "r")
-  try {
-    const before = await handle.stat()
-    if (before.size > maxBytes) {
-      throw new Error(`review-input.yaml exceeded maxDocumentBytes (${before.size} > ${maxBytes})`)
-    }
-
-    const buffer = Buffer.alloc(before.size)
-    let offset = 0
-    while (offset < buffer.length) {
-      const read = await handle.read(buffer, offset, buffer.length - offset, offset)
-      if (read.bytesRead === 0) break
-      offset += read.bytesRead
-    }
-
-    const after = await handle.stat()
-    if (after.size > maxBytes) {
-      throw new Error(`review-input.yaml exceeded maxDocumentBytes (${after.size} > ${maxBytes})`)
-    }
-    return decodeTextBuffer(buffer.subarray(0, offset), textEncoding)
-  } finally {
-    await handle.close()
-  }
 }
 
 function countArtifactReferences(reviewInput: ReviewInput): number {
