@@ -54,7 +54,7 @@ export async function extractPdf(
       command: options.command ?? "pdftotext",
       args: ["-layout", "-enc", "UTF-8", absolutePath, "-"],
       cwd: path.dirname(absolutePath),
-      maxBufferBytes: maxOutputBytes,
+      maxStdoutBytes: maxOutputBytes,
       timeoutMs: options.timeoutMs ?? DEFAULT_PDF_TIMEOUT_MS,
       allowedExitCodes: [0],
       signal: options.signal

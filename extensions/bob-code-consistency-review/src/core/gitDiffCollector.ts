@@ -171,7 +171,7 @@ async function runCommandText(
     command,
     args,
     cwd,
-    maxBufferBytes: maxBuffer,
+    maxStdoutBytes: maxBuffer,
     timeoutMs: normalizeCommandTimeout(commandTimeoutMs),
     allowedExitCodes,
     signal,

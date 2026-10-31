@@ -47,7 +47,7 @@ test("Windows cancellation waits for taskkill tree completion after the parent e
       command: "fake-command",
       args: [],
       cwd: process.cwd(),
-      maxBufferBytes: 1024,
+      maxStdoutBytes: 1024,
       timeoutMs: 1000,
       signal: controller.signal
     })
