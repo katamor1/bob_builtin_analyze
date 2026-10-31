@@ -135,3 +135,9 @@ docs/release-evidence/proc-t14-bounded-doc-completion-2026-10-24.json text eol=l
 tools/main-consolidation/aggregate-document-source-admission.json text eol=lf
 docs/release-evidence/proc-t15-aggregate-source-coverage-2026-10-26.json text eol=lf
 docs/release-evidence/proc-t15-aggregate-completion-2026-10-26.json text eol=lf
+
+tools/main-consolidation/input-process-source-admission.json text eol=lf
+
+docs/release-evidence/proc-t16-input-process-source-coverage-2026-10-31.json text eol=lf
+
+docs/release-evidence/proc-t16-input-process-completion-2026-10-31.json text eol=lf

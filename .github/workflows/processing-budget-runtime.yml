@@ -187,7 +187,7 @@ jobs:
           if-no-files-found: error
 
       - name: Verify literal admission and current product limits
-        run: node --test tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/boundedDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/gateRMainAdmissionPolicy.test.mjs scripts/exact-head-ci-contract.test.js --test-concurrency=1
+        run: node --test --test-concurrency=1 tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/boundedDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/gateRMainAdmissionPolicy.test.mjs scripts/exact-head-ci-contract.test.js tools/main-consolidation/test/inputProcessAdmissionPolicy.test.mjs
 
       - name: Bind actual installed package evidence
         id: evidence
