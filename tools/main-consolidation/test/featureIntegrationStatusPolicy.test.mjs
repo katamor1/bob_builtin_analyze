@@ -631,7 +631,7 @@ test('generator_consumes_r1_once_and_rejects_r1_byte_drift',async()=>{
  let reads=0,output
  await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}})
  assert.equal(reads,1,'generator must read accepted R1 completion once')
- assert.equal(output.completionReferences.length,15);assert.equal(output.slices.find(r=>r.sliceId==='WF2-R1-PROVENANCE').state,'VERIFIED');assert.equal(output.nextSliceId,'PROC-T16-INPUT-PROCESS')
+ assert.equal(output.completionReferences.length,16);assert.equal(output.slices.find(r=>r.sliceId==='WF2-R1-PROVENANCE').state,'VERIFIED');assert.equal(output.nextSliceId,'PROC-T17-DEADLINE')
  for(const suffix of [Buffer.from('\n'),Buffer.from('\r\n'),Buffer.from(' ')]){
   await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?Buffer.concat([readFileSync(p),suffix]):readFileSync(p),writeStdout:()=>assert.fail('R1 byte drift must never emit projection')}))
  }
@@ -702,7 +702,7 @@ test('rejects_r2_as_conditional_or_runtime_activation_authority',()=>{
 
 test('generator_reads_literal_r2_once_and_refuses_missing_or_noncanonical_bytes',async()=>{
  const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/wf2-r2-completion-2026-10-18.json',import.meta.url));let reads=0,output
- await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,15);assert.equal(output.nextSliceId,'PROC-T16-INPUT-PROCESS')
+ await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,16);assert.equal(output.nextSliceId,'PROC-T17-DEADLINE')
  await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>{if(p===target)throw new Error('missing R2');return readFileSync(p)},writeStdout:()=>assert.fail('missing R2 must not emit')}))
  for(const changed of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replace(/\n/g,'\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?changed:readFileSync(p),writeStdout:()=>assert.fail('R2 byte drift must not emit')}))
 })
@@ -770,7 +770,7 @@ test('owner lifecycle rejects old-prefix changes nonprefix collections and later
 test('owner generator reads one literal LF completion and rejects missing or noncanonical bytes',async()=>{
  const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/reg-bridge-owner-version-lifecycle-completion-2026-10-19.json',import.meta.url));let reads=0,output
  await runGenerator(['--print'],{readFile:async file=>{if(file===target)reads++;return readFileSync(file)},writeStdout:bytes=>{output=JSON.parse(bytes)}})
- assert.equal(reads,1);assert.equal(output.completionReferences.length,15);assert.equal(output.nextSliceId,'PROC-T16-INPUT-PROCESS')
+ assert.equal(reads,1);assert.equal(output.completionReferences.length,16);assert.equal(output.nextSliceId,'PROC-T17-DEADLINE')
  await assert.rejects(()=>runGenerator(['--print'],{readFile:async file=>{if(file===target)throw Error('missing owner completion');return readFileSync(file)},writeStdout:()=>assert.fail('missing owner must not emit')}))
  for(const bytes of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replace(/\n/g,'\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async file=>file===target?bytes:readFileSync(file),writeStdout:()=>assert.fail('owner byte drift must not emit')}))
 })
@@ -843,7 +843,7 @@ test('discovery_rejects_json_claims_metadata_subject_and_actual_evidence_tamper'
 test('discovery_generator_reads_literal_canonical_source_completion',async()=>{
  const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/reg-bridge-discovery-evidence-completion-2026-10-20.json',import.meta.url));let reads=0,output
  await runGenerator(['--print'],{readFile:async file=>{if(file===target)reads++;return readFileSync(file)},writeStdout:bytes=>{output=JSON.parse(bytes)}})
- assert.equal(reads,1);assert.equal(output.completionReferences.length,15);assert.equal(output.acceptedMainSha,t15Main);assert.equal(output.nextSliceId,'PROC-T16-INPUT-PROCESS')
+ assert.equal(reads,1);assert.equal(output.completionReferences.length,16);assert.equal(output.acceptedMainSha,t16Main);assert.equal(output.nextSliceId,'PROC-T17-DEADLINE')
  await assert.rejects(()=>runGenerator(['--print'],{readFile:async file=>{if(file===target)throw Error('missing Discovery completion');return readFileSync(file)},writeStdout:()=>assert.fail('missing completion emitted')}))
  for(const bytes of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replace(/\n/g,'\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async file=>file===target?bytes:readFileSync(file),writeStdout:()=>assert.fail('noncanonical Discovery emitted')}))
 })
@@ -889,7 +889,7 @@ test('t13_does_not_complete_processing_foundation_or_activate_runtime',()=>{
 
 test('t13_generator_requires_one_canonical_completion',async()=>{
  const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/proc-t13-ledger-completion-2026-10-23.json',import.meta.url));let reads=0,output
- await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,15);assert.equal(output.nextSliceId,'PROC-T16-INPUT-PROCESS');assert.equal(output.acceptedMainSha,t15Main)
+ await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:bytes=>{output=JSON.parse(bytes)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,16);assert.equal(output.nextSliceId,'PROC-T17-DEADLINE');assert.equal(output.acceptedMainSha,t16Main)
  await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>{if(p===target)throw Error('missing T13');return readFileSync(p)},writeStdout:()=>assert.fail('missing T13 emitted')}))
  for(const bytes of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replace(/\n/g,'\r\n'))])await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?bytes:readFileSync(p),writeStdout:()=>assert.fail('noncanonical T13 emitted')}))
 })
@@ -977,6 +977,41 @@ test('t15_completion_literal_lf_survives_autocrlf_checkout',async()=>{
 })
 test('t15_generator_reads_one_literal_source_completion',async()=>{
  const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=fileURLToPath(new URL('../../../docs/release-evidence/proc-t15-aggregate-completion-2026-10-26.json',import.meta.url));let reads=0,output
- await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:b=>{output=JSON.parse(b)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,15);assert.equal(output.acceptedMainSha,t15Main);assert.equal(output.nextSliceId,'PROC-T16-INPUT-PROCESS')
+ await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:b=>{output=JSON.parse(b)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,16);assert.equal(output.acceptedMainSha,t16Main);assert.equal(output.nextSliceId,'PROC-T17-DEADLINE')
  for(const changed of [Buffer.concat([readFileSync(target),Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),readFileSync(target)]),Buffer.from(readFileSync(target,'utf8').replaceAll('\n','\r\n'))]){let emitted=0;await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?changed:readFileSync(p),writeStdout:()=>{emitted++}}));assert.equal(emitted,0)}
+})
+
+// T16 imports the accepted source observation without changing its bytes or role.
+const t16Completion=()=>json('../../../docs/release-evidence/proc-t16-input-process-completion-2026-10-31.json')
+const throughT16=()=>{const c=throughT15();c.completionObservations.push(t16Completion());return c}
+const t16Source='5f1e1e2e0916a3358125714f61ceba99f9e55154',t16Main='2a961f624a7254d1af21e53a780efa6ccf9ee58b',t16Tree='e81515142e6f9e48c11ee09f0f435b3027a1fa28'
+
+test('through_t16_preserves_fifteen_prefix_and_projects_fourteen_of_twenty',async()=>{
+ const {validateT16Completion}=await import('../featureIntegrationStatusPolicy.mjs');assert.equal(typeof validateT16Completion,'function')
+ const old=projectIntegrationStatus(throughT15()),p=projectIntegrationStatus(throughT16())
+ assert.deepEqual(p.completionReferences.slice(0,15),old.completionReferences)
+ assert.deepEqual([p.completionReferences.length,p.slices.length,p.slices.filter(x=>x.state==='VERIFIED').length,p.nextSliceId],[16,20,14,'PROC-T17-DEADLINE'])
+ assert.equal(p.acceptedMainSha,t16Main);assert.equal(p.boundaries.find(x=>x.id==='PROCESSING-FOUNDATION').state,'VERIFIED');assert.equal(p.boundaries.find(x=>x.id==='PROCESSING-CONTROL').state,'planned');assert.ok(p.slices.every(x=>x.observedActivationStatus==='inactive'));assert.deepEqual(p.activeSliceIds,[])
+ for(let i=0;i<20;i++)if(p.slices[i].sliceId!=='PROC-T16-INPUT-PROCESS')assert.deepEqual(p.slices[i],old.slices[i])
+})
+
+test('t16_rejects_metadata_subject_wrong_join_waiver_and_missing_case',async()=>{
+ const {validateT16Completion}=await import('../featureIntegrationStatusPolicy.mjs');assert.equal(typeof validateT16Completion,'function');const original=t16Completion();validateT16Completion(original);validateCompletionObservation(original,{programIndex:buildProgramIndex(),evidenceDigests:digests(original)})
+ assert.deepEqual([original.sourceHeadSha,original.acceptedMainSha,original.acceptedTreeSha,original.pullRequestNumber],[t16Source,t16Main,t16Tree,204])
+ const mutations=[r=>r.sourceHeadSha=t16Main,r=>r.acceptedMainSha='a'.repeat(40),r=>r.acceptedTreeSha='0'.repeat(40),r=>r.mergeParents.reverse(),r=>r.source.metadataIsNotSourceSubject=false,r=>r.boundaryId='PROCESSING-CONTROL',r=>r.source.selectedSourceItems=28,r=>r.source.selectedSourcePaths=27,r=>r.source.selectedSourceBlobs=26,r=>r.source.remainderItems=674,r=>r.source.unassigned=1,r=>r.source.literalSourceAndControlPaths=70,r=>r.source.additionalPrerequisites.count=40,r=>r.source.categories=12,r=>r.source.rawByteAccounting='source_plus_expanded',r=>r.source.expandedByteAccounting='charged',r=>r.source.packedPayloadFiles=45,r=>r.source.compiledPayloadFiles=41,r=>r.source.installedTypeConsumers=2,r=>r.source.productionDependencies=1,r=>delete r.inputProcess.processSettlement,r=>r.inputProcess.bob=r.inputProcess.diff,r=>r.inputProcess.artifact.bytes=0,r=>r.inputProcess.extra=r.inputProcess.stableInput,r=>r.ci.waiver={inherited:true},r=>r.ci.allRequiredGatesSucceeded=false,r=>r.ci.candidate.head=t16Main,r=>r.ci.actualMain.head=t16Source,r=>r.ci.candidate.workflows.pop(),r=>r.ci.actualMain.workflows[0].jobs[0].guard.actualHeadSha=t16Source,r=>r.ci.candidate.workflows[4].jobs[0].runner.id=0,r=>r.ci.candidate.workflows[4].jobs[1].jobId=r.ci.candidate.workflows[4].jobs[0].jobId,r=>r.ci.actualMain.workflows[0].jobs.find(j=>j.name==='Extension source metrics').conclusion='success',r=>r.installedUat.actualMain.sourceHeadSha=t16Source,r=>r.installedUat.actualMain.platforms.reverse(),r=>r.installedUat.actualMain.platforms[0].caseCount=24,r=>r.installedUat.actualMain.platforms[0].loadedModules=27,r=>r.installedUat.actualMain.platforms[0].parserEntries=7,r=>r.installedUat.actualMain.platforms[0].sourceFixedParserFiles=582,r=>r.installedUat.actualMain.platforms[0].baselineHostReceipt=r.installedUat.candidate.platforms[0].baselineHostReceipt,r=>r.installedUat.actualMain.platforms[0].mappedBaselineManifest.bytes++,r=>r.installedUat.actualMain.platforms[0].vsix[0].compiledPayload.pop(),r=>r.packages.bazaar.vsix=r.installedUat.candidate.platforms[0].vsix[0].vsix,r=>r.packages.consistency.sourceHeadSha=t16Source,r=>r.packages.workflowRegister.headroomBytes++,r=>r.review.remaining.important=1,r=>r.review.secondReview=true,r=>r.local.consistency.executedHead=t16Main,r=>r.runtimeActivation=true,r=>r.automaticCleanup=true,r=>r.mutationAuthority=true,r=>r.finalProgramUat='passed',r=>r.installedUat.visualOperator='passed',r=>r.activeRuntime.productWiring.bobDispatches=1,r=>r.preservation.protectedContentsRead=true,r=>r.preservation.primaryMainRef=t16Source,r=>r.externalEvidence.pop(),r=>r.externalEvidence.push(r.externalEvidence[0]),r=>r.externalEvidence[0].sha256='0'.repeat(64),r=>r.extra=true]
+ for(const mutate of mutations){const bad=structuredClone(original);mutate(bad);assert.throws(()=>validateT16Completion(bad),TypeError)}
+ const observed=digests(original);observed[original.externalEvidence[0].id].bytes++;assert.throws(()=>validateCompletionObservation(original,{programIndex:buildProgramIndex(),evidenceDigests:observed}),TypeError)
+})
+
+test('t16_completion_portable_replay_never_reads_original_host',async()=>{
+ const {validateT16Completion}=await import('../featureIntegrationStatusPolicy.mjs');assert.equal(typeof validateT16Completion,'function');const original=t16Completion(),filesystem=await import('node:fs'),{syncBuiltinESMExports}=await import('node:module'),patched=['readFileSync','statSync','lstatSync','openSync','readdirSync','realpathSync'],old=Object.fromEntries(patched.map(k=>[k,filesystem.default[k]]));let accesses=0
+ try{for(const k of patched)filesystem.default[k]=()=>{accesses++;throw Error('original source host must not be read')};syncBuiltinESMExports();validateT16Completion(original);assert.equal(accesses,0)}finally{for(const k of patched)filesystem.default[k]=old[k];syncBuiltinESMExports()}
+})
+
+test('t16_literal_lf_and_old_t15_pretty_bytes_survive_checkout',async()=>{
+ const {validateT16Completion}=await import('../featureIntegrationStatusPolicy.mjs');assert.equal(typeof validateT16Completion,'function');const {createHash}=await import('node:crypto'),hash=bytes=>createHash('sha256').update(bytes).digest('hex'),{mkdtempSync,realpathSync}=await import('node:fs'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),{execFileSync}=await import('node:child_process'),root=fileURLToPath(new URL('../../../',import.meta.url)),relative='docs/release-evidence/proc-t16-input-process-completion-2026-10-31.json',oldRelative='docs/release-evidence/proc-t15-aggregate-completion-2026-10-26.json',temp=mkdtempSync(join(realpathSync(tmpdir()),'t16-completion-lf-'))
+ const raw=readFileSync(join(root,relative));assert.equal(hash(raw),'0de29738494e0835a09c034e64d32ccdc56a7027208372b03cbae57638fac9d5');assert.equal(hash(readFileSync(join(root,oldRelative))),'59606e5e39ee9143e9a0fb63e1f4040bea68ab20fd8dd2376e73ebbcf21216aa')
+ execFileSync('git',['-c','core.autocrlf=true','checkout-index','--prefix='+temp.replaceAll('\\','/')+'/','--',relative,oldRelative],{cwd:root,windowsHide:true,maxBuffer:8*1024*1024});assert.ok(readFileSync(join(temp,relative)).equals(raw));assert.equal(raw.at(-1),10);assert.equal(raw.includes(13),false);assert.ok(readFileSync(join(temp,oldRelative)).equals(readFileSync(join(root,oldRelative))))
+ const {runGenerator}=await import('../create-feature-integration-status.mjs'),target=join(root,relative);let reads=0,output;await runGenerator(['--print'],{readFile:async p=>{if(p===target)reads++;return readFileSync(p)},writeStdout:b=>{output=JSON.parse(b)}});assert.equal(reads,1);assert.equal(output.completionReferences.length,16);assert.equal(output.nextSliceId,'PROC-T17-DEADLINE');assert.equal(output.acceptedMainSha,t16Main)
+ for(const bytes of [Buffer.concat([raw,Buffer.from('\n')]),Buffer.concat([Buffer.from([239,187,191]),raw]),Buffer.from(raw.toString('utf8').replaceAll('\n','\r\n'))]){let emitted=0;await assert.rejects(()=>runGenerator(['--print'],{readFile:async p=>p===target?bytes:readFileSync(p),writeStdout:()=>{emitted++}}));assert.equal(emitted,0)}
 })
