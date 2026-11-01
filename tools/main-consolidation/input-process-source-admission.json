@@ -21,7 +21,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "4cd220c3eff8579cc2c0958e9706239a2e2c626b",
+      "afterBlobSha": "ea2fcd7be34a1c3d5e2fb3309a2fdcc5b68d9a2a",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "docs/release-evidence/proc-t16-input-process-source-coverage-2026-10-31.json",
@@ -141,7 +141,7 @@
     }
   ],
   "schemaVersion": "bob-builtin-analyze/input-process-source-admission/v1",
-  "sourceCoverageDigest": "519c7cc30469f3661505e7803ee137a1c4436b52723b9f365949b74b8b7bf59b",
+  "sourceCoverageDigest": "f604bcca0c863bf1e43bf6d2217fb7fcf1446d48380dbe40da8e3eff7294f73f",
   "sourceRows": [
     {
       "afterBlobSha": "c1a99c82e58dc367008ac7cfeb6ae8f943a506bc",
@@ -419,7 +419,7 @@
       ]
     },
     {
-      "afterBlobSha": "22d24375336fa089ebf5163d2921da992caca355",
+      "afterBlobSha": "8d2bdda1fa94a13ccc5d7e6febe9a4d1f8e59890",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "extensions/bob-code-consistency-review/test/processingBudgetPipelineProfile.test.js",

@@ -9,8 +9,8 @@ const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const ADMISSION="tools/main-consolidation/input-process-source-admission.json",COVERAGE="docs/release-evidence/proc-t16-input-process-source-coverage-2026-10-31.json",POLICY="tools/main-consolidation/inputProcessAdmissionPolicy.mjs";
 const BASE="b3d18e2d9c3aa272f861a28c69e8e963572186c8",TREE="d717938a095bfd2872e46af40ed1ed04f35df03c",OWNER="49f39e1a6ec35e5db98e9ef698d4ce43369c9760";
 function freeze(value){if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;}
-export const INPUT_PROCESS_SOURCE_ADMISSION_SHA256="5fea90a032965e8192878674517337b3fbd6917354db235decd9d725f47b9556";
-export const INPUT_PROCESS_SOURCE_COVERAGE_SHA256="519c7cc30469f3661505e7803ee137a1c4436b52723b9f365949b74b8b7bf59b";
+export const INPUT_PROCESS_SOURCE_ADMISSION_SHA256="6509faf09ff9652aa8b9bb32df4e0d252b484a71b0a3baa6d650c30819116720";
+export const INPUT_PROCESS_SOURCE_COVERAGE_SHA256="f604bcca0c863bf1e43bf6d2217fb7fcf1446d48380dbe40da8e3eff7294f73f";
 export const INPUT_PROCESS_HISTORICAL_BINDINGS=freeze({
   "tools/main-consolidation/registry-bridge-source-admission.json": {
     "blobSha": "c03c3477038bb1a96aa339e9c9a0b4868055cc85",

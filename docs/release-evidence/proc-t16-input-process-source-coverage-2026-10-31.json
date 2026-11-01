@@ -774,6 +774,10 @@
         {
           "name": "pipeline_factory_uses_the_shared_profile_and_signal",
           "path": "extensions/bob-code-consistency-review/test/processingBudgetPipelineProfile.test.js"
+        },
+        {
+          "name": "profile_defaults_are_independent_of_sibling_build_output",
+          "path": "extensions/bob-code-consistency-review/test/processingBudgetPipelineProfile.test.js"
         }
       ],
       "testPaths": [
@@ -1469,7 +1473,7 @@
       "sourceItemId": "source-c07621bcfe509d992b18e1c9",
       "targets": [
         {
-          "blobSha": "22d24375336fa089ebf5163d2921da992caca355",
+          "blobSha": "8d2bdda1fa94a13ccc5d7e6febe9a4d1f8e59890",
           "mode": "100644",
           "path": "extensions/bob-code-consistency-review/test/processingBudgetPipelineProfile.test.js",
           "symbols": []
@@ -1490,6 +1494,10 @@
         },
         {
           "name": "pipeline_factory_uses_the_shared_profile_and_signal",
+          "path": "extensions/bob-code-consistency-review/test/processingBudgetPipelineProfile.test.js"
+        },
+        {
+          "name": "profile_defaults_are_independent_of_sibling_build_output",
           "path": "extensions/bob-code-consistency-review/test/processingBudgetPipelineProfile.test.js"
         }
       ],
