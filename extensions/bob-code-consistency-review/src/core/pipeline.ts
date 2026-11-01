@@ -1,4 +1,5 @@
-import { assertDocumentNotCancelled, createReviewDocumentOperation, type DocumentOperation, type SharedProcessingBudgetLimits } from "../sharedProcessingBudgetRuntime"
+import { createPipelineProcessingOperation } from "./processingBudgetPipeline"
+import { assertDocumentNotCancelled, type DocumentOperation, type SharedProcessingBudgetLimits } from "../sharedProcessingBudgetRuntime"
 import { analyzeCodeChanges } from "../analyzers/codeChangeAnalyzer"
 import { countDocumentSelections, extractDocuments } from "../analyzers/documentExtractor"
 import { buildTraceability } from "../analyzers/traceabilityBuilder"
@@ -43,6 +44,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
   assertDocumentNotCancelled(input.abortSignal)
   const textEncoding = input.textEncoding ?? "auto"
   const limits = normalizeReviewProcessingLimits(input.limits)
+  const processingOperation = createPipelineProcessingOperation(limits, input.processingBudgetLimits, input.abortSignal)
   const inputPath = resolveWorkspacePathStrict(input.workspaceRoot, input.inputPath, "reviewInputPath")
   const outDir = resolveWorkspacePathForKind(input.workspaceRoot, input.outDir, "review-package-output")
   const diffFixturePath = input.diffFixturePath
@@ -51,8 +53,9 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
   let operation: DocumentOperation | undefined
   const reviewInput = await validateReviewInput(inputPath, input.workspaceRoot, textEncoding, limits.maxDocumentBytes, {
     signal: input.abortSignal,
+    processingOperation,
     beforeArtifactPaths: reviewInput => {
-      operation = createReviewDocumentOperation(countDocumentSelections(reviewInput), limits, input.processingBudgetLimits, input.abortSignal)
+      operation = processingOperation.documents(countDocumentSelections(reviewInput))
     }
   })
   assertDocumentNotCancelled(input.abortSignal)
@@ -63,6 +66,8 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     bzrPath: input.bzrPath,
     textEncoding,
     limits,
+    processingOperation,
+    processingBudgetLimits: input.processingBudgetLimits,
     commandTimeoutMs: input.commandTimeoutMs,
     signal: input.abortSignal
   })
@@ -80,7 +85,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
       })
     : undefined
   assertDocumentNotCancelled(input.abortSignal)
-  const documents = await extractDocuments(reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits, operation, signal: input.abortSignal, processingBudgetLimits: input.processingBudgetLimits })
+  const documents = await extractDocuments(reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits, operation, processingOperation, signal: input.abortSignal, processingBudgetLimits: input.processingBudgetLimits })
   assertDocumentNotCancelled(input.abortSignal)
   const codeAnalysis = await analyzeCodeChanges(diff, reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits })
   const contextBudget = await buildReviewContextBudget({
@@ -125,7 +130,8 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     traceability,
     contextBudgetArtifact: contextBudget.artifact,
     limits,
-    workflowRunId: input.workflowRunId
+    workflowRunId: input.workflowRunId,
+    processingOperation
   })
 
   const packageObservation: ArtifactObservation = {

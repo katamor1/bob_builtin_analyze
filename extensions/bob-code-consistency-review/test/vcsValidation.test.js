@@ -3,7 +3,7 @@ const childProcess = require("node:child_process")
 const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
-const { test } = require("node:test")
+const { test, mock } = require("node:test")
 
 const { collectGitDiff, validateBazaarRevision } = require("../out/core/gitDiffCollector")
 const { ExternalProcessError } = require("../out/core/externalProcessRunner")
@@ -30,22 +30,18 @@ test("collectGitDiff rejects git revision options before diffing", async () => {
   )
 })
 
-test("collectGitDiff preserves cancellation while resolving Git revisions", async () => {
-  const workspace = createGitWorkspace()
-  const controller = new AbortController()
-  controller.abort()
-
-  await assert.rejects(
-    () => collectGitDiff(
+test("collectGitDiff preserves operation cancellation before resolving Git revisions", async () => {
+  const workspace = createGitWorkspace(), controller = new AbortController(), reason = new Error("cancel before Git")
+  controller.abort(reason)
+  let spawns = 0
+  const spawn = childProcess.spawn, spy = mock.method(childProcess, "spawn", (...args) => { spawns += 1; return spawn(...args) })
+  try {
+    await assert.rejects(() => collectGitDiff(
       reviewInput({ base: "main", head: "feature/vcs-validation", vcs: "git" }),
       { workspaceRoot: workspace, signal: controller.signal }
-    ),
-    (error) => {
-      assert.ok(error instanceof ExternalProcessError)
-      assert.equal(error.kind, "cancelled")
-      return true
-    }
-  )
+    ), error => error === reason)
+    assert.equal(spawns, 0)
+  } finally { spy.mock.restore() }
 })
 
 test("collectGitDiff rejects unsafe Bazaar revisions before executing bzr", async () => {

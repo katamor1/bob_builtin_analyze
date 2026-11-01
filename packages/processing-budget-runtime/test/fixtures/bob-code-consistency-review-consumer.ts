@@ -65,3 +65,19 @@ const forgedAdmission: DocumentAdmission = { fingerprint: { byteSize: "0", mtime
 // @ts-expect-error budgeted xlsx requires an explicit header policy
 const missingWorkbookPolicy: DocumentOoxmlOptions = { documentKind: "xlsx", structuralLimits: { maxEntries: 5000, maxExpandedBytes: 262144000 }, loadXlsxCodec: async () => ({ strToU8: (_text: string) => new Uint8Array(0), zipSync: (_entries: Record<string, Uint8Array>) => new Uint8Array(0) }) }
 void parseBudgeted; void workbookTypes; void forgedAdmission; void missingWorkbookPolicy
+
+
+import { createProcessingOperation, assertProcessingOperation, type ProcessingOperation } from "../.."
+const processing: ProcessingOperation = createProcessingOperation({ profile })
+const ownedDocuments = processing.documents(0)
+processing.assertDocuments(ownedDocuments)
+processing.reserve("raw_diff_bytes", 1).release()
+const possibleOwner: unknown = processing
+assertProcessingOperation(possibleOwner)
+void possibleOwner.snapshot()
+// @ts-expect-error processing stages cannot use a target-scoped category without document admission
+processing.reserve("single_document_bytes", 1)
+// @ts-expect-error processing owner never exposes its mutable ledger
+void processing.ledger
+// @ts-expect-error processing owner input is closed
+createProcessingOperation({ profile, skipCharge: true })

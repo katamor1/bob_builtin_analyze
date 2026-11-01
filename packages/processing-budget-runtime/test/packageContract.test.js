@@ -33,3 +33,13 @@ test('published_artifact_binds_actual_pack_without_host_path_dependency',()=>{
  assert.equal(r.files[0].sha256,p.tarball.sha256);assert.equal(JSON.stringify(r).includes(p.consumerRoot),false);
  const forged={...p,tarball:{...p.tarball,sha256:'0'.repeat(64)}};assert.throws(()=>h.publishCiArtifacts({head:'1'.repeat(40),tree:'2'.repeat(40),os:'test-os',proof:forged,outputRoot:h.freshArtifactRoot('forged')}),/binding/);
 });
+
+// Break: exporting the API only from the repository would leave installed callers unprotected.
+test('packed_processing_owner_preserves_stage_accounting_and_document_identity',()=>{
+ const p=packed(),load=require('node:module').createRequire(path.join(p.consumerRoot,'package.json')),runtime=load('@bob/processing-budget-runtime');
+ const owner=runtime.createProcessingOperation({profile:runtime.normalizeProcessingBudgetProfile()}),docs=owner.documents(0);
+ owner.reserve('raw_diff_bytes',3).commit();owner.assertDocuments(docs);runtime.assertProcessingOperation(owner);
+ assert.equal(docs.snapshot().categories.find(row=>row.category==='total_operation_input_bytes').committed,3);
+ assert.throws(()=>owner.assertDocuments(runtime.createDocumentOperation({selectedDocumentCount:0,profile:owner.profile})),error=>error.code==='bounded_document_input_invalid');
+ assert.equal('ledger' in owner,false);
+});

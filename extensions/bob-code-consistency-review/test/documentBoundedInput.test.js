@@ -20,7 +20,7 @@ test('source_change_after_parse_discards_all_chunks',async t=>{
  }
 });
 test('fifty_mib_source_is_not_rejected_by_default_parent_budget',async t=>{
- const root=fixture(t),bytes=Buffer.alloc(50*1048576,97);Buffer.from('# REQ-FIFTY\n').copy(bytes);fs.writeFileSync(path.join(root,'large.md'),bytes);let seen;const original=shared.createReviewDocumentOperation,m=mock.method(shared,'createReviewDocumentOperation',(...args)=>{const operation=original(...args);seen=operation.profile.limits;return operation;});
+ const root=fixture(t),bytes=Buffer.alloc(50*1048576,97);Buffer.from('# REQ-FIFTY\n').copy(bytes);fs.writeFileSync(path.join(root,'large.md'),bytes);let seen;const original=require('../out/core/processingBudgetPipeline').createPipelineProcessingOperation,m=mock.method(require('../out/core/processingBudgetPipeline'),'createPipelineProcessingOperation',(...args)=>{const operation=original(...args);seen=operation.profile.limits;return operation;});
  try{const r=await extractDocuments(input(['large.md']),{workspaceRoot:root,limits:{maxDocumentBytes:50*1048576}});assert.equal(seen?.single_document_bytes,50*1048576);assert.equal(seen.total_document_bytes,50*1048576);assert.equal(seen.total_operation_input_bytes,64*1048576);assert.ok(r.evidence.length>0);assert.equal(r.warnings.some(x=>x.includes('failed to extract')),false);}finally{m.mock.restore();}
 });
 test('valid_source_still_truncates_excerpt_and_aggregate_output',async t=>{

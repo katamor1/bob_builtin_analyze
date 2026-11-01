@@ -20,9 +20,9 @@ The thirteen-category ledger remains pure and in memory. The root additionally e
 
 Run `npm ci`, `npm test` and `npm pack`. Tests exercise a real tarball installed offline into a fresh consumer and check three declaration consumers without executing their negative type fixtures. Test evidence uses `PROCESSING_BUDGET_ARTIFACT_ROOT` when set, otherwise an owned temporary directory. Normal packing compiles through `prepack`; internal pack tests disable lifecycle scripts to avoid recursion.
 
-Development preparation: run `npm ci` in this package and each companion extension. Each extension uses its local `node scripts/build-shared-runtime.js` wrapper for `npm run compile`: the fixed package compiler builds a staged, hash-verified twelve-module runtime, the extension compiles, then the canonical copier publishes the same 36 compiled files plus a manifest into its owned `out/shared-processing-budget-runtime`. Missing tooling or a stale payload fails with a build-required error; no install or source runtime fallback occurs. Build/copy operations share an exclusive lock. Unknown output files and aliases are rejected; replaced owned outputs are retained under `node_modules/.cache/bob-processing-runtime`.
+Development preparation: run `npm ci` in this package and each companion extension. Each extension uses its local `node scripts/build-shared-runtime.js` wrapper for `npm run compile`: the fixed package compiler builds a staged, hash-verified fourteen-module runtime, the extension compiles, then the canonical copier publishes the same 42 compiled files plus a manifest into its owned `out/shared-processing-budget-runtime`. Missing tooling or a stale payload fails with a build-required error; no install or source runtime fallback occurs. Build/copy operations share an exclusive lock. Unknown output files and aliases are rejected; replaced owned outputs are retained under `node_modules/.cache/bob-processing-runtime`.
 
-The package has exactly 40 paths and no production dependencies. Only root and `./validated-ooxml` exports are public. VSIX packaging keeps the twelve runtime JS files and manifest; existing exclusions remove declaration files and maps. Runtime validation verifies the shipped JS hashes without requiring excluded development files.
+The package has exactly 46 paths and no production dependencies. Only root and `./validated-ooxml` exports are public. VSIX packaging keeps the fourteen runtime JS files and manifest; existing exclusions remove declaration files and maps. Runtime validation verifies the shipped JS hashes without requiring excluded development files.
 
 
 ## Operation document admission
@@ -32,3 +32,10 @@ Create a fresh `createDocumentOperation({selectedDocumentCount,profile,signal})`
 Committed count/raw/workbook usage remains after a later failure. Only a pending workbook reservation group rolls back. Normal T14 bounded/callback APIs retain their original release-on-failure accounting. Workbook data helpers do not validate a caller's filesystem or confer parser-input trust. Cancellation preserves an Error reason in operation APIs. No deep imports, caller-provided parser buffers, or skip-validation flags are public.
 
 The tarball contains 14 modules (46 paths); extensions copy 42 compiled development files and ship 14 JS modules plus their manifest. Parser versions, production dependencies (zero), and source/expanded structural caps are unchanged.
+
+
+## Processing operation
+
+Use `createProcessingOperation({profile,signal})` to share one ledger across stages. Its `reserve(category,amount)` accepts operation-scoped categories and preserves the ledger's atomic ancestor accounting. Call `documents(count)` once, including when the count is zero, to initialize document admissions on the same ledger. `assertDocuments(handle)` rejects foreign or forged document handles, while `assertProcessingOperation(value)` validates the opaque owner without reading user properties. The owner exposes no ledger or skip-validation flags. Standalone `createDocumentOperation` retains its existing behavior through the same private factory.
+
+Earlier committed input remains when a later stage fails; pending reservations still need commit or release by their stage. Process launching, clipping, artifact ownership and operation lifetime stay with the caller.

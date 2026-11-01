@@ -2,7 +2,8 @@ import { createHash } from "node:crypto"
 import { admitBoundedDocumentFile, withOperationDocumentSnapshot, type AdmittedDocumentFile } from "./boundedDocumentFile"
 import { ownedDocumentSnapshot, type BoundedDocumentSnapshot } from "./boundedDocumentIo"
 import { assertOperationNotAborted, invalidInput, normalizeReadInput, ownData, validateSignal, type BoundedDocumentFingerprint, type BoundedDocumentReadInput } from "./boundedDocumentRequest"
-import { ProcessingBudgetLedger, type ProcessingBudgetLedgerReport } from "./processingBudgetLedger"
+import { ProcessingBudgetLedger, type ProcessingBudgetLedgerReport, type ProcessingBudgetReservation } from "./processingBudgetLedger"
+import type { OperationScopedProcessingBudgetCategory } from "./generatedProcessingBudgetDefinition"
 import { type ProcessingBudgetProfile } from "./processingBudgetProfile"
 import { normalizeOoxmlStructuralLimits, prepareAdmittedOoxmlSnapshot, type OoxmlStructuralLimits, type XlsxZipCodec, type ValidatedOoxmlParserInput } from "./ooxmlParserInput"
 import { commitXlsxWorkbookBudget, type XlsxWorkbookInspection } from "./workbookBudget"
@@ -17,6 +18,18 @@ export interface DocumentSelectionRequest {
   readonly rootPath: string
   readonly maximumFileBytes: number
   readonly signal?: AbortSignal
+}
+export interface ProcessingOperationInput {
+  readonly profile: ProcessingBudgetProfile
+  readonly signal?: AbortSignal
+}
+export interface ProcessingOperation {
+  readonly profile: ProcessingBudgetProfile
+  readonly signal?: AbortSignal
+  snapshot(): Readonly<ProcessingBudgetLedgerReport>
+  reserve(category: OperationScopedProcessingBudgetCategory, amount: number): ProcessingBudgetReservation
+  documents(selectedDocumentCount: number): DocumentOperation
+  assertDocuments(document: DocumentOperation): void
 }
 export interface DocumentOperationInput {
   readonly selectedDocumentCount: number
@@ -47,9 +60,46 @@ interface AdmissionRecord {
   state: "admitted" | "in_progress" | "completed" | "failed"
 }
 const admissions = new WeakMap<DocumentAdmission, AdmissionRecord>()
+const processingOperations = new WeakSet<ProcessingOperation>()
+const documentOwners = new WeakMap<DocumentOperation, symbol>()
 
 export function assertDocumentNotCancelled(signal?: AbortSignal): void {
   assertOperationNotAborted(validateSignal(signal))
+}
+
+export function assertProcessingOperation(value: unknown): asserts value is ProcessingOperation {
+  if (!value || typeof value !== "object" || !processingOperations.has(value as ProcessingOperation)) invalidInput()
+}
+
+export function createProcessingOperation(value: ProcessingOperationInput): ProcessingOperation {
+  const input = ownData(value, ["profile"], ["signal"])
+  const signal = validateSignal(input.signal)
+  assertOperationNotAborted(signal)
+  const ledger = new ProcessingBudgetLedger(input.profile as ProcessingBudgetProfile)
+  const identity = Symbol("processing operation")
+  let document: DocumentOperation | undefined
+  const operation: ProcessingOperation = Object.freeze({
+    profile: ledger.profile, ...(signal === undefined ? {} : { signal }),
+    snapshot: () => ledger.snapshot(),
+    reserve(category: OperationScopedProcessingBudgetCategory, amount: number): ProcessingBudgetReservation {
+      assertOperationNotAborted(signal)
+      return ledger.reserve(category, amount)
+    },
+    documents(selectedDocumentCount: number): DocumentOperation {
+      assertOperationNotAborted(signal)
+      if (document || !Number.isSafeInteger(selectedDocumentCount) || selectedDocumentCount < 0) invalidInput()
+      ledger.reserve("document_count", selectedDocumentCount).commit()
+      document = createOwnedDocumentOperation(selectedDocumentCount, ledger, signal)
+      documentOwners.set(document, identity)
+      return document
+    },
+    assertDocuments(candidate: DocumentOperation): void {
+      assertOperationNotAborted(signal)
+      if (documentOwners.get(candidate) !== identity) invalidInput()
+    }
+  })
+  processingOperations.add(operation)
+  return operation
 }
 
 export function createDocumentOperation(value: DocumentOperationInput): DocumentOperation {
@@ -58,9 +108,10 @@ export function createDocumentOperation(value: DocumentOperationInput): Document
   assertOperationNotAborted(signal)
   const countValue = input.selectedDocumentCount
   if (typeof countValue !== "number" || !Number.isSafeInteger(countValue) || countValue < 0) invalidInput()
-  const count = countValue
-  const ledger = new ProcessingBudgetLedger(input.profile as ProcessingBudgetProfile)
-  ledger.reserve("document_count", count).commit()
+  return createProcessingOperation({ profile: input.profile as ProcessingBudgetProfile, signal }).documents(countValue)
+}
+
+function createOwnedDocumentOperation(count: number, ledger: ProcessingBudgetLedger, signal?: AbortSignal): DocumentOperation {
   const identity = Symbol("document operation"), used = new Set<number>()
 
   function selection(index: number, value: DocumentSelectionRequest): BoundedDocumentReadInput {

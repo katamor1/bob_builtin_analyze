@@ -9,6 +9,12 @@ on:
       - "extensions/bob-code-consistency-review/**"
       - "scripts/t14-bounded-document*"
       - "scripts/t15-aggregate-installed*"
+      - "scripts/t16-input-process-installed*"
+      - "tools/main-consolidation/inputProcessAdmissionPolicy.mjs"
+      - "tools/main-consolidation/input-process-source-admission.json"
+      - "tools/main-consolidation/test/inputProcessAdmissionPolicy.test.mjs"
+      - "tools/main-consolidation/test/helpers/inputProcessAdmissionFixture.mjs"
+      - "docs/release-evidence/proc-t16-input-process-source-coverage-2026-10-31.json"
       - "tools/main-consolidation/aggregateDocumentAdmissionPolicy.mjs"
       - "tools/main-consolidation/aggregate-document-source-admission.json"
       - "tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs"
@@ -32,6 +38,12 @@ on:
       - "extensions/bob-code-consistency-review/**"
       - "scripts/t14-bounded-document*"
       - "scripts/t15-aggregate-installed*"
+      - "scripts/t16-input-process-installed*"
+      - "tools/main-consolidation/inputProcessAdmissionPolicy.mjs"
+      - "tools/main-consolidation/input-process-source-admission.json"
+      - "tools/main-consolidation/test/inputProcessAdmissionPolicy.test.mjs"
+      - "tools/main-consolidation/test/helpers/inputProcessAdmissionFixture.mjs"
+      - "docs/release-evidence/proc-t16-input-process-source-coverage-2026-10-31.json"
       - "tools/main-consolidation/aggregateDocumentAdmissionPolicy.mjs"
       - "tools/main-consolidation/aggregate-document-source-admission.json"
       - "tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs"
@@ -100,6 +112,10 @@ jobs:
         run: |
           git fetch --no-tags --depth=1 --no-write-fetch-head origin a826dc20c0e71f472401adf644ca8cc777b74c58
           git fetch --no-tags --depth=1 --no-write-fetch-head origin 7fc7a371e6506290d8626d06e9b12c2a67888b47
+          git fetch --no-tags --depth=1 --no-write-fetch-head origin b3d18e2d9c3aa272f861a28c69e8e963572186c8
+          git fetch --no-tags --depth=1 --no-write-fetch-head origin 49f39e1a6ec35e5db98e9ef698d4ce43369c9760
+          git cat-file -e b3d18e2d9c3aa272f861a28c69e8e963572186c8^{commit}
+          git cat-file -e 49f39e1a6ec35e5db98e9ef698d4ce43369c9760^{commit}
           git cat-file -e a826dc20c0e71f472401adf644ca8cc777b74c58^{commit}
           git cat-file -e 7fc7a371e6506290d8626d06e9b12c2a67888b47^{commit}
 
@@ -134,14 +150,14 @@ jobs:
           npm run package:policy --prefix extensions/bob-code-consistency-review
 
       - name: Verify document build and artifact contracts
-        run: node --test scripts/processing-runtime-build-workflow.test.js scripts/t14-bounded-document-installed-smoke.test.mjs scripts/t15-aggregate-installed-smoke.test.mjs scripts/extension-host-smoke-contract.test.js scripts/three-extension-ui-contract-workflow.test.js
+        run: node --test scripts/processing-runtime-build-workflow.test.js scripts/t14-bounded-document-installed-smoke.test.mjs scripts/t15-aggregate-installed-smoke.test.mjs scripts/t16-input-process-installed-smoke.test.mjs scripts/extension-host-smoke-contract.test.js scripts/three-extension-ui-contract-workflow.test.js
 
       - name: Prepare installed document artifacts
         id: document-artifacts
         run: |
           node --input-type=module <<'NODE'
           import fs from "node:fs"; import path from "node:path"; import crypto from "node:crypto";
-          import {createArtifactManifest} from "./scripts/t15-aggregate-installed-smoke.mjs";
+          import {createArtifactManifest} from "./scripts/t16-input-process-installed-smoke.mjs";
           const manifest=await createArtifactManifest(process.cwd(),process.env.PROCESSING_BUDGET_ARTIFACT_ROOT);
           const evidenceRoot=path.join(process.env.PROCESSING_BUDGET_ARTIFACT_ROOT,"installed-host-"+crypto.randomBytes(8).toString("hex"));
           fs.appendFileSync(process.env.GITHUB_OUTPUT,"manifest="+manifest+"\ninput_root="+path.dirname(manifest)+"\nevidence_root="+evidenceRoot+"\n");
@@ -152,17 +168,17 @@ jobs:
 
       - name: Verify installed document runtime on Ubuntu
         if: runner.os == 'Linux'
-        run: xvfb-run -a node scripts/t15-aggregate-installed-smoke.mjs --artifacts "${{ steps.document-artifacts.outputs.manifest }}" --evidence-root "${{ steps.document-artifacts.outputs.evidence_root }}"
+        run: xvfb-run -a node scripts/t16-input-process-installed-smoke.mjs --artifacts "${{ steps.document-artifacts.outputs.manifest }}" --evidence-root "${{ steps.document-artifacts.outputs.evidence_root }}"
 
       - name: Verify installed document runtime on Windows
         if: runner.os == 'Windows'
-        run: node scripts/t15-aggregate-installed-smoke.mjs --artifacts "${{ steps.document-artifacts.outputs.manifest }}" --evidence-root "${{ steps.document-artifacts.outputs.evidence_root }}"
+        run: node scripts/t16-input-process-installed-smoke.mjs --artifacts "${{ steps.document-artifacts.outputs.manifest }}" --evidence-root "${{ steps.document-artifacts.outputs.evidence_root }}"
 
       - name: Upload installed document runtime proof
         if: always() && steps.document-artifacts.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: t15-aggregate-${{ matrix.os }}
+          name: t16-input-process-${{ matrix.os }}
           path: |
             ${{ steps.document-artifacts.outputs.input_root }}
             ${{ steps.document-artifacts.outputs.evidence_root }}/receipt.json
@@ -171,7 +187,7 @@ jobs:
           if-no-files-found: error
 
       - name: Verify literal admission and current product limits
-        run: node --test tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/boundedDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/gateRMainAdmissionPolicy.test.mjs scripts/exact-head-ci-contract.test.js --test-concurrency=1
+        run: node --test --test-concurrency=1 tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/boundedDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/gateRMainAdmissionPolicy.test.mjs scripts/exact-head-ci-contract.test.js tools/main-consolidation/test/inputProcessAdmissionPolicy.test.mjs
 
       - name: Bind actual installed package evidence
         id: evidence

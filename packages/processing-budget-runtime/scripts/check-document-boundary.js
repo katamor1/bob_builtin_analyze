@@ -67,6 +67,34 @@ function inspectionArgument(call, name, arrow) {
   if (!found) fail("missing extractor inspection")
 }
 function headerPolicy(node, expected) { const headers = forEach(node, n => ts.isPropertyAssignment(n) && identifier(n.name, "headerRows")); if (headers.length !== 1 || !ts.isNumericLiteral(unwrap(headers[0].initializer)) || unwrap(headers[0].initializer).text !== String(expected)) fail("unlisted workbook header policy") }
+function checkProcessingOwnership(tree, key) {
+  if (![consistency + "core/pipeline.ts", consistency + "analyzers/documentExtractor.ts"].includes(key)) return
+  const calls = forEach(tree, node => ts.isCallExpression(node))
+  const factories = calls.filter(node => identifier(node.expression, "createPipelineProcessingOperation"))
+  if (factories.length !== 1 || !identifier(nearest(factories[0], ts.isVariableDeclaration)?.name, "processingOperation")) fail("detached processing owner")
+  if (calls.some(node => identifier(node.expression, "createReviewDocumentOperation") || identifier(node.expression, "createDocumentOperation"))) fail("separate document ledger")
+  const member = name => calls.filter(node => ts.isPropertyAccessExpression(node.expression) && identifier(node.expression.expression, "processingOperation") && node.expression.name.text === name)
+  if (member("documents").length !== 1) fail("document initialization ownership")
+  function property(object, name) {
+    if (!object || !ts.isObjectLiteralExpression(object)) return undefined
+    const fields = object.properties.filter(item => identifier(item.name, name))
+    if (fields.length !== 1) return undefined
+    return ts.isShorthandPropertyAssignment(fields[0]) ? fields[0].name : ts.isPropertyAssignment(fields[0]) ? fields[0].initializer : undefined
+  }
+  if (key.endsWith("core/pipeline.ts")) {
+    for (const [name, position] of [["validateReviewInput", 4], ["collectGitDiff", 1], ["extractDocuments", 1], ["buildReviewPackage", 0]]) {
+      const uses = calls.filter(node => identifier(node.expression, name))
+      if (uses.length !== 1 || !identifier(property(uses[0].arguments[position], "processingOperation"), "processingOperation")) fail("pipeline processing owner forwarding")
+      if (name === "extractDocuments" && !identifier(property(uses[0].arguments[position], "operation"), "operation")) fail("pipeline document owner forwarding")
+    }
+  } else {
+    const checks = member("assertDocuments")
+    if (checks.length !== 1 || !identifier(checks[0].arguments[0], "operation")) fail("unverified document processing pair")
+    const excerpt = member("reserve").filter(node => ts.isStringLiteral(node.arguments[0]) && node.arguments[0].text === "document_excerpt_bytes")
+    if (excerpt.length !== 1) fail("unaccounted document excerpt")
+  }
+}
+
 function checkDocumentBoundaries(repositoryRoot) {
   if (typeof repositoryRoot !== "string" || !path.isAbsolute(repositoryRoot)) fail("absolute repository root required")
   if (JSON.parse(fs.readFileSync(path.join(packageRoot, "node_modules/typescript/package.json"))).version !== "5.9.3") fail("TypeScript 5.9.3 required")
@@ -75,6 +103,7 @@ function checkDocumentBoundaries(repositoryRoot) {
     const key = extension + "/" + name, facade = name === "sharedProcessingBudgetRuntime.ts", owner = parserOwners.get(key), engine = engineOwners.get(key)
     const tree = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true)
     if (tree.parseDiagnostics.length) fail("invalid TypeScript syntax")
+    checkProcessingOwnership(tree, key)
     function moduleAccess(value, typeOnly, kind, namespace = false) {
       if (!value || !ts.isStringLiteral(value)) fail("computed module access")
       const specifier = value.text

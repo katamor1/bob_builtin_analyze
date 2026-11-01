@@ -15,7 +15,7 @@ export interface ExternalProcessOptions {
   args: string[]
   cwd: string
   env?: NodeJS.ProcessEnv
-  maxBufferBytes: number
+  maxStdoutBytes: number
   timeoutMs: number
   allowedExitCodes?: number[]
   signal?: AbortSignal
@@ -36,7 +36,8 @@ export class ExternalProcessError extends Error {
     readonly cwd: string,
     readonly stdout: Buffer = Buffer.alloc(0),
     readonly stderr: Buffer = Buffer.alloc(0),
-    readonly exitCode?: number
+    readonly exitCode?: number,
+    readonly outputStream?: "stdout" | "stderr"
   ) {
     super(message)
     this.name = "ExternalProcessError"
@@ -46,9 +47,10 @@ export class ExternalProcessError extends Error {
 const MIN_EXTERNAL_PROCESS_TIMEOUT_MS = 1_000
 const MAX_EXTERNAL_PROCESS_TIMEOUT_MS = 600_000
 const PROCESS_TERMINATION_WAIT_MS = 2_000
+export const EXTERNAL_PROCESS_STDERR_MAX_BYTES = 256 * 1024
 
 export function runExternalProcess(options: ExternalProcessOptions): Promise<ExternalProcessResult> {
-  const maxBufferBytes = positiveInteger(options.maxBufferBytes, "maxBufferBytes")
+  const maxStdoutBytes = positiveSafeInteger(options.maxStdoutBytes, "maxStdoutBytes")
   const timeoutMs = normalizeExternalProcessTimeoutMs(options.timeoutMs)
   const allowedExitCodes = new Set(options.allowedExitCodes ?? [0])
 
@@ -65,7 +67,8 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
   return new Promise((resolve, reject) => {
     const stdoutChunks: Buffer[] = []
     const stderrChunks: Buffer[] = []
-    let bufferedBytes = 0
+    let stdoutBytes = 0
+    let stderrBytes = 0
     let settled = false
     let child: ExternalProcessChild
 
@@ -77,7 +80,7 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
       options.signal?.removeEventListener("abort", onAbort)
     }
 
-    const fail = (kind: ExternalProcessErrorKind, message: string, exitCode?: number): void => {
+    const fail = (kind: ExternalProcessErrorKind, message: string, exitCode?: number, outputStream?: "stdout" | "stderr"): void => {
       if (settled) return
       settled = true
       cleanup()
@@ -89,7 +92,8 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
         options.cwd,
         stdout(),
         stderr(),
-        exitCode
+        exitCode,
+        outputStream
       )
       void terminateProcessTree(child).then(
         () => reject(error),
@@ -125,25 +129,24 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
       return
     }
 
-    const collect = (target: Buffer[], chunk: Buffer | string): void => {
+    const collect = (target: Buffer[], chunk: Buffer | string, stream: "stdout" | "stderr", maximumBytes: number): void => {
       if (settled) return
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-      const remainingBytes = maxBufferBytes - bufferedBytes
-      const retainedBytes = Math.min(buffer.length, Math.max(0, remainingBytes))
+      const usedBytes = stream === "stdout" ? stdoutBytes : stderrBytes
+      const retainedBytes = Math.min(buffer.length, Math.max(0, maximumBytes - usedBytes))
       if (retainedBytes > 0) {
-        target.push(buffer.subarray(0, retainedBytes))
-        bufferedBytes += retainedBytes
+        // A short view must not retain an arbitrarily large incoming backing store.
+        target.push(Buffer.from(buffer.subarray(0, retainedBytes)))
+        if (stream === "stdout") stdoutBytes += retainedBytes
+        else stderrBytes += retainedBytes
       }
       if (retainedBytes < buffer.length) {
-        fail(
-          "bufferExceeded",
-          `Command output exceeded ${maxBufferBytes} bytes: ${options.command}`
-        )
+        fail("bufferExceeded", `Command ${stream} exceeded ${maximumBytes} bytes: ${options.command}`, undefined, stream)
       }
     }
 
-    child.stdout.on("data", (chunk) => collect(stdoutChunks, chunk))
-    child.stderr.on("data", (chunk) => collect(stderrChunks, chunk))
+    child.stdout.on("data", (chunk) => collect(stdoutChunks, chunk, "stdout", maxStdoutBytes))
+    child.stderr.on("data", (chunk) => collect(stderrChunks, chunk, "stderr", EXTERNAL_PROCESS_STDERR_MAX_BYTES))
     child.on("error", (error) => {
       fail(
         "spawnFailure",
@@ -175,6 +178,11 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
     options.signal?.addEventListener("abort", onAbort, { once: true })
     if (options.signal?.aborted) onAbort()
   })
+}
+
+function positiveSafeInteger(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${label} must be a positive finite number and safe integer.`)
+  return value
 }
 
 function positiveInteger(value: number, label: string): number {

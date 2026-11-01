@@ -2,7 +2,7 @@ const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
-const { test } = require("node:test")
+const { test, mock } = require("node:test")
 
 const {
   ExternalProcessError,
@@ -17,7 +17,7 @@ function runNode(script, options = {}) {
     command: process.execPath,
     args: ["-e", script],
     cwd,
-    maxBufferBytes: 1024 * 1024,
+    maxStdoutBytes: 1024 * 1024,
     timeoutMs: 10000,
     allowedExitCodes: [0],
     ...options
@@ -74,28 +74,42 @@ test("external process runner closes the preflight-to-listener cancellation race
   assert.ok(abortedReads >= 2)
 })
 
-test("external process runner terminates output that exceeds the buffer budget", async () => {
-  await rejectsWithKind(
-    runNode("process.stdout.write('x'.repeat(65536))", { maxBufferBytes: 1024 }),
-    "bufferExceeded"
-  )
-})
+// Break: stderr consumes stdout allowance, or an overflowing slice retains the giant input chunk.
+test('independent_exact_streams_and_owned_prefix',async()=>{
+ const result=await runNode("process.stdout.write(Buffer.alloc(1024,97));process.stderr.write(Buffer.alloc(256*1024,98))",{maxStdoutBytes:1024});
+ assert.deepEqual([result.stdout.length,result.stderr.length],[1024,262144]);
+ const {EventEmitter}=require('node:events'),cp=require('node:child_process');
+ const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.exitCode=null;child.signalCode=null;
+ child.kill=()=>{child.exitCode=0;child.emit('exit',0);child.emit('close',0);return true;};
+ const spawn=mock.method(cp,'spawn',()=>child),concat=Buffer.concat,giant=Buffer.alloc(4*1024*1024,97);let backingBytes=0;
+ const spy=mock.method(Buffer,'concat',(list,...args)=>{if(list.length===1&&list[0].length===1024)backingBytes=list[0].buffer.byteLength;return concat(list,...args);});
+ try{const running=runNode('unused',{maxStdoutBytes:1024});child.stdout.emit('data',giant);await assert.rejects(running,e=>e.kind==='bufferExceeded'&&e.outputStream==='stdout');assert.ok(backingBytes>0&&backingBytes<giant.byteLength,'retained prefix must own bounded storage');}finally{spy.mock.restore();spawn.mock.restore();}
+});
 
-test("bufferExceeded errors retain no more than the configured byte budget", async () => {
-  const maxBufferBytes = 1024
-  await assert.rejects(
-    runNode("process.stdout.write('x'.repeat(65536)); process.stderr.write('y'.repeat(65536))", { maxBufferBytes }),
-    (error) => {
-      assert.ok(error instanceof ExternalProcessError)
-      assert.equal(error.kind, "bufferExceeded")
-      assert.ok(
-        error.stdout.length + error.stderr.length <= maxBufferBytes,
-        `retained ${error.stdout.length + error.stderr.length} bytes for a ${maxBufferBytes}-byte budget`
-      )
-      return true
-    }
-  )
-})
+// Break: capture succeeds with cap+1 or rejects while its writer child still runs.
+test('stdout_and_stderr_plus_one_reject_after_settlement',async()=>{
+ const root=fs.mkdtempSync(path.join(process.env.PROCESSING_BUDGET_ARTIFACT_ROOT||os.tmpdir(),'t16-process-'));
+ for(const [stream,limit]of [['stdout',1024],['stderr',262144]]){
+  const pidFile=path.join(root,stream+'.pid');
+  const script=`require('node:fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));process.${stream}.write(Buffer.alloc(${limit+1},120));setInterval(()=>{},1000)`;
+  await assert.rejects(runNode(script,{maxStdoutBytes:1024}),e=>{assert.ok(e instanceof ExternalProcessError);assert.equal(e.kind,'bufferExceeded');assert.equal(e.outputStream,stream);assert.ok(e.stdout.length<=1024);assert.ok(e.stderr.length<=262144);assert.equal(e[stream].length,limit);return true;});
+  assert.equal(isProcessAlive(Number(fs.readFileSync(pidFile,'utf8'))),false);
+ }
+});
+
+// Break: error consumers must distinguish streams even when prose claims the opposite.
+test('stream_identity_cannot_be_inferred_from_message',()=>{
+ const error=new ExternalProcessError('Command stdout exceeded 1 bytes','bufferExceeded','node',[],cwd,Buffer.alloc(0),Buffer.alloc(0),undefined,'stderr');
+ assert.equal(error.outputStream,'stderr');
+ const ordinary=new ExternalProcessError('Command stderr exceeded 1 bytes','nonZeroExit','node',[],cwd);
+ assert.equal(ordinary.outputStream,undefined);
+});
+
+// Break: invalid caps reach spawn or are silently floored into a zero-byte collector.
+test('invalid_stdout_option_never_spawns',()=>{
+ const cp=require('node:child_process');let calls=0;const spy=mock.method(cp,'spawn',()=>{calls++;throw Error('must not spawn');});
+ try{for(const value of [0,-1,NaN,Infinity,0.5,Number.MAX_SAFE_INTEGER+1])assert.throws(()=>runNode('',{maxStdoutBytes:value}),/maxStdoutBytes/);assert.equal(calls,0);}finally{spy.mock.restore();}
+});
 
 test("process runner settles only after a buffer-exceeded child exits", async () => {
   const pidFile = path.join(os.tmpdir(), `external-runner-${process.pid}-${Date.now()}.pid`)
@@ -104,7 +118,7 @@ test("process runner settles only after a buffer-exceeded child exits", async ()
       runNode(
         `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); ` +
           "process.stdout.write('x'.repeat(65536)); setInterval(() => {}, 1000)",
-        { maxBufferBytes: 1024 }
+        { maxStdoutBytes: 1024 }
       ),
       (error) => error instanceof ExternalProcessError && error.kind === "bufferExceeded"
     )
