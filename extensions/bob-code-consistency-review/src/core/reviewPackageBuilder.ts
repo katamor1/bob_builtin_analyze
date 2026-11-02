@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { createHash, randomUUID } from "node:crypto"
-import { assertDocumentNotCancelled, assertProcessingOperation, type ProcessingOperation, type ProcessingBudgetReservation } from "../sharedProcessingBudgetRuntime"
+import { assertDocumentNotCancelled, assertProcessingOperation, BoundedDocumentError, remainingDeadlineMilliseconds, type SharedAbsoluteDeadline, type ProcessingOperation, type ProcessingBudgetReservation } from "../sharedProcessingBudgetRuntime"
 import { createPipelineProcessingOperation } from "./processingBudgetPipeline"
 import { assembleMandatoryFirstBobInput, reserveMandatoryFirstBobInput } from "./reviewPackageBudgets"
 import { collectManagedReviewFiles, cleanManagedPackageOutputs, createReviewPackageWriter, type ReviewPackageWriter } from "./reviewPackageWriter"
@@ -31,24 +31,37 @@ export async function buildReviewPackage(input: {
   limits?: Partial<ReviewProcessingLimits>
   workflowRunId?: string
   processingOperation?: ProcessingOperation
+  signal?: AbortSignal
+  deadline?: SharedAbsoluteDeadline
 }): Promise<string[]> {
   const { outDir, reviewInput, diff, documents, codeAnalysis, traceability } = input
+  assertDocumentNotCancelled(input.signal)
   if (input.processingOperation) assertProcessingOperation(input.processingOperation)
   assertDocumentNotCancelled(input.processingOperation?.signal)
   const limits = normalizeReviewProcessingLimits(input.limits)
-  const processingOperation = input.processingOperation ?? createPipelineProcessingOperation(limits)
+  const processingOperation = input.processingOperation ?? createPipelineProcessingOperation(limits, undefined, input.signal, input.deadline)
+  try {
   assertProcessingOperation(processingOperation)
+  if (input.processingOperation !== undefined && input.signal !== undefined && input.signal !== processingOperation.signal) throw new BoundedDocumentError("bounded_document_input_invalid")
+  if (input.deadline !== undefined) {
+    remainingDeadlineMilliseconds(input.deadline, 0)
+    if (Object.getOwnPropertyDescriptor(input.deadline, "expires_at_monotonic_ms")?.value !== processingOperation.deadline.expires_at_monotonic_ms) throw new BoundedDocumentError("bounded_document_input_invalid")
+  }
+
   assertDocumentNotCancelled(processingOperation.signal)
-  const writer = createReviewPackageWriter({ outDir, operation: processingOperation })
+  const writer = createReviewPackageWriter({ outDir, operation: processingOperation, signal: processingOperation.signal, deadline: processingOperation.deadline })
   const packageWarnings: string[] = [], generationId = randomUUID()
   let bobReservation: ProcessingBudgetReservation | undefined
   try {
     await fs.mkdir(outDir, { recursive: true })
+    processingOperation.throwIfCancelled()
     await cleanManagedPackageOutputs(outDir)
+    processingOperation.throwIfCancelled()
     const evidence = [...documents.evidence, ...codeAnalysis.evidence]
     const changeSummary = buildChangeSummary(reviewInput, diff, codeAnalysis, documents)
     const diffContext = buildDiffContext(diff, codeAnalysis, limits, packageWarnings)
     const templates = await loadPromptTemplates()
+    processingOperation.throwIfCancelled()
     const maximumBytes = Math.min(limits.maxBobInputBytes, processingOperation.profile.limits.bob_input_bytes)
     const values = {
       "prompt.system": templates.system,
@@ -99,7 +112,10 @@ export async function buildReviewPackage(input: {
     await writer.writeText("deterministic-checks.md", values.deterministic_checks)
     await writer.writeText("bob-input.md", bobInput.text)
     await writer.measure()
-    if ((await fs.stat(path.join(outDir, "bob-input.md"))).size !== bobInput.retainedBytes) {
+    processingOperation.throwIfCancelled()
+    const bobStat = await fs.stat(path.join(outDir, "bob-input.md"))
+    processingOperation.throwIfCancelled()
+    if (bobStat.size !== bobInput.retainedBytes) {
       throw new Error("Bob input output size changed")
     }
     assertDocumentNotCancelled(processingOperation.signal)
@@ -114,6 +130,7 @@ export async function buildReviewPackage(input: {
     catch { console.error("Review package cleanup failed; managed outputs may be incomplete.") }
     throw error
   }
+  } finally { if (input.processingOperation === undefined) processingOperation.dispose() }
 }
 
 

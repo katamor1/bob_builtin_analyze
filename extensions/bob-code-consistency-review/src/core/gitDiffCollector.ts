@@ -67,7 +67,7 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: CollectG
     const parent = operation.snapshot().categories.find(row => row.category === "total_operation_input_bytes")
     if (!parent || parent.scope !== "operation") throw new ProcessingBudgetError("processing_budget_internal_invariant", "missing operation input budget")
     const maximumBytes = Math.min(maxVcsProcessBufferBytes(operation.profile.limits.raw_diff_bytes), parent.remaining)
-    const fixtureText = await readStableDiffFixtureText({ filePath: fixturePath, maximumBytes, textEncoding: options.textEncoding ?? "auto", signal })
+    const fixtureText = await readStableDiffFixtureText({ filePath: fixturePath, maximumBytes, textEncoding: options.textEncoding ?? "auto", signal, deadline: operation.deadline, operation })
     assertDocumentNotCancelled(signal)
     const fixture = parseDiffFixtureText(fixtureText)
     return finalizeDiffProcessingBudget(fixture, operation)
@@ -262,7 +262,7 @@ async function runCommandBuffer(
   } catch (error) { if (isSettledProcessFailure(error)) assertDocumentNotCancelled(signal); throw error }
 }
 
-function normalizeCommandTimeout(value: number | undefined): number {
+export function normalizeCommandTimeout(value: number | undefined): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return DEFAULT_VCS_COMMAND_TIMEOUT_MS
   return Math.max(MIN_VCS_COMMAND_TIMEOUT_MS, Math.min(MAX_VCS_COMMAND_TIMEOUT_MS, Math.floor(value)))
 }

@@ -4,7 +4,7 @@ import * as path from "node:path"
 import {
   assertDocumentNotCancelled,
   assertProcessingOperation,
-  BoundedDocumentError,
+  BoundedDocumentError, remainingDeadlineMilliseconds, type SharedAbsoluteDeadline,
   type ProcessingOperation,
   type ProcessingBudgetReservation
 } from "../sharedProcessingBudgetRuntime"
@@ -15,14 +15,15 @@ export interface StableReviewTextInput {
   readonly maximumBytes: number
   readonly textEncoding: string
   readonly signal?: AbortSignal
+  readonly deadline?: SharedAbsoluteDeadline
 }
 
 export function readStableReviewInputText(input: StableReviewTextInput & { operation: ProcessingOperation }): Promise<string> {
   return readStableText(input, "review-input", input.operation)
 }
 
-export function readStableDiffFixtureText(input: StableReviewTextInput): Promise<string> {
-  return readStableText(input, "diff-fixture")
+export function readStableDiffFixtureText(input: StableReviewTextInput & { operation?: ProcessingOperation }): Promise<string> {
+  return readStableText(input, "diff-fixture", input.operation)
 }
 
 const identityFields = ["dev", "ino", "size", "mtimeNs", "ctimeNs", "mode"] as const
@@ -36,6 +37,10 @@ async function readStableText(input: StableReviewTextInput, kind: "review-input"
     || !Number.isSafeInteger(input.maximumBytes) || input.maximumBytes < 0 || typeof input.textEncoding !== "string"
     || (input.signal && operation?.signal && input.signal !== operation.signal)) {
     throw new BoundedDocumentError("bounded_document_input_invalid", { phase: "input" })
+  }
+  if (input.deadline !== undefined) {
+    remainingDeadlineMilliseconds(input.deadline, 0)
+    if (!operation || Object.getOwnPropertyDescriptor(input.deadline, "expires_at_monotonic_ms")?.value !== operation.deadline.expires_at_monotonic_ms) throw new BoundedDocumentError("bounded_document_input_invalid")
   }
   const signal = operation?.signal ?? input.signal
   const check = (): void => assertDocumentNotCancelled(signal)
@@ -63,7 +68,7 @@ async function readStableText(input: StableReviewTextInput, kind: "review-input"
     check()
     const size = verifyStat(before)
     if (!sameIdentity(namedBefore, before)) throw new BoundedDocumentError("bounded_document_source_changed", { phase: "verify" })
-    reservation = operation?.reserve("total_operation_input_bytes", size)
+    reservation = kind === "review-input" ? operation?.reserve("total_operation_input_bytes", size) : undefined
     bytes = Buffer.alloc(size)
     let offset = 0
     while (offset < size) {
@@ -92,5 +97,7 @@ async function readStableText(input: StableReviewTextInput, kind: "review-input"
     throw failure
   }
   try { check(); reservation?.commit() } catch (error) { reservation?.release(); throw error }
-  return decodeTextBuffer(bytes!, input.textEncoding)
+  const text = decodeTextBuffer(bytes!, input.textEncoding)
+  check()
+  return text
 }

@@ -137,12 +137,16 @@ export async function produceRepositorySymbolIndex(
 }
 
 async function produceWithOptions(options: ProducerOptions): Promise<ProduceRepositorySymbolIndexResult> {
+  options.processingOperation.throwIfCancelled()
   await verifyCheckedOutRevision(options)
+  options.processingOperation.throwIfCancelled()
   const sourceEntries = await listTrackedSourceEntries(options)
+  options.processingOperation.throwIfCancelled()
   if (sourceEntries.length > options.maxFiles) {
     throw new Error(`repository index source file count exceeded maxFiles (${sourceEntries.length} > ${options.maxFiles})`)
   }
   await verifyTrackedSourcesClean(options, new Set(sourceEntries.map((entry) => entry.path)))
+  options.processingOperation.throwIfCancelled()
   const totalSourceBytes = sourceEntries.reduce((sum, entry) => sum + entry.bytes, 0)
   if (totalSourceBytes > options.maxTotalBytes) {
     throw new Error(`repository index source bytes exceeded maxTotalBytes (${totalSourceBytes} > ${options.maxTotalBytes})`)
@@ -152,6 +156,7 @@ async function produceWithOptions(options: ProducerOptions): Promise<ProduceRepo
   const cacheMaxBytes = Math.max(1024 * 1024, Math.min(64 * 1024 * 1024, options.maxTotalBytes * 4))
   options.processingOperation.throwIfCancelled()
   const loadedCache = await loadRepositoryIndexCache(options.cachePath, cacheMaxBytes)
+  options.processingOperation.throwIfCancelled()
   const compatibleCache = loadedCache.cache?.producerId === PRODUCER_ID
     && loadedCache.cache.producerVersion === PRODUCER_VERSION
     && loadedCache.cache.optionsHash === optionsHash
@@ -175,6 +180,7 @@ async function produceWithOptions(options: ProducerOptions): Promise<ProduceRepo
     }
 
     const raw = await readSourceBlob(options, source)
+  options.processingOperation.throwIfCancelled()
     const contentHash = sha256(raw)
     const fragment = extractRepositorySourceFragment({
       path: source.path,

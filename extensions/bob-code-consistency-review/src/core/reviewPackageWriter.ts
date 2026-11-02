@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import {
   assertDocumentNotCancelled, assertProcessingOperation,
-  type ProcessingOperation, type ProcessingBudgetReservation
+  BoundedDocumentError, remainingDeadlineMilliseconds, type SharedAbsoluteDeadline, type ProcessingOperation, type ProcessingBudgetReservation
 } from "../sharedProcessingBudgetRuntime"
 
 export const MANAGED_PACKAGE_OUTPUTS = [
@@ -25,29 +25,35 @@ function managedPath(outDir: string, relativePath: string): string {
   return absolute
 }
 
-async function assertNoAlias(directory: string): Promise<void> {
+async function assertNoAlias(directory: string, signal?: AbortSignal): Promise<void> {
+  assertDocumentNotCancelled(signal)
   const absolute = path.resolve(directory), root = path.parse(absolute).root
   let current = root
   for (const piece of absolute.slice(root.length).split(path.sep).filter(Boolean)) {
     current = path.join(current, piece)
+    assertDocumentNotCancelled(signal)
     const stat = await fs.lstat(current)
+    assertDocumentNotCancelled(signal)
     if (stat.isSymbolicLink()) throw new Error("managed review package path must not contain an alias")
   }
 }
 
-export async function collectManagedReviewFiles(outDir: string): Promise<ManagedReviewFile[]> {
+export async function collectManagedReviewFiles(outDir: string, signal?: AbortSignal): Promise<ManagedReviewFile[]> {
   const files: ManagedReviewFile[] = []
   async function visit(relativePath: string): Promise<void> {
+    assertDocumentNotCancelled(signal)
     const absolutePath = managedPath(outDir, relativePath)
     let stat
-    try { stat = await fs.lstat(absolutePath) }
-    catch (error) { if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return; throw error }
+    try { stat = await fs.lstat(absolutePath); assertDocumentNotCancelled(signal) }
+    catch (error) { assertDocumentNotCancelled(signal); if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return; throw error }
     if (stat.isSymbolicLink()) throw new Error("managed review package output must not be an alias")
     if (stat.isFile()) { files.push({ relativePath, absolutePath }); return }
     if (!stat.isDirectory() || !directories.has(relativePath.split("/")[0])) throw new Error("unsupported managed review package output")
-    for (const name of (await fs.readdir(absolutePath)).sort()) await visit(`${relativePath}/${name}`)
+    const names = await fs.readdir(absolutePath)
+    assertDocumentNotCancelled(signal)
+    for (const name of names.sort()) await visit(`${relativePath}/${name}`)
   }
-  await assertNoAlias(outDir)
+  await assertNoAlias(outDir, signal)
   for (const name of MANAGED_PACKAGE_OUTPUTS) await visit(name)
   return files.sort((left, right) => left.relativePath.localeCompare(right.relativePath))
 }
@@ -82,11 +88,15 @@ export interface ReviewPackageWriter {
 }
 
 export function createReviewPackageWriter(input: {
-  outDir: string; operation: ProcessingOperation; signal?: AbortSignal
+  outDir: string; operation: ProcessingOperation; signal?: AbortSignal; deadline?: SharedAbsoluteDeadline
 }): ReviewPackageWriter {
   assertProcessingOperation(input.operation)
   const signal = input.signal ?? input.operation.signal
   if (signal !== input.operation.signal) throw new Error("review package signal must belong to its operation")
+  if (input.deadline !== undefined) {
+    remainingDeadlineMilliseconds(input.deadline, 0)
+    if (Object.getOwnPropertyDescriptor(input.deadline, "expires_at_monotonic_ms")?.value !== input.operation.deadline.expires_at_monotonic_ms) throw new BoundedDocumentError("bounded_document_input_invalid")
+  }
   assertDocumentNotCancelled(signal)
   const reservations: ProcessingBudgetReservation[] = [], written = new Map<string, number>()
   let state: "open" | "committed" | "released" = "open"
@@ -102,8 +112,10 @@ export function createReviewPackageWriter(input: {
     const reservation = input.operation.reserve("managed_artifact_bytes", bytes)
     reservations.push(reservation)
     await fs.mkdir(path.dirname(absolute), { recursive: true })
-    await assertNoAlias(path.dirname(absolute))
-    try { if ((await fs.lstat(absolute)).isSymbolicLink()) throw new Error("managed review package output must not be an alias") }
+    check()
+    await assertNoAlias(path.dirname(absolute), signal)
+    check()
+    try { const stat = await fs.lstat(absolute); check(); if (stat.isSymbolicLink()) throw new Error("managed review package output must not be an alias") }
     catch (error) { if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") throw error }
     check()
     await fs.writeFile(absolute, text, "utf8")
@@ -115,11 +127,14 @@ export function createReviewPackageWriter(input: {
     writeJson: (relativePath, value) => writeText(relativePath, JSON.stringify(value, null, 2) + "\n"),
     async measure(): Promise<number> {
       check()
-      const files = await collectManagedReviewFiles(input.outDir)
+      const files = await collectManagedReviewFiles(input.outDir, signal)
+      check()
       if (files.length !== written.size) throw new Error("managed review package file set changed")
       let bytes = 0
       for (const file of files) {
+        check()
         const size = (await fs.stat(file.absolutePath)).size
+        check()
         if (written.get(file.relativePath) !== size) throw new Error("managed review package output size changed")
         bytes += size
       }

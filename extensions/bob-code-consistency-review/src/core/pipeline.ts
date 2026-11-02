@@ -1,5 +1,5 @@
 import { createPipelineProcessingOperation } from "./processingBudgetPipeline"
-import { assertDocumentNotCancelled, type DocumentOperation, type SharedProcessingBudgetLimits } from "../sharedProcessingBudgetRuntime"
+import { assertDocumentNotCancelled, createAbsoluteDeadline, constrainAbsoluteDeadline, type ProcessingOperation, type SharedAbsoluteDeadline, type DocumentOperation, type SharedProcessingBudgetLimits } from "../sharedProcessingBudgetRuntime"
 import { analyzeCodeChanges } from "../analyzers/codeChangeAnalyzer"
 import { countDocumentSelections, extractDocuments } from "../analyzers/documentExtractor"
 import { buildTraceability } from "../analyzers/traceabilityBuilder"
@@ -14,7 +14,7 @@ import {
   produceRepositorySymbolIndex,
   type ProduceRepositorySymbolIndexResult
 } from "../evidenceScope/repositorySymbolIndexProducer"
-import { collectGitDiff } from "./gitDiffCollector"
+import { collectGitDiff, normalizeCommandTimeout } from "./gitDiffCollector"
 import { relativePosix, resolveWorkspacePathForKind, resolveWorkspacePathStrict } from "./fileSystem"
 import { normalizeReviewProcessingLimits, type ReviewProcessingLimits } from "./limits"
 import {
@@ -36,6 +36,7 @@ export interface PreprocessReviewInput {
   limits?: Partial<ReviewProcessingLimits>
   workflowRunId?: string
   commandTimeoutMs?: number
+  deadline?: SharedAbsoluteDeadline
   abortSignal?: AbortSignal
   processingBudgetLimits?: Readonly<Partial<SharedProcessingBudgetLimits>>
 }
@@ -44,8 +45,12 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
   assertDocumentNotCancelled(input.abortSignal)
   const textEncoding = input.textEncoding ?? "auto"
   const limits = normalizeReviewProcessingLimits(input.limits)
-  const processingOperation = createPipelineProcessingOperation(limits, input.processingBudgetLimits, input.abortSignal)
+  const duration = normalizeCommandTimeout(input.commandTimeoutMs)
+  const deadline = input.deadline === undefined ? createAbsoluteDeadline(duration) : constrainAbsoluteDeadline(input.deadline, duration)
+  const processingOperation = createPipelineProcessingOperation(limits, input.processingBudgetLimits, input.abortSignal, deadline)
   const signal = processingOperation.signal
+  try {
+  processingOperation.throwIfCancelled()
   const inputPath = resolveWorkspacePathStrict(input.workspaceRoot, input.inputPath, "reviewInputPath")
   const outDir = resolveWorkspacePathForKind(input.workspaceRoot, input.outDir, "review-package-output")
   const diffFixturePath = input.diffFixturePath
@@ -53,7 +58,8 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     : undefined
   let operation: DocumentOperation | undefined
   const reviewInput = await validateReviewInput(inputPath, input.workspaceRoot, textEncoding, limits.maxDocumentBytes, {
-    signal: signal,
+    signal,
+    deadline: processingOperation.deadline,
     processingOperation,
     beforeArtifactPaths: reviewInput => {
       operation = processingOperation.documents(countDocumentSelections(reviewInput))
@@ -69,8 +75,8 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     limits,
     processingOperation,
     processingBudgetLimits: input.processingBudgetLimits,
-    commandTimeoutMs: input.commandTimeoutMs,
-    signal: signal
+    deadline: processingOperation.deadline,
+    signal
   })
   assertDocumentNotCancelled(signal)
   const repositoryIndexBuild = reviewInput.analysis_options?.repository_symbol_index_mode === "build"
@@ -81,14 +87,16 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
         reviewInput,
         sourceRevision: diff.head,
         textEncoding,
-        commandTimeoutMs: input.commandTimeoutMs,
+        processingOperation,
+        deadline: processingOperation.deadline,
         abortSignal: signal
       })
     : undefined
   assertDocumentNotCancelled(signal)
-  const documents = await extractDocuments(reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits, operation, processingOperation, signal: signal, processingBudgetLimits: input.processingBudgetLimits })
+  const documents = await extractDocuments(reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits, operation, processingOperation, signal, deadline: processingOperation.deadline, processingBudgetLimits: input.processingBudgetLimits })
   assertDocumentNotCancelled(signal)
   const codeAnalysis = await analyzeCodeChanges(diff, reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits })
+  processingOperation.throwIfCancelled()
   const contextBudget = await buildReviewContextBudget({
     workspaceRoot: input.workspaceRoot,
     reviewInput,
@@ -98,6 +106,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     limits,
     textEncoding,
     onUpstreamLoadFailure: async (kind) => {
+      processingOperation.throwIfCancelled()
       await updateArtifactLedger({
         workspaceRoot: input.workspaceRoot,
         sourceRevision: diff.head,
@@ -105,8 +114,10 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
         completeKinds: [kind],
         maxBytes: limits.maxDocumentBytes
       })
+      processingOperation.throwIfCancelled()
     }
   })
+  processingOperation.throwIfCancelled()
   const upstreamObservations = buildUpstreamArtifactObservations(
     contextBudget.artifact,
     repositoryIndexBuild,
@@ -119,8 +130,10 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     completeKinds: ["project-rule-pack", "repository-symbol-index"],
     maxBytes: limits.maxDocumentBytes
   })
+  processingOperation.throwIfCancelled()
   const traceability = await buildTraceability({ reviewInput, documents, codeAnalysis, diff })
 
+  processingOperation.throwIfCancelled()
   const packageWarnings = await buildReviewPackage({
     workspaceRoot: input.workspaceRoot,
     outDir,
@@ -132,15 +145,20 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     contextBudgetArtifact: contextBudget.artifact,
     limits,
     workflowRunId: input.workflowRunId,
-    processingOperation
+    processingOperation,
+    signal,
+    deadline: processingOperation.deadline
   })
 
+  processingOperation.throwIfCancelled()
+  const contentHash = await computeManagedReviewPackageContentHash(outDir)
+  processingOperation.throwIfCancelled()
   const packageObservation: ArtifactObservation = {
     id: `review-package:${reviewInput.review.id}`,
     kind: "review-package",
     producer: "bob-code-consistency-review@0.1.0",
     path: relativePosix(input.workspaceRoot, outDir),
-    content_hash: await computeManagedReviewPackageContentHash(outDir),
+    content_hash: contentHash,
     input_hash: computeReviewPackageInputHash(reviewInput, diff, contextBudget.artifact),
     source_revision: sourceRevision(diff.base, diff.head),
     depends_on: upstreamObservations.map((item) => item.id).sort()
@@ -153,6 +171,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     maxBytes: limits.maxDocumentBytes
   })
 
+  processingOperation.throwIfCancelled()
   const warnings = [...new Set([
     ...diff.warnings,
     ...documents.warnings,
@@ -164,6 +183,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     ...upstreamLedger.warnings,
     ...finalLedger.warnings
   ])].sort()
+  processingOperation.throwIfCancelled()
   return {
     status: "ok",
     reviewId: reviewInput.review.id,
@@ -176,6 +196,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     warnings,
     summary: `Generated review package for ${reviewInput.review.id}: ${diff.files.length} file(s), ${documents.evidence.length} document evidence item(s), ${codeAnalysis.evidence.length} code evidence item(s).${repositoryIndexBuild ? ` Repository index: ${repositoryIndexBuild.rebuiltFiles} rebuilt, ${repositoryIndexBuild.reusedFiles} reused, ${repositoryIndexBuild.removedFiles} removed.` : ""} Artifact ledger: ${finalLedger.fresh} fresh, ${finalLedger.stale} stale, ${finalLedger.missing} missing. Generated artifacts may contain sensitive design, customer, source, or raw diff context; ensure .bob-review/ and .bob-trace/ai-traceability-draft/ are ignored unless intentionally versioned.`
   }
+  } finally { processingOperation.dispose() }
 }
 
 async function produceConfiguredRepositoryIndex(input: {
@@ -185,9 +206,11 @@ async function produceConfiguredRepositoryIndex(input: {
   reviewInput: ReviewInput
   sourceRevision: string
   textEncoding: string
-  commandTimeoutMs?: number
+  processingOperation: ProcessingOperation
+  deadline: SharedAbsoluteDeadline
   abortSignal?: AbortSignal
 }): Promise<ProduceRepositorySymbolIndexResult> {
+  input.processingOperation.throwIfCancelled()
   if (input.vcs !== "git") {
     throw new Error("analysis_options.repository_symbol_index_mode=build currently requires Git")
   }
@@ -206,9 +229,11 @@ async function produceConfiguredRepositoryIndex(input: {
     cachePath: input.reviewInput.analysis_options?.repository_symbol_index_cache_path,
     includeLanguages,
     textEncoding: input.textEncoding,
-    commandTimeoutMs: input.commandTimeoutMs,
+    processingOperation: input.processingOperation,
+    deadline: input.deadline,
     signal: input.abortSignal
   })
+  input.processingOperation.throwIfCancelled()
   return omittedLanguages.length === 0
     ? result
     : {

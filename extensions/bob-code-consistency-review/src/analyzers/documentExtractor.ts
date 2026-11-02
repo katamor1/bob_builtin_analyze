@@ -1,5 +1,5 @@
 import { createPipelineProcessingOperation } from "../core/processingBudgetPipeline"
-import { BoundedDocumentError, ProcessingBudgetError, createReviewDocumentProfile, assertDocumentNotCancelled, loadXlsxCodec, assertProcessingOperation, type ProcessingOperation, type DocumentOperation, type SharedProcessingBudgetLimits } from "../sharedProcessingBudgetRuntime"
+import { BoundedDocumentError, ProcessingBudgetError, createReviewDocumentProfile, assertDocumentNotCancelled, loadXlsxCodec, assertProcessingOperation, remainingDeadlineMilliseconds, type SharedAbsoluteDeadline, type ProcessingOperation, type DocumentOperation, type SharedProcessingBudgetLimits } from "../sharedProcessingBudgetRuntime"
 import * as path from "node:path"
 import { resolveWorkspacePathStrict, toPosixPath } from "../core/fileSystem"
 import { decodeTextBuffer } from "../core/textEncoding"
@@ -28,6 +28,7 @@ export interface DocumentExtractionOptions {
   textEncoding?: string
   limits?: Partial<ReviewProcessingLimits>
   signal?: AbortSignal
+  deadline?: SharedAbsoluteDeadline
   processingBudgetLimits?: Readonly<Partial<SharedProcessingBudgetLimits>>
   operation?: DocumentOperation
   processingOperation?: ProcessingOperation
@@ -50,13 +51,18 @@ export async function extractDocuments(reviewInput: ReviewInput, options: Docume
   }
   const limits = normalizeReviewProcessingLimits(options.limits)
   if (options.operation && !options.processingOperation) throw new BoundedDocumentError("bounded_document_input_invalid", { phase: "input" })
-  const processingOperation = options.processingOperation ?? createPipelineProcessingOperation(limits, options.processingBudgetLimits, options.signal)
+  const processingOperation = options.processingOperation ?? createPipelineProcessingOperation(limits, options.processingBudgetLimits, options.signal, options.deadline)
+  try {
   assertProcessingOperation(processingOperation)
   const signal = processingOperation.signal
   assertDocumentNotCancelled(signal)
   if ((options.processingOperation !== undefined && options.signal !== undefined && options.signal !== processingOperation.signal)
     || JSON.stringify(processingOperation.profile) !== JSON.stringify(createReviewDocumentProfile(limits, options.processingBudgetLimits))) {
     throw new BoundedDocumentError("bounded_document_input_invalid", { phase: "input" })
+  }
+  if (options.deadline !== undefined) {
+    remainingDeadlineMilliseconds(options.deadline, 0)
+    if (Object.getOwnPropertyDescriptor(options.deadline, "expires_at_monotonic_ms")?.value !== processingOperation.deadline.expires_at_monotonic_ms) throw new BoundedDocumentError("bounded_document_input_invalid")
   }
   const count = countDocumentSelections(reviewInput)
   const operation = options.operation ?? processingOperation.documents(count)
@@ -169,6 +175,7 @@ export async function extractDocuments(reviewInput: ReviewInput, options: Docume
   if (actualBytes !== excerptMarkdownBytes) throw new ProcessingBudgetError("processing_budget_internal_invariant", "document excerpt byte accounting mismatch")
   processingOperation.reserve("document_excerpt_bytes", actualBytes).commit()
   return { documents, excerptsMarkdown, evidence, warnings }
+  } finally { if (options.processingOperation === undefined) processingOperation.dispose() }
 }
 
 function selectorList(item: ArtifactRef): string[] {
