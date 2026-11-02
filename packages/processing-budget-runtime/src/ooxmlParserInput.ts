@@ -41,7 +41,9 @@ export async function prepareAdmittedOoxmlSnapshot(snapshot: Buffer, kind: Ooxml
   assertOperationNotAborted(signal)
   if (kind === "xlsx" && !onWorkbook) invalidInput()
   try {
-    return await prepareSnapshot(snapshot, kind, limits, loadCodec, signal, { check: () => assertOperationNotAborted(signal), onWorkbook })
+    const prepared = await prepareSnapshot(snapshot, kind, limits, loadCodec, signal, { check: () => assertOperationNotAborted(signal), onWorkbook })
+    assertOperationNotAborted(signal)
+    return prepared
   } catch (error) {
     assertOperationNotAborted(signal)
     if (error instanceof BoundedDocumentError || error instanceof ProcessingBudgetError) throw error
@@ -60,6 +62,7 @@ export async function withValidatedOoxmlParserInput<T>(value: ValidatedOoxmlPars
     let prepared: ValidatedOoxmlParserInput
     try { prepared = await prepareSnapshot(bytes, kind, limits, loadCodec, input.signal) }
     catch (error) {
+      assertNotAborted(input.signal)
       if (error instanceof BoundedDocumentError) throw error
       throw new BoundedDocumentError("bounded_document_archive_invalid", { phase: "zip" })
     }
@@ -69,34 +72,42 @@ export async function withValidatedOoxmlParserInput<T>(value: ValidatedOoxmlPars
 }
 
 async function prepareSnapshot(snapshot: Buffer, expectedKind: OoxmlDocumentKind, limits: OoxmlStructuralLimits, loadCodec: () => Promise<XlsxZipCodec>, signal?: AbortSignal, budget?: { check: () => void; onWorkbook?: (inspection: XlsxWorkbookInspection) => void }): Promise<PreparedSnapshot> {
-  const preflight = await preflightOoxmlArchive(snapshot, { maxOoxmlEntries: limits.maxEntries, maxOoxmlDeclaredUncompressedBytes: limits.maxExpandedBytes })
-  budget?.check()
+  const check = budget?.check ?? (() => assertNotAborted(signal))
+  check()
+  const preflight = await preflightOoxmlArchive(snapshot, { maxOoxmlEntries: limits.maxEntries, maxOoxmlDeclaredUncompressedBytes: limits.maxExpandedBytes }, { signal })
+  check()
   if (preflight.documentKind !== expectedKind) throw new BoundedDocumentError("bounded_document_kind_mismatch", { phase: "zip" })
   const requiresMinimalStylesheet = expectedKind === "xlsx" && !preflight.entryNames.includes("xl/styles.xml") && !preflight.entryNames.includes("xl/sharedStrings.xml")
   if (requiresMinimalStylesheet && preflight.entryNames.includes("__proto__")) throw new BoundedDocumentError("bounded_document_archive_invalid", { phase: "zip" })
   const decodedEntries: Record<string, Uint8Array> | undefined = requiresMinimalStylesheet ? Object.create(null) as Record<string, Uint8Array> : undefined
-  const observer = expectedKind === "xlsx" && budget?.onWorkbook ? createXlsxInspectionObserver() : undefined
-  const check = budget?.check ?? (() => assertNotAborted(signal))
+  const observer = expectedKind === "xlsx" && budget?.onWorkbook ? createXlsxInspectionObserver(check) : undefined
   for (const entry of preflight.entries) {
     check()
-    const decoded = decodeEntry(snapshot, entry)
+    const decoded = decodeEntry(snapshot, entry, check)
+    check()
     observer?.observeEntry(entry.name, decoded)
     if (decodedEntries) decodedEntries[entry.name] = decoded
   }
+  check()
   const workbookInspection = observer?.finish()
+  check()
   if (workbookInspection) { check(); budget!.onWorkbook!(workbookInspection); check() }
   const inspection = workbookInspection ? { workbookInspection } : {}
   if (!decodedEntries) return Object.freeze({ documentKind: preflight.documentKind, parserInput: snapshot, normalization: "none", ...inspection })
   check()
   const codec = await loadCodec()
-  budget?.check()
+  check()
   if (!codec || typeof codec.strToU8 !== "function" || typeof codec.zipSync !== "function") throw new BoundedDocumentError("bounded_document_archive_invalid", { phase: "zip" })
   decodedEntries["xl/styles.xml"] = codec.strToU8(MINIMAL_STYLESHEET)
-  return Object.freeze({ documentKind: preflight.documentKind, parserInput: Buffer.from(codec.zipSync(decodedEntries)), normalization: "xlsx_minimal_styles", ...inspection })
+  check()
+  const parserInput = Buffer.from(codec.zipSync(decodedEntries))
+  check()
+  return Object.freeze({ documentKind: preflight.documentKind, parserInput, normalization: "xlsx_minimal_styles", ...inspection })
 }
 
 // Entry validation and stylesheet bytes below are moved from the fixed M2 owner.
-function decodeEntry(snapshot: Buffer, entry: OoxmlPreflightEntry): Uint8Array {
+function decodeEntry(snapshot: Buffer, entry: OoxmlPreflightEntry, check: () => void): Uint8Array {
+  check()
   const compressed = snapshot.subarray(entry.dataOffset, entry.dataEnd)
   if (compressed.length !== entry.compressedSize) {
     throw new Error(`OOXML entry compressed size does not match preflight: ${entry.name}`)
@@ -111,16 +122,19 @@ function decodeEntry(snapshot: Buffer, entry: OoxmlPreflightEntry): Uint8Array {
   } else {
     let inflated: { buffer: Buffer; engine: { bytesWritten: number } }
     try {
+      check()
       inflated = inflateRawSync(compressed, {
         info: true,
         maxOutputLength: Math.max(1, entry.uncompressedSize)
       }) as unknown as { buffer: Buffer; engine: { bytesWritten: number } }
     } catch (error) {
+      check()
       throw new Error(
         `OOXML deflate output exceeds its declared size or is invalid: ${entry.name}`,
         { cause: error }
       )
     }
+    check()
     if (inflated.engine.bytesWritten !== compressed.length) {
       throw new Error(`OOXML compressed payload was not consumed exactly: ${entry.name}`)
     }
@@ -130,13 +144,19 @@ function decodeEntry(snapshot: Buffer, entry: OoxmlPreflightEntry): Uint8Array {
     output = inflated.buffer
   }
 
-  assertCrc32(output, entry)
+  check()
+  assertCrc32(output, entry, check)
+  check()
   return output
 }
 
-function assertCrc32(output: Uint8Array, entry: OoxmlPreflightEntry): void {
-  let crc = 0xffffffff
-  for (const byte of output) crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ byte) & 0xff]
+function assertCrc32(output: Uint8Array, entry: OoxmlPreflightEntry, check: () => void): void {
+  let crc = 0xffffffff, offset = 0
+  for (const byte of output) {
+    if ((offset++ & 4095) === 0) check()
+    crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ byte) & 0xff]
+  }
+  check()
   if ((crc ^ 0xffffffff) >>> 0 !== entry.crc32) {
     throw new Error(`OOXML entry CRC does not match preflight: ${entry.name}`)
   }
