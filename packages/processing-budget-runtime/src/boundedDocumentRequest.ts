@@ -1,3 +1,4 @@
+import { cancellationKindFromSignal, cancellationOriginalReason } from "./deadlineCancellation"
 import * as path from "node:path"
 import { BoundedDocumentError } from "./boundedDocumentError"
 import { ProcessingBudgetLedger } from "./processingBudgetLedger"
@@ -73,14 +74,16 @@ export function validateSignal(value: unknown): AbortSignal | undefined {
   }
 }
 export function assertNotAborted(signal: AbortSignal | undefined): void {
+  if (signal && cancellationKindFromSignal(signal) === "deadline") throw reasonGetter?.call(signal)
   if (signal && abortedGetter?.call(signal)) throw new BoundedDocumentError("bounded_document_cancelled")
 }
 
 // Operation cancellation retains the operator's Error identity. The ordinary
 // T14 API keeps its existing typed cancellation contract above.
 export function assertOperationNotAborted(signal: AbortSignal | undefined): void {
+  if (signal && cancellationKindFromSignal(signal) === "deadline") throw reasonGetter?.call(signal)
   if (signal && abortedGetter?.call(signal)) {
-    const reason: unknown = reasonGetter?.call(signal)
+    const reason: unknown = cancellationOriginalReason(signal)
     throw reason instanceof Error ? reason : new BoundedDocumentError("bounded_document_cancelled")
   }
 }

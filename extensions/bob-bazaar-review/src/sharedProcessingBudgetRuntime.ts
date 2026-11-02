@@ -111,13 +111,17 @@ export function normalizeRuleDocumentLimits(value: RuleAuthoringLimits): RuleAut
   return Object.freeze(result) as unknown as RuleAuthoringLimits
 }
 
-export function createRuleDocumentOperation(count: number, limits: RuleAuthoringLimits, signal?: AbortSignal): DocumentOperation {
-  assertDocumentNotCancelled(signal)
+export function createRuleDocumentProfile(limits: RuleAuthoringLimits): Runtime.ProcessingBudgetProfile {
   const bounded = normalizeRuleDocumentLimits(limits), total = bounded.maxAggregateSourceBytes
-  const profile = normalizeProcessingBudgetProfile({ limits: {
+  return normalizeProcessingBudgetProfile({ limits: {
     document_count: bounded.maxSourceFiles, single_document_bytes: Math.min(bounded.maxSourceBytes, total),
     total_document_bytes: total, total_operation_input_bytes: Math.max(total, DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_operation_input_bytes)
   } })
+}
+
+export function createRuleDocumentOperation(count: number, limits: RuleAuthoringLimits, signal?: AbortSignal): DocumentOperation {
+  assertDocumentNotCancelled(signal)
+  const bounded = normalizeRuleDocumentLimits(limits), profile = createRuleDocumentProfile(bounded)
   try { return createDocumentOperation({ selectedDocumentCount: count, profile, signal }) }
   catch (error) {
     if (error instanceof ProcessingBudgetError && error.details.constrainedCategory === "document_count") {
@@ -142,3 +146,9 @@ export type SharedAbsoluteDeadline = Runtime.AbsoluteProcessingDeadline
 export type SharedCancellationScope = Runtime.ProcessingCancellationScope
 export type SharedCancellationSignal = AbortSignal
 export type SharedProcessingCancellationKind = Runtime.ProcessingCancellationKind
+
+export const createProcessingOperation = copied.root.createProcessingOperation
+export const assertProcessingOperation: typeof Runtime.assertProcessingOperation = copied.root.assertProcessingOperation
+export type ProcessingOperation = Runtime.ProcessingOperation
+export type ProcessingOperationInput = Runtime.ProcessingOperationInput
+export type ProcessingBudgetProfile = Runtime.ProcessingBudgetProfile

@@ -71,13 +71,13 @@ test('t14_io_graph_is_closed_and_has_no_product_or_dynamic_runtime_imports',()=>
   index:['./generatedProcessingBudgetDefinition','./processingBudgetError','./processingBudgetProfile','./processingBudgetLedger','./boundedDocumentIo','./boundedDocumentError','./documentBudget','./workbookBudget','./deadlineCancellation'],
   deadlineCancellation:['node:perf_hooks'],
   boundedDocumentError:[],
-  boundedDocumentRequest:['node:path','./boundedDocumentError','./processingBudgetLedger','./processingBudgetProfile'],
+  boundedDocumentRequest:['node:path','./boundedDocumentError','./processingBudgetLedger','./processingBudgetProfile','./deadlineCancellation'],
   boundedDocumentFile:['node:crypto','node:fs','node:fs/promises','node:path','./boundedDocumentError','./boundedDocumentRequest','./processingBudgetLedger','./processingBudgetError'],
   boundedDocumentIo:['./boundedDocumentFile','./boundedDocumentRequest'],
   ooxmlPreflight:['./boundedDocumentError'],
   ooxmlParserInput:['node:zlib','./boundedDocumentError','./boundedDocumentFile','./boundedDocumentRequest','./ooxmlPreflight','./workbookBudget','./processingBudgetError'],
   validatedOoxml:['./ooxmlParserInput','./documentBudget'],
-  documentBudget:['./generatedProcessingBudgetDefinition','node:crypto','./boundedDocumentFile','./boundedDocumentIo','./boundedDocumentRequest','./processingBudgetLedger','./processingBudgetProfile','./ooxmlParserInput','./workbookBudget'],
+  documentBudget:['./deadlineCancellation','./generatedProcessingBudgetDefinition','node:crypto','./boundedDocumentFile','./boundedDocumentIo','./boundedDocumentRequest','./processingBudgetLedger','./processingBudgetProfile','./ooxmlParserInput','./workbookBudget'],
   workbookBudget:['node:crypto','./boundedDocumentError','./processingBudgetError','./processingBudgetLedger']
  };
  const pure=new Set(['generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger']);
