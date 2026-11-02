@@ -64,7 +64,7 @@ export async function extractPdf(filePath: string, options: PdfExtractionOptions
   } finally { if (!borrowed) owner?.dispose() }
 }
 
-function normalizePdfTimeout(value: number | undefined): number {
+export function normalizePdfTimeout(value: number | undefined): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return DEFAULT_PDF_TIMEOUT_MS
   return Math.max(1000, Math.min(600000, Math.floor(value)))
 }

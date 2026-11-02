@@ -527,7 +527,7 @@ export class BazaarReviewGuiController {
     if (!folder || !this.isCurrentReviewLease(lease)) return
     validateTargetRequest(request)
     await this.postForReview(lease, { type: "loading", message: "対象情報を取得しています…" })
-    const prepared = await prepareTarget(makeBazaarClient(), folder.uri.fsPath, request, {
+    const prepared = await prepareOwnedTarget(makeBazaarClient(), folder.uri.fsPath, request, {
       includeAddedFiles: false,
       maxAddedFileContentBytes: getMaxAddedFileContentBytes()
     })
@@ -568,7 +568,7 @@ export class BazaarReviewGuiController {
       type: "loading",
       message: "レビュー実行を作成し、レビュー資料を Bob コンテキストへ追加しています…"
     })
-    const prepared = await prepareTarget(makeBazaarClient(), bazaarFolder.uri.fsPath, request, {
+    const prepared = await prepareOwnedTarget(makeBazaarClient(), bazaarFolder.uri.fsPath, request, {
       includeAddedFiles: true,
       maxAddedFileContentBytes: getMaxAddedFileContentBytes()
     })
@@ -819,4 +819,9 @@ async function addPacketToBobContext(uri: vscode.Uri, packet: string) {
     writeClipboard: (text) => vscode.env.clipboard.writeText(text),
     showWarningMessage: (message) => vscode.window.showWarningMessage(message)
   }, uri, packet)
+}
+
+async function prepareOwnedTarget(client: BazaarClient, workspacePath: string, request: Parameters<typeof prepareTarget>[2], options: Parameters<typeof prepareTarget>[3]): ReturnType<typeof prepareTarget> {
+  try { return await prepareTarget(client, workspacePath, request, options) }
+  finally { client.dispose() }
 }
