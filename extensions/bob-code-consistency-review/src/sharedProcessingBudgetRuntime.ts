@@ -5,10 +5,10 @@ import { createHash } from "node:crypto"
 import type * as Runtime from "../../../packages/processing-budget-runtime/out"
 import type * as Ooxml from "../../../packages/processing-budget-runtime/out/validatedOoxml"
 
-const modules = ["generatedProcessingBudgetDefinition", "processingBudgetError", "processingBudgetProfile", "processingBudgetLedger", "index", "boundedDocumentError", "boundedDocumentRequest", "boundedDocumentFile", "boundedDocumentIo", "ooxmlPreflight", "ooxmlParserInput", "validatedOoxml", "documentBudget", "workbookBudget"] as const
+const modules = ["generatedProcessingBudgetDefinition", "processingBudgetError", "processingBudgetProfile", "processingBudgetLedger", "index", "boundedDocumentError", "boundedDocumentRequest", "boundedDocumentFile", "boundedDocumentIo", "ooxmlPreflight", "ooxmlParserInput", "validatedOoxml", "documentBudget", "workbookBudget", "deadlineCancellation"] as const
 const compiledNames = modules.flatMap(name => [name + ".js", name + ".d.ts", name + ".js.map"]).sort()
 const runtimeNames = modules.map(name => name + ".js")
-const requiredApis = ["ProcessingBudgetLedger", "BoundedDocumentError", "readBoundedDocumentFile", "fingerprintBoundedDocumentFile", "ProcessingBudgetError", "normalizeProcessingBudgetProfile", "createDocumentOperation", "assertDocumentNotCancelled", "commitWorkbookBudget", "commitXlsxWorkbookBudget", "assertParsedXlsxWorkbookWithinBudget", "createProcessingOperation", "assertProcessingOperation"] as const
+const requiredApis = ["ProcessingBudgetLedger", "BoundedDocumentError", "readBoundedDocumentFile", "fingerprintBoundedDocumentFile", "ProcessingBudgetError", "normalizeProcessingBudgetProfile", "createDocumentOperation", "assertDocumentNotCancelled", "commitWorkbookBudget", "commitXlsxWorkbookBudget", "assertParsedXlsxWorkbookWithinBudget", "createProcessingOperation", "assertProcessingOperation", "ProcessingCancellationError", "monotonicNowMilliseconds", "createAbsoluteDeadline", "constrainAbsoluteDeadline", "remainingDeadlineMilliseconds", "createCancellationScope", "cancellationKindFromSignal", "cancellationOriginalReason"] as const
 function buildRequired(): never { throw new Error("Processing runtime build required; run npm ci in the shared package and this extension, then npm run compile.") }
 function noAlias(file: string): void {
   const absolute = path.resolve(file), root = path.parse(absolute).root
@@ -147,3 +147,17 @@ export type ProcessingOperation = Runtime.ProcessingOperation
 export type ProcessingOperationInput = Runtime.ProcessingOperationInput
 export type ProcessingBudgetReservation = Runtime.ProcessingBudgetReservation
 export type ProcessingBudgetProfile = Runtime.ProcessingBudgetProfile
+
+export const ProcessingCancellationError = copied.root.ProcessingCancellationError
+export const monotonicNowMilliseconds = copied.root.monotonicNowMilliseconds
+export const createAbsoluteDeadline = copied.root.createAbsoluteDeadline
+export const constrainAbsoluteDeadline = copied.root.constrainAbsoluteDeadline
+export const remainingDeadlineMilliseconds = copied.root.remainingDeadlineMilliseconds
+export const createCancellationScope = copied.root.createCancellationScope
+export const cancellationKindFromSignal = copied.root.cancellationKindFromSignal
+export const cancellationOriginalReason = copied.root.cancellationOriginalReason
+export const MAX_TIMER_DELAY_MS = copied.root.MAX_TIMER_DELAY_MS
+export type SharedAbsoluteDeadline = Runtime.AbsoluteProcessingDeadline
+export type SharedCancellationScope = Runtime.ProcessingCancellationScope
+export type SharedCancellationSignal = AbortSignal
+export type SharedProcessingCancellationKind = Runtime.ProcessingCancellationKind

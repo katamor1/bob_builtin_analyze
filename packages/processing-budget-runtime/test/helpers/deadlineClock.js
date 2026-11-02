@@ -1,0 +1,2 @@
+'use strict';
+exports.fakeClock=function(initial=100){let value=initial,id=0;const pending=new Map(),cancelled=[];return{now:()=>value,schedule:(callback,delay)=>{const handle=++id;pending.set(handle,{callback,delay});return handle;},cancelSchedule:handle=>{cancelled.push(handle);pending.delete(handle);},set:next=>{value=next;},fire:()=>{const [key,row]=pending.entries().next().value;pending.delete(key);row.callback();},pending,cancelled};};

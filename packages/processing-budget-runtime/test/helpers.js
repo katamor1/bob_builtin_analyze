@@ -48,7 +48,7 @@ const consumerNames = ['workflow-register','bob-bazaar-review','bob-code-consist
 const runtimeResult = {state:'passed',entry:'out/index.js',checks:['constructor','reserve_commit','release','snapshot','bounded_read','validated_ooxml','deep_import_rejected','aggregate_operation','workbook_budget']};
 function expectedPayload() {
   const files=['package.json','README.md','contracts/processing-budget-definition.v1.json','schema/processing-budget-profile.v1.schema.json'];
-  for(const name of ['index','generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','boundedDocumentError','boundedDocumentRequest','boundedDocumentFile','boundedDocumentIo','ooxmlPreflight','ooxmlParserInput','validatedOoxml','documentBudget','workbookBudget']) {
+  for(const name of ['index','generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','boundedDocumentError','boundedDocumentRequest','boundedDocumentFile','boundedDocumentIo','ooxmlPreflight','ooxmlParserInput','validatedOoxml','documentBudget','workbookBudget','deadlineCancellation']) {
     for(const suffix of ['js','d.ts','js.map']) files.push('out/'+name+'.'+suffix);
   }
   return files.sort();

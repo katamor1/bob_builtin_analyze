@@ -68,7 +68,8 @@ test('runtime_graph_has_no_effectful_imports',()=>{
 test('t14_io_graph_is_closed_and_has_no_product_or_dynamic_runtime_imports',()=>{
  const ts=require('typescript');
  const dependencies={
-  index:['./generatedProcessingBudgetDefinition','./processingBudgetError','./processingBudgetProfile','./processingBudgetLedger','./boundedDocumentIo','./boundedDocumentError','./documentBudget','./workbookBudget'],
+  index:['./generatedProcessingBudgetDefinition','./processingBudgetError','./processingBudgetProfile','./processingBudgetLedger','./boundedDocumentIo','./boundedDocumentError','./documentBudget','./workbookBudget','./deadlineCancellation'],
+  deadlineCancellation:['node:perf_hooks'],
   boundedDocumentError:[],
   boundedDocumentRequest:['node:path','./boundedDocumentError','./processingBudgetLedger','./processingBudgetProfile'],
   boundedDocumentFile:['node:crypto','node:fs','node:fs/promises','node:path','./boundedDocumentError','./boundedDocumentRequest','./processingBudgetLedger','./processingBudgetError'],
@@ -88,7 +89,7 @@ test('t14_io_graph_is_closed_and_has_no_product_or_dynamic_runtime_imports',()=>
     if(ts.isExportDeclaration(node))assert.ok(node.exportClause,'no wildcard export');
    }
    if(ts.isCallExpression(node)&&((ts.isIdentifier(node.expression)&&node.expression.text==='require')||node.expression.kind===ts.SyntaxKind.ImportKeyword))assert.fail('dynamic runtime import');
-   if(ts.isIdentifier(node)&&['process','fetch','eval','Function','globalThis','setTimeout'].includes(node.text))assert.fail('unknown runtime capability');
+   if(ts.isIdentifier(node)&&['process','fetch','eval','Function','globalThis','setTimeout'].includes(node.text)&&!(name==='deadlineCancellation'&&node.text==='setTimeout'))assert.fail('unknown runtime capability');
    ts.forEachChild(node,visit);
   }visit(tree);
  }
@@ -101,6 +102,8 @@ test('t14_io_graph_is_closed_and_has_no_product_or_dynamic_runtime_imports',()=>
  assert.throws(()=>inspect('boundedDocumentIo','import { spawn } from "node:child_process";'),/unknown or product/);
  assert.throws(()=>inspect('boundedDocumentIo','const x = require("anything");'),/dynamic runtime/);
  assert.throws(()=>inspect('boundedDocumentIo','fetch("https://example.invalid");'),/unknown runtime/);
+ assert.throws(()=>inspect('boundedDocumentIo','setTimeout(()=>{},1);'),/unknown runtime/);
+ assert.throws(()=>inspect('deadlineCancellation','import {spawn} from "node:child_process";'),/unknown or product/);
 });
 
 

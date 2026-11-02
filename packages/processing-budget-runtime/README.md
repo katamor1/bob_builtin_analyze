@@ -39,3 +39,7 @@ The tarball contains 14 modules (46 paths); extensions copy 42 compiled developm
 Use `createProcessingOperation({profile,signal})` to share one ledger across stages. Its `reserve(category,amount)` accepts operation-scoped categories and preserves the ledger's atomic ancestor accounting. Call `documents(count)` once, including when the count is zero, to initialize document admissions on the same ledger. `assertDocuments(handle)` rejects foreign or forged document handles, while `assertProcessingOperation(value)` validates the opaque owner without reading user properties. The owner exposes no ledger or skip-validation flags. Standalone `createDocumentOperation` retains its existing behavior through the same private factory.
 
 Earlier committed input remains when a later stage fails; pending reservations still need commit or release by their stage. Process launching, clipping, artifact ownership and operation lifetime stay with the caller.
+
+## Operation deadline scopes
+
+`createAbsoluteDeadline` uses process-local monotonic milliseconds. `createCancellationScope` owns a native signal, first observed cancellation cause, timer and source listeners. Dispose owned scopes in `finally`; disposal releases resources without disabling later synchronous expiry checks. Use `cancellationKindFromSignal` to authenticate a cause; public error fields and replayed reasons do not establish deadline authority. Do not persist or transfer an absolute deadline to another process.
