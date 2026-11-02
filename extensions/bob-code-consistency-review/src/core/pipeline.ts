@@ -45,6 +45,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
   const textEncoding = input.textEncoding ?? "auto"
   const limits = normalizeReviewProcessingLimits(input.limits)
   const processingOperation = createPipelineProcessingOperation(limits, input.processingBudgetLimits, input.abortSignal)
+  const signal = processingOperation.signal
   const inputPath = resolveWorkspacePathStrict(input.workspaceRoot, input.inputPath, "reviewInputPath")
   const outDir = resolveWorkspacePathForKind(input.workspaceRoot, input.outDir, "review-package-output")
   const diffFixturePath = input.diffFixturePath
@@ -52,13 +53,13 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     : undefined
   let operation: DocumentOperation | undefined
   const reviewInput = await validateReviewInput(inputPath, input.workspaceRoot, textEncoding, limits.maxDocumentBytes, {
-    signal: input.abortSignal,
+    signal: signal,
     processingOperation,
     beforeArtifactPaths: reviewInput => {
       operation = processingOperation.documents(countDocumentSelections(reviewInput))
     }
   })
-  assertDocumentNotCancelled(input.abortSignal)
+  assertDocumentNotCancelled(signal)
   if (!operation) throw new Error("review document admission hook did not run")
   const diff = await collectGitDiff(reviewInput, {
     workspaceRoot: input.workspaceRoot,
@@ -69,9 +70,9 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     processingOperation,
     processingBudgetLimits: input.processingBudgetLimits,
     commandTimeoutMs: input.commandTimeoutMs,
-    signal: input.abortSignal
+    signal: signal
   })
-  assertDocumentNotCancelled(input.abortSignal)
+  assertDocumentNotCancelled(signal)
   const repositoryIndexBuild = reviewInput.analysis_options?.repository_symbol_index_mode === "build"
     ? await produceConfiguredRepositoryIndex({
         workspaceRoot: input.workspaceRoot,
@@ -81,12 +82,12 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
         sourceRevision: diff.head,
         textEncoding,
         commandTimeoutMs: input.commandTimeoutMs,
-        abortSignal: input.abortSignal
+        abortSignal: signal
       })
     : undefined
-  assertDocumentNotCancelled(input.abortSignal)
-  const documents = await extractDocuments(reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits, operation, processingOperation, signal: input.abortSignal, processingBudgetLimits: input.processingBudgetLimits })
-  assertDocumentNotCancelled(input.abortSignal)
+  assertDocumentNotCancelled(signal)
+  const documents = await extractDocuments(reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits, operation, processingOperation, signal: signal, processingBudgetLimits: input.processingBudgetLimits })
+  assertDocumentNotCancelled(signal)
   const codeAnalysis = await analyzeCodeChanges(diff, reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits })
   const contextBudget = await buildReviewContextBudget({
     workspaceRoot: input.workspaceRoot,

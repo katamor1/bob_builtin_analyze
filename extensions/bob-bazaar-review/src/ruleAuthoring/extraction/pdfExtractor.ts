@@ -1,3 +1,4 @@
+import { createProcessingOperation, assertProcessingOperation, createAbsoluteDeadline, remainingDeadlineMilliseconds, cancellationKindFromSignal, DEFAULT_PROCESSING_BUDGET_PROFILE, BoundedDocumentError, type ProcessingOperation, type SharedAbsoluteDeadline, type SharedProcessingCancellationKind } from "../../sharedProcessingBudgetRuntime"
 import * as path from "node:path"
 import {
   runExternalProcess,
@@ -14,6 +15,8 @@ export interface PdfExtractionOptions {
   sourceId: string
   command?: string
   timeoutMs?: number
+  deadline?: SharedAbsoluteDeadline
+  processingOperation?: ProcessingOperation
   maxOutputBytes?: number
   maxChunkBytes?: number
   signal?: AbortSignal
@@ -32,10 +35,46 @@ export const PDF_LOW_TEXT_DENSITY_CHARACTERS = 32
 const DEFAULT_PDF_TIMEOUT_MS = 120_000
 const PDF_EXTRACTOR = Object.freeze({ id: "pdf-pdftotext-layout", version: "1" })
 
-export async function extractPdf(
-  filePath: string,
-  options: PdfExtractionOptions
-): Promise<PdfExtractionResult> {
+export async function extractPdf(filePath: string, options: PdfExtractionOptions): Promise<PdfExtractionResult> {
+  const borrowed = options.processingOperation !== undefined
+  let owner = options.processingOperation
+  if (owner) assertProcessingOperation(owner)
+  const deadline = owner?.deadline ?? options.deadline ?? createAbsoluteDeadline(normalizePdfTimeout(options.timeoutMs))
+  try {
+    if (owner) {
+      if (options.signal !== undefined && options.signal !== owner.signal) throw new BoundedDocumentError("bounded_document_input_invalid")
+      if (options.deadline !== undefined) {
+        remainingDeadlineMilliseconds(options.deadline, 0)
+        if (Object.getOwnPropertyDescriptor(options.deadline, "expires_at_monotonic_ms")?.value !== owner.deadline.expires_at_monotonic_ms) throw new BoundedDocumentError("bounded_document_input_invalid")
+      }
+    } else {
+      const stopped = pdfStopKind(options.signal, deadline)
+      if (stopped) return blockedPdfResult(stopped === "deadline" ? "pdf_timeout" : "pdf_cancelled")
+      owner = createProcessingOperation({ profile: DEFAULT_PROCESSING_BUDGET_PROFILE, deadline, signal: options.signal })
+    }
+    owner.throwIfCancelled()
+    const result = await extractPdfUsingOwner(filePath, options, owner)
+    owner.throwIfCancelled()
+    return result
+  } catch (error) {
+    if (borrowed) throw error
+    const stopped = owner ? cancellationKindFromSignal(owner.signal) : pdfStopKind(options.signal, deadline)
+    if (stopped) return blockedPdfResult(stopped === "deadline" ? "pdf_timeout" : "pdf_cancelled")
+    throw error
+  } finally { if (!borrowed) owner?.dispose() }
+}
+
+function normalizePdfTimeout(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return DEFAULT_PDF_TIMEOUT_MS
+  return Math.max(1000, Math.min(600000, Math.floor(value)))
+}
+function pdfStopKind(signal: AbortSignal | undefined, deadline: SharedAbsoluteDeadline): SharedProcessingCancellationKind | undefined {
+  const kind = signal === undefined ? undefined : cancellationKindFromSignal(signal)
+  return kind ?? (remainingDeadlineMilliseconds(deadline) === 0 ? "deadline" : undefined)
+}
+
+async function extractPdfUsingOwner(filePath: string, options: PdfExtractionOptions, owner: ProcessingOperation): Promise<PdfExtractionResult> {
+  owner.throwIfCancelled()
   const absolutePath = path.resolve(filePath)
   const runner = options.runner ?? runExternalProcess
   const maxOutputBytes = boundedPositiveLimit(
@@ -55,11 +94,13 @@ export async function extractPdf(
       args: ["-layout", "-enc", "UTF-8", absolutePath, "-"],
       cwd: path.dirname(absolutePath),
       maxStdoutBytes: maxOutputBytes,
-      timeoutMs: options.timeoutMs ?? DEFAULT_PDF_TIMEOUT_MS,
+      deadline: owner.deadline,
       allowedExitCodes: [0],
-      signal: options.signal
+      signal: owner.signal
     })
+    owner.throwIfCancelled()
   } catch (error) {
+    owner.throwIfCancelled()
     return blockedPdfResult(mapProcessFailure(error))
   }
 
@@ -74,6 +115,7 @@ export async function extractPdf(
     }
   }
 
+  owner.throwIfCancelled()
   const chunks = pages.flatMap((text, index) => splitDocumentChunk({
     sourceId: options.sourceId,
     mediaType: "pdf",

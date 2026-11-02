@@ -80,9 +80,9 @@ test("extension README documents generated artifacts, package budget, dependenci
 })
 
 
-test("aggregate facade keeps literal fourteen-module copied ownership",()=>{
+test("deadline facade keeps literal fifteen-module copied ownership",()=>{
  const source=fs.readFileSync(path.join(extensionRoot,"src/sharedProcessingBudgetRuntime.ts"),"utf8"),modules=JSON.parse(source.match(/const modules = (\[[^\n]+\]) as const/)[1]);
- assert.deepEqual(modules,["generatedProcessingBudgetDefinition","processingBudgetError","processingBudgetProfile","processingBudgetLedger","index","boundedDocumentError","boundedDocumentRequest","boundedDocumentFile","boundedDocumentIo","ooxmlPreflight","ooxmlParserInput","validatedOoxml","documentBudget","workbookBudget"]);
+ assert.deepEqual(modules,["generatedProcessingBudgetDefinition","processingBudgetError","processingBudgetProfile","processingBudgetLedger","index","boundedDocumentError","boundedDocumentRequest","boundedDocumentFile","boundedDocumentIo","ooxmlPreflight","ooxmlParserInput","validatedOoxml","documentBudget","workbookBudget","deadlineCancellation"]);
  for(const name of ["createDocumentOperation","assertDocumentNotCancelled","assertParsedXlsxWorkbookWithinBudget"])assert.match(source,new RegExp('"'+name+'"'));
  assert.match(source,/export function createReviewDocumentOperation\(/);assert.doesNotMatch(source,/require\(["']\.\.\/.*processing-budget-runtime/);
 });

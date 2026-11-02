@@ -1,3 +1,4 @@
+import { createProcessingOperation, createAbsoluteDeadline, remainingDeadlineMilliseconds, type SharedAbsoluteDeadline } from "../sharedProcessingBudgetRuntime"
 import {
   normalizeChangedFilePathStrict,
   resolveWorkspacePathStrict
@@ -7,7 +8,6 @@ import { classifyLanguageFromPath } from "./languageClassifier"
 import { isUtf8 } from "node:buffer"
 import { decodeTextBuffer, normalizeTextEncoding } from "./textEncoding"
 import { assertDocumentNotCancelled, assertProcessingOperation, BoundedDocumentError, ProcessingBudgetError, createReviewDocumentProfile, type ProcessingOperation, type ProcessingBudgetReservation, type SharedProcessingBudgetLimits } from "../sharedProcessingBudgetRuntime"
-import { createPipelineProcessingOperation } from "./processingBudgetPipeline"
 import { readStableDiffFixtureText } from "./stableReviewInput"
 import {
   maxVcsProcessBufferBytes,
@@ -32,9 +32,15 @@ export interface CollectGitDiffOptions {
   textEncoding?: string
   limits?: Partial<ReviewProcessingLimits>
   commandTimeoutMs?: number
+  deadline?: SharedAbsoluteDeadline
   signal?: AbortSignal
   processingOperation?: ProcessingOperation
   processingBudgetLimits?: Readonly<Partial<SharedProcessingBudgetLimits>>
+}
+// Preserve unrelated already-rejected failures, including a synchronous spawn
+// failure with no child. Controlled transport settlement still checks the owner.
+function isSettledProcessFailure(error: unknown): error is ExternalProcessError {
+  return error instanceof ExternalProcessError && (error.kind !== "spawnFailure" || error.cleanupStatus !== "not_required")
 }
 interface CollectedDiff { readonly diff: DiffSummary; readonly rawDiffOverflow: boolean }
 interface BoundedCommandText { readonly text: string; readonly overflow: boolean }
@@ -42,13 +48,19 @@ const RAW_DIFF_TRUNCATION_SUFFIX = "\n\n[truncated: maxRawDiffBytes]\n"
 
 export async function collectGitDiff(reviewInput: ReviewInput, options: CollectGitDiffOptions): Promise<DiffSummary> {
   const limits = normalizeReviewProcessingLimits(options.limits)
-  const operation = options.processingOperation ?? createPipelineProcessingOperation(limits, options.processingBudgetLimits, options.signal)
+  const owned = options.processingOperation === undefined
+  const operation = options.processingOperation ?? createProcessingOperation({ profile: createReviewDocumentProfile(limits, options.processingBudgetLimits), signal: options.signal, deadline: options.deadline ?? createAbsoluteDeadline(normalizeCommandTimeout(options.commandTimeoutMs)) })
   assertProcessingOperation(operation)
-  if ((options.signal && operation.signal && options.signal !== operation.signal)
+  try {
+  if ((!owned && options.signal !== undefined && options.signal !== operation.signal)
     || JSON.stringify(operation.profile) !== JSON.stringify(createReviewDocumentProfile(limits, options.processingBudgetLimits))) {
     throw new BoundedDocumentError("bounded_document_input_invalid", { phase: "input" })
   }
-  const signal = operation.signal ?? options.signal
+  if (options.deadline !== undefined) {
+    remainingDeadlineMilliseconds(options.deadline, 0)
+    if (Object.getOwnPropertyDescriptor(options.deadline, "expires_at_monotonic_ms")?.value !== operation.deadline.expires_at_monotonic_ms) throw new BoundedDocumentError("bounded_document_input_invalid")
+  }
+  const signal = operation.signal
   assertDocumentNotCancelled(signal)
   if (options.diffFixturePath) {
     const fixturePath = resolveWorkspacePathStrict(options.workspaceRoot, options.diffFixturePath, "diffFixturePath")
@@ -65,16 +77,18 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: CollectG
   let collected: CollectedDiff
   try {
     collected = vcs === "bazaar"
-      ? await collectBazaarDiff(reviewInput, { ...options, vcsRoot, limits, signal, rawDiffLimit: operation.profile.limits.raw_diff_bytes })
-      : await collectStandardGitDiff(reviewInput, { ...options, vcsRoot, limits, signal, rawDiffLimit: operation.profile.limits.raw_diff_bytes })
+      ? await collectBazaarDiff(reviewInput, { ...options, vcsRoot, limits, signal, deadline: operation.deadline, rawDiffLimit: operation.profile.limits.raw_diff_bytes })
+      : await collectStandardGitDiff(reviewInput, { ...options, vcsRoot, limits, signal, deadline: operation.deadline, rawDiffLimit: operation.profile.limits.raw_diff_bytes })
   } catch (error) {
     // The transport has settled. Apply the operation reason outside raw-output
     // parsing, since an operator's Error can itself be a stdout-limit error.
-    if (error instanceof ExternalProcessError && error.kind === "cancelled") assertDocumentNotCancelled(signal)
+    if (isSettledProcessFailure(error)) assertDocumentNotCancelled(signal)
     throw error
   }
   assertDocumentNotCancelled(signal)
   return finalizeDiffProcessingBudget(collected.diff, operation, collected.rawDiffOverflow)
+  } catch (error) { if (isSettledProcessFailure(error)) operation.throwIfCancelled(); throw error }
+  finally { if (owned) operation.dispose() }
 }
 
 async function collectStandardGitDiff(reviewInput: ReviewInput, options: {
@@ -82,16 +96,16 @@ async function collectStandardGitDiff(reviewInput: ReviewInput, options: {
   vcsRoot: string
   textEncoding?: string
   limits: ReviewProcessingLimits
-  commandTimeoutMs?: number
+  deadline: SharedAbsoluteDeadline
   signal?: AbortSignal
   rawDiffLimit: number
 }): Promise<CollectedDiff> {
-  const base = await resolveGitRevision(reviewInput.review.base, options.vcsRoot, options.textEncoding, options.commandTimeoutMs, options.signal)
-  const head = await resolveGitRevision(reviewInput.review.head, options.vcsRoot, options.textEncoding, options.commandTimeoutMs, options.signal)
+  const base = await resolveGitRevision(reviewInput.review.base, options.vcsRoot, options.textEncoding, options.deadline, options.signal)
+  const head = await resolveGitRevision(reviewInput.review.head, options.vcsRoot, options.textEncoding, options.deadline, options.signal)
   const processBufferBytes = maxVcsProcessBufferBytes(options.limits.maxRawDiffBytes)
-  const nameStatus = await runGitText(["diff", "--find-renames", "--name-status", "-z", base, head], options.vcsRoot, processBufferBytes, options.textEncoding, options.commandTimeoutMs, options.signal)
-  const numstat = await runGitText(["diff", "--find-renames", "--numstat", "-z", base, head], options.vcsRoot, processBufferBytes, options.textEncoding, options.commandTimeoutMs, options.signal)
-  const unifiedDiff = await runGitTextAllowingOverflow(["diff", "--find-renames", "--unified=80", base, head], options.vcsRoot, options.rawDiffLimit, options.textEncoding, options.commandTimeoutMs, options.signal)
+  const nameStatus = await runGitText(["diff", "--find-renames", "--name-status", "-z", base, head], options.vcsRoot, processBufferBytes, options.textEncoding, options.deadline, options.signal)
+  const numstat = await runGitText(["diff", "--find-renames", "--numstat", "-z", base, head], options.vcsRoot, processBufferBytes, options.textEncoding, options.deadline, options.signal)
+  const unifiedDiff = await runGitTextAllowingOverflow(["diff", "--find-renames", "--unified=80", base, head], options.vcsRoot, options.rawDiffLimit, options.textEncoding, options.deadline, options.signal)
 
   const counts = parseNumstatZ(numstat)
   const files = parseNameStatusZ(nameStatus).map(({ statusToken, filePath }) => {
@@ -108,7 +122,7 @@ async function collectBazaarDiff(reviewInput: ReviewInput, options: {
   bzrPath?: string
   textEncoding?: string
   limits: ReviewProcessingLimits
-  commandTimeoutMs?: number
+  deadline: SharedAbsoluteDeadline
   signal?: AbortSignal
   rawDiffLimit: number
 }): Promise<CollectedDiff> {
@@ -125,7 +139,7 @@ async function collectBazaarDiff(reviewInput: ReviewInput, options: {
     [0, 1],
     options.textEncoding,
     { BZR_PROGRESS_BAR: "none" },
-    options.commandTimeoutMs,
+    options.deadline,
     options.signal
   )
   if (unifiedDiff.overflow) throw new Error(`Bazaar diff exceeded raw_diff_bytes (${options.rawDiffLimit}); complete changed-file metadata is unavailable`)
@@ -137,7 +151,7 @@ async function resolveGitRevision(
   revision: string,
   cwd: string,
   textEncoding = "auto",
-  commandTimeoutMs?: number,
+  deadline?: SharedAbsoluteDeadline,
   signal?: AbortSignal
 ): Promise<string> {
   const trimmed = revision.trim()
@@ -145,10 +159,11 @@ async function resolveGitRevision(
 
   try {
     // Git revision は rev-parse --verify --end-of-options で commit SHA に固定し、以降の diff へ曖昧指定を渡さない。
-    const output = await runGitText(["rev-parse", "--verify", "--end-of-options", `${trimmed}^{commit}`], cwd, 1024 * 1024, textEncoding, commandTimeoutMs, signal)
+    const output = await runGitText(["rev-parse", "--verify", "--end-of-options", `${trimmed}^{commit}`], cwd, 1024 * 1024, textEncoding, deadline, signal)
     const sha = output.trim().split(/\r?\n/).at(-1) ?? ""
     if (/^[0-9a-f]{40}$/i.test(sha)) return sha.toLowerCase()
   } catch (error) {
+    if (isSettledProcessFailure(error)) assertDocumentNotCancelled(signal)
     if (!(error instanceof ExternalProcessError) || error.kind !== "nonZeroExit") throw error
     // rev-parse が対象を解決できない場合だけ、下の正規化済み validation error に揃える。
   }
@@ -183,25 +198,26 @@ async function runGitText(
   cwd: string,
   maxBuffer: number,
   textEncoding = "auto",
-  commandTimeoutMs?: number,
+  deadline?: SharedAbsoluteDeadline,
   signal?: AbortSignal
 ): Promise<string> {
-  return runCommandText("git", args, cwd, maxBuffer, [0], textEncoding, undefined, commandTimeoutMs, signal)
+  return runCommandText("git", args, cwd, maxBuffer, [0], textEncoding, undefined, deadline, signal)
 }
 
 async function runGitTextAllowingOverflow(
-  args: string[], cwd: string, maximumBytes: number, textEncoding = "auto", commandTimeoutMs?: number, signal?: AbortSignal
+  args: string[], cwd: string, maximumBytes: number, textEncoding = "auto", deadline?: SharedAbsoluteDeadline, signal?: AbortSignal
 ): Promise<BoundedCommandText> {
-  return runCommandTextAllowingOverflow("git", args, cwd, maximumBytes, [0], textEncoding, undefined, commandTimeoutMs, signal)
+  return runCommandTextAllowingOverflow("git", args, cwd, maximumBytes, [0], textEncoding, undefined, deadline, signal)
 }
 
 async function runCommandTextAllowingOverflow(
   command: string, args: string[], cwd: string, maximumBytes: number, allowedExitCodes: number[],
-  textEncoding = "auto", env?: Record<string, string>, commandTimeoutMs?: number, signal?: AbortSignal
+  textEncoding = "auto", env?: Record<string, string>, deadline?: SharedAbsoluteDeadline, signal?: AbortSignal
 ): Promise<BoundedCommandText> {
   let bytes: Buffer, sourceOverflow = false
-  try { bytes = await runCommandBuffer(command, args, cwd, maximumBytes + 1, allowedExitCodes, env, commandTimeoutMs, signal) }
+  try { bytes = await runCommandBuffer(command, args, cwd, maximumBytes + 1, allowedExitCodes, env, deadline, signal) }
   catch (error) {
+    if (isSettledProcessFailure(error)) assertDocumentNotCancelled(signal)
     if (!isStdoutLimitError(error)) throw error
     bytes = error.stdout
     sourceOverflow = true
@@ -225,20 +241,25 @@ function isStdoutLimitError(error: unknown): error is ExternalProcessError {
 
 async function runCommandText(
   command: string, args: string[], cwd: string, maxStdoutBytes: number, allowedExitCodes: number[],
-  textEncoding = "auto", env?: Record<string, string>, commandTimeoutMs?: number, signal?: AbortSignal
+  textEncoding = "auto", env?: Record<string, string>, deadline?: SharedAbsoluteDeadline, signal?: AbortSignal
 ): Promise<string> {
-  return decodeTextBuffer(await runCommandBuffer(command, args, cwd, maxStdoutBytes, allowedExitCodes, env, commandTimeoutMs, signal), textEncoding)
+  return decodeTextBuffer(await runCommandBuffer(command, args, cwd, maxStdoutBytes, allowedExitCodes, env, deadline, signal), textEncoding)
 }
 
 async function runCommandBuffer(
   command: string, args: string[], cwd: string, maxStdoutBytes: number, allowedExitCodes: number[],
-  env?: Record<string, string>, commandTimeoutMs?: number, signal?: AbortSignal
+  env?: Record<string, string>, deadline?: SharedAbsoluteDeadline, signal?: AbortSignal
 ): Promise<Buffer> {
+  if (!deadline) throw new BoundedDocumentError("bounded_document_input_invalid")
+  assertDocumentNotCancelled(signal)
+  try {
   const result = await runExternalProcess({
-    command, args, cwd, maxStdoutBytes, timeoutMs: normalizeCommandTimeout(commandTimeoutMs), allowedExitCodes, signal,
+    command, args, cwd, maxStdoutBytes, deadline, allowedExitCodes, signal,
     env: { ...process.env, ...env }
   })
+  assertDocumentNotCancelled(signal)
   return result.stdout
+  } catch (error) { if (isSettledProcessFailure(error)) assertDocumentNotCancelled(signal); throw error }
 }
 
 function normalizeCommandTimeout(value: number | undefined): number {

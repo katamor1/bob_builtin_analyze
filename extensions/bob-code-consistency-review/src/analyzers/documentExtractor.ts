@@ -52,9 +52,9 @@ export async function extractDocuments(reviewInput: ReviewInput, options: Docume
   if (options.operation && !options.processingOperation) throw new BoundedDocumentError("bounded_document_input_invalid", { phase: "input" })
   const processingOperation = options.processingOperation ?? createPipelineProcessingOperation(limits, options.processingBudgetLimits, options.signal)
   assertProcessingOperation(processingOperation)
-  const signal = processingOperation.signal ?? options.signal
+  const signal = processingOperation.signal
   assertDocumentNotCancelled(signal)
-  if ((options.signal && processingOperation.signal && options.signal !== processingOperation.signal)
+  if ((options.processingOperation !== undefined && options.signal !== undefined && options.signal !== processingOperation.signal)
     || JSON.stringify(processingOperation.profile) !== JSON.stringify(createReviewDocumentProfile(limits, options.processingBudgetLimits))) {
     throw new BoundedDocumentError("bounded_document_input_invalid", { phase: "input" })
   }

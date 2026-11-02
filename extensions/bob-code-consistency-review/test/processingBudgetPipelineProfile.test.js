@@ -34,8 +34,8 @@ test('zero_parent_clamps_all_input_children_but_not_artifact_budget',()=>{
 // Break: helper creates another profile or loses the operation's cancellation identity.
 test('pipeline_factory_uses_the_shared_profile_and_signal',()=>{
  const {createPipelineProcessingOperation}=factory(),c=new AbortController();const op=createPipelineProcessingOperation(defaults,{raw_diff_bytes:13},c.signal);
- assert.equal(op.profile.limits.raw_diff_bytes,13);assert.strictEqual(op.signal,c.signal);facade().assertProcessingOperation(op);
- const reason=new Error('cancel profile');c.abort(reason);assert.throws(()=>createPipelineProcessingOperation(defaults,undefined,c.signal),e=>e===reason);
+ assert.equal(op.profile.limits.raw_diff_bytes,13);assert.ok(op.signal instanceof AbortSignal);assert.notStrictEqual(op.signal,c.signal);facade().assertProcessingOperation(op);
+ const reason=new Error('cancel profile');c.abort(reason);assert.throws(()=>op.throwIfCancelled(),e=>e===reason);op.dispose();assert.throws(()=>createPipelineProcessingOperation(defaults,undefined,c.signal),e=>e===reason);
 });
 
 // A consistency-only CI job has no sibling Bazaar build output.

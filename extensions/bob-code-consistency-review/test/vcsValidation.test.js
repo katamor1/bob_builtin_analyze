@@ -207,3 +207,5 @@ function reviewInput(review) {
     review_focus: ["requirement-code-consistency"]
   }
 }
+
+require('node:test').test('VCS_all_commands_borrow_one_deadline_and_effective_signal',async t=>{const runner=require('../out/core/externalProcessRunner'),profile=require('../out/core/limits').normalizeReviewProcessingLimits(),owner=require('../out/core/processingBudgetPipeline').createPipelineProcessingOperation(profile),calls=[],root=fs.mkdtempSync(path.join(os.tmpdir(),'t17-vcs-owner-'));t.mock.method(runner,'runExternalProcess',async options=>{calls.push(options);return{stdout:Buffer.from(options.args[0]==='rev-parse'?'a'.repeat(40):''),stderr:Buffer.alloc(0),exitCode:0};});try{await collectGitDiff({review:{vcs:'git',base:'main',head:'HEAD'}},{workspaceRoot:root,processingOperation:owner,signal:owner.signal});assert.equal(calls.length,5);assert.ok(calls.every(c=>c.deadline===owner.deadline&&c.signal===owner.signal));owner.throwIfCancelled();}finally{owner.dispose();}});

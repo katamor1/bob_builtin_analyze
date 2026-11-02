@@ -11,7 +11,7 @@ test("Git and Bazaar diff collection use the bounded external process runner", (
   const source = readSource("core", "gitDiffCollector.ts")
 
   assert.match(source, /runExternalProcess/)
-  assert.match(source, /timeoutMs/)
+  assert.match(source, /deadline/)
   assert.match(source, /signal/)
   assert.doesNotMatch(source, /execFileAsync|execFile\(/)
 })
@@ -33,5 +33,5 @@ test("preprocess progress propagates cancellation into VCS collection", () => {
   assert.match(commandSource, /token\.onCancellationRequested/)
   assert.match(commandSource, /abortSignal:\s*controller\.signal/)
   assert.match(pipelineSource, /abortSignal/)
-  assert.match(pipelineSource, /signal:\s*input\.abortSignal/)
+  assert.match(pipelineSource, /const signal = processingOperation\.signal/)
 })

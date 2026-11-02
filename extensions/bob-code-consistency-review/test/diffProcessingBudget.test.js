@@ -231,7 +231,7 @@ async function rejectedVcsAwait(vcs, stage, reason) {
   }
   try {
     await assert.rejects(() => collectGitDiff({ review: { vcs, base: '1', head: '2' } }, {
-      workspaceRoot: process.cwd(), processingOperation: operation, signal: controller.signal
+      workspaceRoot: process.cwd(), processingOperation: operation, signal: operation.signal
     }), error => {
       assert.equal(targetCalled, true); assert.equal(commandSettled, true)
       if (reason instanceof Error) assert.strictEqual(error, reason)
@@ -276,7 +276,7 @@ test('active_vcs_real_child_settlement_precedes_owned_cancellation', async () =>
     }
     try {
       await assert.rejects(() => collectGitDiff({ review: { vcs, base: '1', head: '2' } }, {
-        workspaceRoot: process.cwd(), processingOperation: operation, signal: controller.signal, bzrPath: 't16-bzr-probe'
+        workspaceRoot: process.cwd(), processingOperation: operation, signal: operation.signal, bzrPath: 't16-bzr-probe'
       }), error => { if (reason instanceof Error) assert.strictEqual(error, reason); else assert.equal(error.code, 'bounded_document_cancelled'); return true })
       assert.equal(calls, 1); assert.ok(child.pid)
       assert.throws(() => process.kill(child.pid, 0), error => error.code === 'ESRCH')

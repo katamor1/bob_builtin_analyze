@@ -66,8 +66,8 @@ export function createAbsoluteDeadline(timeoutMs: number, nowMs = monotonicNowMi
   return Object.freeze({ expires_at_monotonic_ms: timestamp(timestamp(nowMs) + duration(timeoutMs)) })
 }
 export function constrainAbsoluteDeadline(parent: AbsoluteProcessingDeadline, timeoutMs: number, nowMs = monotonicNowMilliseconds()): AbsoluteProcessingDeadline {
-  const previous = deadlineSnapshot(parent), candidate = createAbsoluteDeadline(timeoutMs, nowMs)
-  return Object.freeze({ expires_at_monotonic_ms: Math.min(previous.expires_at_monotonic_ms, candidate.expires_at_monotonic_ms) })
+  const previous = deadlineSnapshot(parent), candidate = timestamp(nowMs) + duration(timeoutMs)
+  return Object.freeze({ expires_at_monotonic_ms: Math.min(previous.expires_at_monotonic_ms, candidate) })
 }
 export function remainingDeadlineMilliseconds(deadline: AbsoluteProcessingDeadline, nowMs = monotonicNowMilliseconds()): number {
   return Math.max(0, Math.ceil(deadlineSnapshot(deadline).expires_at_monotonic_ms - timestamp(nowMs)))

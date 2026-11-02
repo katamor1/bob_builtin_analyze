@@ -32,3 +32,5 @@ test('multi_source_snapshot_and_registration_race',()=>{
  assert.throws(()=>r.createCancellationScope({deadline:{expires_at_monotonic_ms:150},signal:a.signal,signals:[]}),TypeError);
  assert.throws(()=>r.createCancellationScope({deadline:{expires_at_monotonic_ms:150},signals:[{aborted:false}]}),TypeError);
 });
+
+test('constrain_large_safe_duration_keeps_valid_parent_endpoint',()=>{assert.deepEqual(r.constrainAbsoluteDeadline({expires_at_monotonic_ms:150},Number.MAX_SAFE_INTEGER,100),{expires_at_monotonic_ms:150});assert.deepEqual(r.constrainAbsoluteDeadline({expires_at_monotonic_ms:Number.MAX_SAFE_INTEGER},1,Number.MAX_SAFE_INTEGER),{expires_at_monotonic_ms:Number.MAX_SAFE_INTEGER});});

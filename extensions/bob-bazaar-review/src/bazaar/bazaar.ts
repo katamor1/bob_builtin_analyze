@@ -1,3 +1,4 @@
+import { createProcessingOperation, assertProcessingOperation, createAbsoluteDeadline, remainingDeadlineMilliseconds, DEFAULT_PROCESSING_BUDGET_PROFILE, BoundedDocumentError, type ProcessingOperation, type SharedAbsoluteDeadline } from "../sharedProcessingBudgetRuntime"
 import * as path from "node:path"
 import { decodeTextBuffer } from "./textEncoding"
 import { clampExecBufferBytes } from "./reviewLimits"
@@ -21,6 +22,8 @@ export interface BazaarOptions {
   maxBuffer?: number
   textEncoding?: string
   timeoutMs?: number
+  deadline?: SharedAbsoluteDeadline
+  processingOperation?: ProcessingOperation
   signal?: AbortSignal
   processRunner?: (options: ExternalProcessOptions) => Promise<ExternalProcessResult>
 }
@@ -46,18 +49,28 @@ export class BazaarClient {
   private readonly bzrPath: string
   private readonly maxBuffer: number
   private readonly textEncoding: string
-  private readonly timeoutMs: number
-  private readonly signal?: AbortSignal
+  private readonly processingOperation: ProcessingOperation
+  private readonly ownsProcessingOperation: boolean
   private readonly processRunner: (options: ExternalProcessOptions) => Promise<ExternalProcessResult>
 
   constructor(options: BazaarOptions) {
     this.bzrPath = options.bzrPath || "bzr"
     this.maxBuffer = clampExecBufferBytes(options.maxBuffer)
     this.textEncoding = options.textEncoding ?? "auto"
-    this.timeoutMs = positiveTimeout(options.timeoutMs)
-    this.signal = options.signal
     this.processRunner = options.processRunner ?? runExternalProcess
+    this.ownsProcessingOperation = options.processingOperation === undefined
+    this.processingOperation = options.processingOperation ?? createProcessingOperation({ profile: DEFAULT_PROCESSING_BUDGET_PROFILE, signal: options.signal, deadline: options.deadline ?? createAbsoluteDeadline(positiveTimeout(options.timeoutMs)) })
+    assertProcessingOperation(this.processingOperation)
+    if (!this.ownsProcessingOperation) {
+      if (options.signal !== undefined && options.signal !== this.processingOperation.signal) throw new BoundedDocumentError("bounded_document_input_invalid")
+      if (options.deadline !== undefined) {
+        remainingDeadlineMilliseconds(options.deadline, 0)
+        if (Object.getOwnPropertyDescriptor(options.deadline, "expires_at_monotonic_ms")?.value !== this.processingOperation.deadline.expires_at_monotonic_ms) throw new BoundedDocumentError("bounded_document_input_invalid")
+      }
+    }
   }
+
+  dispose(): void { if (this.ownsProcessingOperation) this.processingOperation.dispose() }
 
   async root(cwd: string): Promise<string> {
     const result = await this.run(cwd, ["root"])
@@ -97,6 +110,7 @@ export class BazaarClient {
   }
 
   async run(cwd: string, args: string[], options: RunOptions = {}): Promise<BazaarCommandResult> {
+    this.processingOperation.throwIfCancelled()
     if (!cwd || cwd.includes("\0")) {
       throw new BazaarError("Bazaar の作業ディレクトリが不正です。")
     }
@@ -107,14 +121,18 @@ export class BazaarClient {
 
     try {
       const result = await this.exec(cwd, commandArgs, allowedExitCodes)
-      return {
+      this.processingOperation.throwIfCancelled()
+      const decoded = {
         stdout: decodeTextBuffer(result.stdout, this.textEncoding),
         stderr: decodeTextBuffer(result.stderr, this.textEncoding),
         command: this.bzrPath,
         args: commandArgs,
         cwd
       }
+      this.processingOperation.throwIfCancelled()
+      return decoded
     } catch (error) {
+      this.processingOperation.throwIfCancelled()
       const stdout = error instanceof ExternalProcessError
         ? decodeTextBuffer(error.stdout, this.textEncoding)
         : ""
@@ -141,9 +159,9 @@ export class BazaarClient {
       args,
       cwd,
       maxStdoutBytes: this.maxBuffer,
-      timeoutMs: this.timeoutMs,
+      deadline: this.processingOperation.deadline,
       allowedExitCodes,
-      signal: this.signal,
+      signal: this.processingOperation.signal,
       env: {
         ...process.env,
         BZR_PROGRESS_BAR: "none"

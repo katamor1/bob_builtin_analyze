@@ -1,3 +1,4 @@
+import { createProcessingOperation, assertProcessingOperation, createAbsoluteDeadline, remainingDeadlineMilliseconds, DEFAULT_PROCESSING_BUDGET_PROFILE, BoundedDocumentError, type ProcessingOperation, type SharedAbsoluteDeadline } from "../sharedProcessingBudgetRuntime"
 import { createHash } from "node:crypto"
 import * as path from "node:path"
 import { runExternalProcess } from "../core/externalProcessRunner"
@@ -59,6 +60,8 @@ export type ProduceRepositorySymbolIndexInput = {
   maxTotalBytes?: number
   textEncoding?: string
   commandTimeoutMs?: number
+  deadline?: SharedAbsoluteDeadline
+  processingOperation?: ProcessingOperation
   signal?: AbortSignal
 }
 
@@ -90,8 +93,9 @@ type ProducerOptions = {
   maxFileBytes: number
   maxTotalBytes: number
   textEncoding: string
-  commandTimeoutMs: number
-  signal?: AbortSignal
+  deadline: SharedAbsoluteDeadline
+  processingOperation: ProcessingOperation
+  signal: AbortSignal
 }
 
 type TrackedSourceEntry = {
@@ -115,7 +119,24 @@ type RepositorySymbolIndexDocument = {
 export async function produceRepositorySymbolIndex(
   input: ProduceRepositorySymbolIndexInput
 ): Promise<ProduceRepositorySymbolIndexResult> {
-  const options = normalizeOptions(input)
+  const owned = input.processingOperation === undefined
+  const owner = input.processingOperation ?? createProcessingOperation({ profile: DEFAULT_PROCESSING_BUDGET_PROFILE, signal: input.signal, deadline: input.deadline ?? createAbsoluteDeadline(Math.max(1000, Math.min(600000, positiveInteger(input.commandTimeoutMs, DEFAULT_COMMAND_TIMEOUT_MS, "commandTimeoutMs")))) })
+  assertProcessingOperation(owner)
+  try {
+    if (!owned && input.signal !== undefined && input.signal !== owner.signal) throw new BoundedDocumentError("bounded_document_input_invalid")
+    if (input.deadline !== undefined) {
+      remainingDeadlineMilliseconds(input.deadline, 0)
+      if (Object.getOwnPropertyDescriptor(input.deadline, "expires_at_monotonic_ms")?.value !== owner.deadline.expires_at_monotonic_ms) throw new BoundedDocumentError("bounded_document_input_invalid")
+    }
+    owner.throwIfCancelled()
+    const result = await produceWithOptions(normalizeOptions(input, owner))
+    owner.throwIfCancelled()
+    return result
+  } catch (error) { owner.throwIfCancelled(); throw error }
+  finally { if (owned) owner.dispose() }
+}
+
+async function produceWithOptions(options: ProducerOptions): Promise<ProduceRepositorySymbolIndexResult> {
   await verifyCheckedOutRevision(options)
   const sourceEntries = await listTrackedSourceEntries(options)
   if (sourceEntries.length > options.maxFiles) {
@@ -129,6 +150,7 @@ export async function produceRepositorySymbolIndex(
 
   const optionsHash = producerOptionsHash(options)
   const cacheMaxBytes = Math.max(1024 * 1024, Math.min(64 * 1024 * 1024, options.maxTotalBytes * 4))
+  options.processingOperation.throwIfCancelled()
   const loadedCache = await loadRepositoryIndexCache(options.cachePath, cacheMaxBytes)
   const compatibleCache = loadedCache.cache?.producerId === PRODUCER_ID
     && loadedCache.cache.producerVersion === PRODUCER_VERSION
@@ -144,6 +166,7 @@ export async function produceRepositorySymbolIndex(
   let reusedFiles = 0
   let rebuiltFiles = 0
   for (const source of sourceEntries) {
+    options.processingOperation.throwIfCancelled()
     const cached = compatibleCache?.entries.get(source.path)
     if (cached && cached.objectId === source.objectId && cached.language === source.language && cached.bytes === source.bytes) {
       entries.set(source.path, cached)
@@ -183,6 +206,7 @@ export async function produceRepositorySymbolIndex(
 
   const serialized = `${JSON.stringify(document, null, 2)}\n`
   const contentHash = sha256(Buffer.from(serialized, "utf8"))
+  options.processingOperation.throwIfCancelled()
   await writeRepositoryIndexCache({
     filePath: options.cachePath,
     producerId: PRODUCER_ID,
@@ -191,6 +215,7 @@ export async function produceRepositorySymbolIndex(
     sourceRevision: options.sourceRevision,
     entries
   })
+  options.processingOperation.throwIfCancelled()
   await writeAtomicTextFile(options.indexPath, serialized)
 
   const cacheStatus: RepositoryIndexCacheStatus = compatibleCache
@@ -217,7 +242,7 @@ export function isRepositoryIndexProducerLanguage(value: string): boolean {
   return DEFAULT_LANGUAGES.includes(value.trim().toLowerCase() as ReviewLanguage)
 }
 
-function normalizeOptions(input: ProduceRepositorySymbolIndexInput): ProducerOptions {
+function normalizeOptions(input: ProduceRepositorySymbolIndexInput, owner: ProcessingOperation): ProducerOptions {
   const workspaceRoot = path.resolve(input.workspaceRoot)
   const repositoryRoot = resolveWorkspacePathStrict(
     workspaceRoot,
@@ -241,8 +266,9 @@ function normalizeOptions(input: ProduceRepositorySymbolIndexInput): ProducerOpt
     maxFileBytes: positiveInteger(input.maxFileBytes, DEFAULT_MAX_FILE_BYTES, "maxFileBytes"),
     maxTotalBytes: positiveInteger(input.maxTotalBytes, DEFAULT_MAX_TOTAL_BYTES, "maxTotalBytes"),
     textEncoding: input.textEncoding ?? "auto",
-    commandTimeoutMs: positiveInteger(input.commandTimeoutMs, DEFAULT_COMMAND_TIMEOUT_MS, "commandTimeoutMs"),
-    signal: input.signal
+    deadline: owner.deadline,
+    processingOperation: owner,
+    signal: owner.signal
   }
 }
 
@@ -424,14 +450,19 @@ async function git(
   args: string[],
   maxStdoutBytes: number
 ): Promise<{ stdout: Buffer; stderr: Buffer; exitCode: number }> {
-  return runExternalProcess({
+  options.processingOperation.throwIfCancelled()
+  try {
+  const result = await runExternalProcess({
     command: "git",
     args,
     cwd: options.repositoryRoot,
     maxStdoutBytes,
-    timeoutMs: options.commandTimeoutMs,
+    deadline: options.deadline,
     signal: options.signal
   })
+  options.processingOperation.throwIfCancelled()
+  return result
+  } catch (error) { options.processingOperation.throwIfCancelled(); throw error }
 }
 
 function normalizeRevision(value: string): string {

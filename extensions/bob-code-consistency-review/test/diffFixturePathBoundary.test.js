@@ -56,3 +56,10 @@ test("diff fixtures reject unsafe or silently normalized changed paths", async (
     )
   }
 })
+
+// Break: an expired operation reaches fixture resolution/open before cancellation.
+test('pre_expired_diff_fixture_has_no_read',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'t17-expired-fixture-'));await fs.writeFile(path.join(root,'diff.json'),'{}');let opens=0;
+ const open=fs.open,spy=require('node:test').mock.method(fs,'open',(...args)=>{opens++;return open(...args);});
+ try{await assert.rejects(()=>collectGitDiff({review:{vcs:'git',base:'main',head:'HEAD'}},{workspaceRoot:root,diffFixturePath:'diff.json',deadline:{expires_at_monotonic_ms:0}}),e=>e.code==='processing_cancelled'&&e.kind==='deadline');assert.equal(opens,0);}finally{spy.mock.restore();}
+});

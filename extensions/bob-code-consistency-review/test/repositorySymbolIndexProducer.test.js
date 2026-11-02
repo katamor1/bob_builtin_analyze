@@ -497,3 +497,5 @@ function legacyProducerOptionsHash() {
   })
   return `sha256:${createHash("sha256").update(value).digest("hex")}`
 }
+
+require('node:test').test('repository_index_borrows_owner_for_git_without_disposing_parent',async t=>{const r=require('../out/sharedProcessingBudgetRuntime'),runner=require('../out/core/externalProcessRunner'),owner=r.createProcessingOperation({profile:r.DEFAULT_PROCESSING_BUDGET_PROFILE}),sentinel=new Error('transport'),root=require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(),'t17-index-owner-'));let captured;t.mock.method(runner,'runExternalProcess',async options=>{captured=options;throw sentinel;});try{await require('node:assert/strict').rejects(()=>require('../out/evidenceScope/repositorySymbolIndexProducer').produceRepositorySymbolIndex({workspaceRoot:root,sourceRevision:'a'.repeat(40),indexPath:INDEX_PATH,processingOperation:owner,signal:owner.signal}),e=>e===sentinel);require('node:assert/strict').equal(captured.deadline,owner.deadline);require('node:assert/strict').equal(captured.signal,owner.signal);owner.throwIfCancelled();}finally{owner.dispose();}});

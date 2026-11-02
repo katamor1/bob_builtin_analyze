@@ -12,7 +12,7 @@ test('pipeline_has_one_owner_before_review_input_and_path_checks',async()=>{
  const a=mock.method(factory,'createPipelineProcessingOperation',(...args)=>{const owner=original(...args);owners.push(owner);return owner;});
  const b=mock.method(fileSystem,'resolveWorkspacePathStrict',(...args)=>{if(args[2]==='artifact path'){referenceChecks++;assert.equal(owners[0].snapshot().categories.find(x=>x.category==='document_count').committed,1);}return resolve(...args);});
  const d=mock.method(fsp,'open',async(...args)=>{if(path.resolve(args[0])===path.join(root,'input.json')){inputOpened=true;assert.equal(owners.length,1);}return open(...args);});
- const e=mock.method(documents,'extractDocuments',async(input,options)=>{assert.equal(owners.length,1);assert.strictEqual(options.processingOperation,owners[0]);owners[0].assertDocuments(options.operation);assert.strictEqual(options.signal,c.signal);result=await extract(input,options);throw stop;});
+ const e=mock.method(documents,'extractDocuments',async(input,options)=>{assert.equal(owners.length,1);assert.strictEqual(options.processingOperation,owners[0]);owners[0].assertDocuments(options.operation);assert.strictEqual(options.signal,owners[0].signal);result=await extract(input,options);throw stop;});
  try{
   await assert.rejects(()=>preprocessReview({workspaceRoot:root,inputPath:'input.json',outDir:'.bob-review/package',diffFixturePath:'diff.json',abortSignal:c.signal}),error=>error===stop);
   assert.equal(inputOpened,true);assert.equal(referenceChecks,2);assert.equal(owners.length,1);const snapshot=owners[0].snapshot(),used=id=>snapshot.categories.find(x=>x.category===id).committed;
