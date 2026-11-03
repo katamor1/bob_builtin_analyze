@@ -11,6 +11,11 @@ on:
       - "scripts/t15-aggregate-installed*"
       - "scripts/t16-input-process-installed*"
       - "scripts/t17-deadline-installed*"
+      - "tools/main-consolidation/deadlineAdmissionPolicy.mjs"
+      - "tools/main-consolidation/deadline-source-admission.json"
+      - "tools/main-consolidation/test/deadlineAdmissionPolicy.test.mjs"
+      - "tools/main-consolidation/test/helpers/deadlineAdmissionFixture.mjs"
+      - "docs/release-evidence/proc-t17-deadline-source-coverage-2026-11-02.json"
       - "tools/main-consolidation/inputProcessAdmissionPolicy.mjs"
       - "tools/main-consolidation/input-process-source-admission.json"
       - "tools/main-consolidation/test/inputProcessAdmissionPolicy.test.mjs"
@@ -41,6 +46,11 @@ on:
       - "scripts/t15-aggregate-installed*"
       - "scripts/t16-input-process-installed*"
       - "scripts/t17-deadline-installed*"
+      - "tools/main-consolidation/deadlineAdmissionPolicy.mjs"
+      - "tools/main-consolidation/deadline-source-admission.json"
+      - "tools/main-consolidation/test/deadlineAdmissionPolicy.test.mjs"
+      - "tools/main-consolidation/test/helpers/deadlineAdmissionFixture.mjs"
+      - "docs/release-evidence/proc-t17-deadline-source-coverage-2026-11-02.json"
       - "tools/main-consolidation/inputProcessAdmissionPolicy.mjs"
       - "tools/main-consolidation/input-process-source-admission.json"
       - "tools/main-consolidation/test/inputProcessAdmissionPolicy.test.mjs"
@@ -195,7 +205,7 @@ jobs:
           if-no-files-found: error
 
       - name: Verify literal admission and current product limits
-        run: node --test --test-concurrency=1 tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/boundedDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/gateRMainAdmissionPolicy.test.mjs scripts/exact-head-ci-contract.test.js tools/main-consolidation/test/inputProcessAdmissionPolicy.test.mjs
+        run: node --test --test-concurrency=1 tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/boundedDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/gateRMainAdmissionPolicy.test.mjs scripts/exact-head-ci-contract.test.js tools/main-consolidation/test/inputProcessAdmissionPolicy.test.mjs tools/main-consolidation/test/deadlineAdmissionPolicy.test.mjs
 
       - name: Bind actual installed package evidence
         id: evidence

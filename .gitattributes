@@ -141,3 +141,8 @@ tools/main-consolidation/input-process-source-admission.json text eol=lf
 docs/release-evidence/proc-t16-input-process-source-coverage-2026-10-31.json text eol=lf
 
 docs/release-evidence/proc-t16-input-process-completion-2026-10-31.json text eol=lf
+
+# T17 literal current inputs and future separate completion retain LF bytes.
+tools/main-consolidation/deadline-source-admission.json text eol=lf
+docs/release-evidence/proc-t17-deadline-source-coverage-2026-11-02.json text eol=lf
+docs/release-evidence/proc-t17-deadline-completion-2026-11-02.json text eol=lf
