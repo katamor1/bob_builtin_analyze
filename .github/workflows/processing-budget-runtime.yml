@@ -10,6 +10,7 @@ on:
       - "scripts/t14-bounded-document*"
       - "scripts/t15-aggregate-installed*"
       - "scripts/t16-input-process-installed*"
+      - "scripts/t17-deadline-installed*"
       - "tools/main-consolidation/inputProcessAdmissionPolicy.mjs"
       - "tools/main-consolidation/input-process-source-admission.json"
       - "tools/main-consolidation/test/inputProcessAdmissionPolicy.test.mjs"
@@ -39,6 +40,7 @@ on:
       - "scripts/t14-bounded-document*"
       - "scripts/t15-aggregate-installed*"
       - "scripts/t16-input-process-installed*"
+      - "scripts/t17-deadline-installed*"
       - "tools/main-consolidation/inputProcessAdmissionPolicy.mjs"
       - "tools/main-consolidation/input-process-source-admission.json"
       - "tools/main-consolidation/test/inputProcessAdmissionPolicy.test.mjs"
@@ -118,6 +120,10 @@ jobs:
           git cat-file -e 49f39e1a6ec35e5db98e9ef698d4ce43369c9760^{commit}
           git cat-file -e a826dc20c0e71f472401adf644ca8cc777b74c58^{commit}
           git cat-file -e 7fc7a371e6506290d8626d06e9b12c2a67888b47^{commit}
+          git fetch --no-tags --depth=1 --no-write-fetch-head origin 6ce384313c1072e34ced342260304c9c7dd07e9e
+          git fetch --no-tags --depth=1 --no-write-fetch-head origin 7ea786afd5715d841526000a402c831d6c2a203c
+          git cat-file -e 6ce384313c1072e34ced342260304c9c7dd07e9e^{commit}
+          git cat-file -e 7ea786afd5715d841526000a402c831d6c2a203c^{commit}
 
       - name: Prepare physical evidence root
         run: |
@@ -148,16 +154,18 @@ jobs:
           npm run package:smoke --prefix extensions/bob-bazaar-review
           npm run package --prefix extensions/bob-code-consistency-review
           npm run package:policy --prefix extensions/bob-code-consistency-review
+          npm run package --prefix extensions/workflow-register
+          npm run package:policy --prefix extensions/workflow-register
 
       - name: Verify document build and artifact contracts
-        run: node --test scripts/processing-runtime-build-workflow.test.js scripts/t14-bounded-document-installed-smoke.test.mjs scripts/t15-aggregate-installed-smoke.test.mjs scripts/t16-input-process-installed-smoke.test.mjs scripts/extension-host-smoke-contract.test.js scripts/three-extension-ui-contract-workflow.test.js
+        run: node --test scripts/processing-runtime-build-workflow.test.js scripts/t14-bounded-document-installed-smoke.test.mjs scripts/t15-aggregate-installed-smoke.test.mjs scripts/t16-input-process-installed-smoke.test.mjs scripts/t17-deadline-installed-smoke.test.mjs scripts/extension-host-smoke-contract.test.js scripts/three-extension-ui-contract-workflow.test.js
 
       - name: Prepare installed document artifacts
         id: document-artifacts
         run: |
           node --input-type=module <<'NODE'
           import fs from "node:fs"; import path from "node:path"; import crypto from "node:crypto";
-          import {createArtifactManifest} from "./scripts/t16-input-process-installed-smoke.mjs";
+          import {createArtifactManifest} from "./scripts/t17-deadline-installed-smoke.mjs";
           const manifest=await createArtifactManifest(process.cwd(),process.env.PROCESSING_BUDGET_ARTIFACT_ROOT);
           const evidenceRoot=path.join(process.env.PROCESSING_BUDGET_ARTIFACT_ROOT,"installed-host-"+crypto.randomBytes(8).toString("hex"));
           fs.appendFileSync(process.env.GITHUB_OUTPUT,"manifest="+manifest+"\ninput_root="+path.dirname(manifest)+"\nevidence_root="+evidenceRoot+"\n");
@@ -168,17 +176,17 @@ jobs:
 
       - name: Verify installed document runtime on Ubuntu
         if: runner.os == 'Linux'
-        run: xvfb-run -a node scripts/t16-input-process-installed-smoke.mjs --artifacts "${{ steps.document-artifacts.outputs.manifest }}" --evidence-root "${{ steps.document-artifacts.outputs.evidence_root }}"
+        run: xvfb-run -a node scripts/t17-deadline-installed-smoke.mjs --artifacts "${{ steps.document-artifacts.outputs.manifest }}" --evidence-root "${{ steps.document-artifacts.outputs.evidence_root }}"
 
       - name: Verify installed document runtime on Windows
         if: runner.os == 'Windows'
-        run: node scripts/t16-input-process-installed-smoke.mjs --artifacts "${{ steps.document-artifacts.outputs.manifest }}" --evidence-root "${{ steps.document-artifacts.outputs.evidence_root }}"
+        run: node scripts/t17-deadline-installed-smoke.mjs --artifacts "${{ steps.document-artifacts.outputs.manifest }}" --evidence-root "${{ steps.document-artifacts.outputs.evidence_root }}"
 
       - name: Upload installed document runtime proof
         if: always() && steps.document-artifacts.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: t16-input-process-${{ matrix.os }}
+          name: t17-deadline-${{ matrix.os }}
           path: |
             ${{ steps.document-artifacts.outputs.input_root }}
             ${{ steps.document-artifacts.outputs.evidence_root }}/receipt.json
