@@ -32,3 +32,10 @@ test('t13_to_t16_historical_validators_and_raw_bindings_are_unchanged',async()=>
 test('deadline_coverage_and_future_completion_are_literal_lf',async()=>{
  const{createDeadlineAdmissionFixture}=await import('./helpers/deadlineAdmissionFixture.mjs'),f=createDeadlineAdmissionFixture(parent()),future='docs/release-evidence/proc-t17-deadline-completion-2026-11-02.json',target=path.join(f.root,future);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,'{\n  "future": true\n}\n');f.git('add','--',future);f.git('config','core.autocrlf','true');const output=path.join(parent(),'checkout');fs.mkdirSync(output);f.git('checkout-index','--force','--prefix='+output.split(path.sep).join('/')+'/', '--',admissionPath,coveragePath,future);for(const file of [admissionPath,coveragePath,future])assert.equal(fs.readFileSync(path.join(output,file)).includes(13),false,file);
 });
+
+test('deadline_fixture_accepts_equivalent_case_parent_and_returns_physical_root',{skip:process.platform!=='win32'},async()=>{
+ const {createDeadlineAdmissionFixture}=await import('./helpers/deadlineAdmissionFixture.mjs'),physical=fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()),'t17-case-parent-')),alternate=path.join(path.dirname(physical),path.basename(physical).toUpperCase());assert.equal(fs.realpathSync.native(alternate),fs.realpathSync.native(physical));const f=createDeadlineAdmissionFixture(alternate);assert.equal(f.root,fs.realpathSync.native(f.root));assert.equal(path.resolve(f.git('rev-parse','--absolute-git-dir')),path.resolve(f.root,'.git'));
+});
+test('deadline_fixture_rejects_true_parent_directory_alias',async()=>{
+ const {createDeadlineAdmissionFixture}=await import('./helpers/deadlineAdmissionFixture.mjs'),physical=parent(),holder=parent(),alias=path.join(holder,'alias');fs.symlinkSync(physical,alias,process.platform==='win32'?'junction':'dir');assert.throws(()=>createDeadlineAdmissionFixture(alias),/fixture parent required/);
+});

@@ -14,6 +14,13 @@
       "sourceItemIds": []
     },
     {
+      "afterBlobSha": "e16073582491b4bae4ffffecc58cb80768f9ce81",
+      "beforeBlobSha": "059fa43e3b2f00e6f4084cc8e7c4570df66cf661",
+      "mode": "100644",
+      "path": ".github/workflows/extensions-quality.yml",
+      "sourceItemIds": []
+    },
+    {
       "afterBlobSha": "8e0584f4e7ad460627a27614e68211d6b5a60117",
       "beforeBlobSha": "b3ce7eb17dea870d2214e103d99e788fbabfe20a",
       "mode": "100644",
@@ -21,7 +28,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "7a48291c611b4f723830d9bb188f75d55cf17296",
+      "afterBlobSha": "825b3e921bbb9d1d3f34ea34615d49cd7091ab68",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "docs/release-evidence/proc-t17-deadline-source-coverage-2026-11-02.json",
@@ -245,7 +252,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "66652642c29815d99d935dea12dd8a30106d631e",
+      "afterBlobSha": "095ad7c462e30de363de3a14d55b23d20408887d",
       "beforeBlobSha": "3f231e8c49cb6780c2a7c52a55f36e55e3223644",
       "mode": "100644",
       "path": "scripts/processing-runtime-build-workflow.test.js",
@@ -301,14 +308,14 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "1a96f91eb5b8f9573fb1015c0d8399ae603ef412",
+      "afterBlobSha": "22125371ef9c4fff6b79c71e6e07556a34ec42fc",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "tools/main-consolidation/test/deadlineAdmissionPolicy.test.mjs",
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "4a7d8434a6a3f8d57aa7538a22349fd1821a98bb",
+      "afterBlobSha": "b9808a65390b20aedfd7c6129d8c889e61f7989a",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "tools/main-consolidation/test/helpers/deadlineAdmissionFixture.mjs",
@@ -323,7 +330,7 @@
     }
   ],
   "schemaVersion": "bob-builtin-analyze/deadline-source-admission/v1",
-  "sourceCoverageDigest": "9e045f8f18855776dc67e6e1e2b702306febc9aa6748bd0638b5e63f817b063c",
+  "sourceCoverageDigest": "92e4d751a96ec04ba843892e087c7315c9392a7e6ede55383ff15465134761f5",
   "sourceRows": [
     {
       "afterBlobSha": "07f2d7269fdc85ea79c739720a73ddf47e7906ad",

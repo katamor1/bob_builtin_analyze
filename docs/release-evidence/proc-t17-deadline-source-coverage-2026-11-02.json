@@ -44,6 +44,15 @@
       ]
     },
     {
+      "beforeBlobSha": "059fa43e3b2f00e6f4084cc8e7c4570df66cf661",
+      "classification": "additionalCurrentMainPrerequisite",
+      "path": ".github/workflows/extensions-quality.yml",
+      "reason": "Current T17 GateR hosted suites need immutable M0/owner Git objects after checkout guard in both quality OS jobs; preserve five workflows/eighteen event rows and all production payloads.",
+      "testPaths": [
+        "scripts/processing-runtime-build-workflow.test.js"
+      ]
+    },
+    {
       "beforeBlobSha": "b3ce7eb17dea870d2214e103d99e788fbabfe20a",
       "classification": "additionalCurrentMainPrerequisite",
       "path": ".github/workflows/processing-budget-runtime.yml",

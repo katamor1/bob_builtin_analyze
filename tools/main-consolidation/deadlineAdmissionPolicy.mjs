@@ -16,8 +16,8 @@ const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const ADMISSION="tools/main-consolidation/deadline-source-admission.json",COVERAGE="docs/release-evidence/proc-t17-deadline-source-coverage-2026-11-02.json",POLICY="tools/main-consolidation/deadlineAdmissionPolicy.mjs";
 const BASE="6ce384313c1072e34ced342260304c9c7dd07e9e",TREE="8b2738d648aeff346be05167cd30d952e974686a",OWNER="7ea786afd5715d841526000a402c831d6c2a203c";
 function freeze(value){if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;}
-export const DEADLINE_SOURCE_ADMISSION_SHA256="f7bc1eddd81d5e6061c0f1dcab76a4cf9f36db4891bd831cbe0d4dd7dfe8f5b5";
-export const DEADLINE_SOURCE_COVERAGE_SHA256="9e045f8f18855776dc67e6e1e2b702306febc9aa6748bd0638b5e63f817b063c";
+export const DEADLINE_SOURCE_ADMISSION_SHA256="16d19440857b42e53daa55f37762fa5ab13c88192c846b638c4661bd822f4a4c";
+export const DEADLINE_SOURCE_COVERAGE_SHA256="92e4d751a96ec04ba843892e087c7315c9392a7e6ede55383ff15465134761f5";
 export const DEADLINE_HISTORICAL_BINDINGS=freeze({
   "tools/main-consolidation/registry-bridge-source-admission.json": {
     "blobSha": "c03c3477038bb1a96aa339e9c9a0b4868055cc85",
@@ -363,6 +363,7 @@ const SOURCE_PATHS=freeze([
 ]);
 const CONTROL_PATHS=freeze([
   ".gitattributes",
+  ".github/workflows/extensions-quality.yml",
   ".github/workflows/processing-budget-runtime.yml",
   "docs/release-evidence/proc-t17-deadline-source-coverage-2026-11-02.json",
   "docs/superpowers/plans/2026-11-02-proc-t17-deadline.md",
@@ -411,6 +412,7 @@ const CONTROL_PATHS=freeze([
 const DOMAIN_PATHS=freeze({
   "gate_r_shipping": [
     ".gitattributes",
+    ".github/workflows/extensions-quality.yml",
     ".github/workflows/processing-budget-runtime.yml",
     "docs/release-evidence/proc-t17-deadline-source-coverage-2026-11-02.json",
     "docs/superpowers/plans/2026-11-02-proc-t17-deadline.md",
@@ -495,6 +497,7 @@ const DOMAIN_PATHS=freeze({
   ],
   "processing_budget": [
     ".gitattributes",
+    ".github/workflows/extensions-quality.yml",
     ".github/workflows/processing-budget-runtime.yml",
     "docs/release-evidence/proc-t17-deadline-source-coverage-2026-11-02.json",
     "docs/superpowers/plans/2026-11-02-proc-t17-deadline.md",
