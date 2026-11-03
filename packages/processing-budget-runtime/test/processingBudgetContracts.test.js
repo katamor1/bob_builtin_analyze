@@ -69,7 +69,7 @@ test('t14_io_graph_is_closed_and_has_no_product_or_dynamic_runtime_imports',()=>
  const ts=require('typescript');
  const dependencies={
   index:['./generatedProcessingBudgetDefinition','./processingBudgetError','./processingBudgetProfile','./processingBudgetLedger','./boundedDocumentIo','./boundedDocumentError','./documentBudget','./workbookBudget','./deadlineCancellation'],
-  deadlineCancellation:['node:perf_hooks'],
+  deadlineCancellation:['node:perf_hooks','node:events'],
   boundedDocumentError:[],
   boundedDocumentRequest:['node:path','./boundedDocumentError','./processingBudgetLedger','./processingBudgetProfile','./deadlineCancellation'],
   boundedDocumentFile:['./deadlineCancellation','node:crypto','node:fs','node:fs/promises','node:path','./boundedDocumentError','./boundedDocumentRequest','./processingBudgetLedger','./processingBudgetError'],
@@ -86,6 +86,7 @@ test('t14_io_graph_is_closed_and_has_no_product_or_dynamic_runtime_imports',()=>
   function visit(node){
    if(ts.isImportDeclaration(node)||ts.isExportDeclaration(node)){
     if(node.moduleSpecifier)assert.ok(dependencies[name].includes(node.moduleSpecifier.text),'unknown or product dependency: '+name);
+    if(node.moduleSpecifier?.text==='node:events'){const clause=node.importClause,binding=clause?.namedBindings;assert.ok(name==='deadlineCancellation'&&ts.isImportDeclaration(node)&&clause&&!clause.name&&binding&&ts.isNamedImports(binding)&&binding.elements.length===1&&!binding.elements[0].propertyName&&binding.elements[0].name.text==='addAbortListener','only abort subscription import');}
     if(ts.isExportDeclaration(node))assert.ok(node.exportClause,'no wildcard export');
    }
    if(ts.isCallExpression(node)&&((ts.isIdentifier(node.expression)&&node.expression.text==='require')||node.expression.kind===ts.SyntaxKind.ImportKeyword))assert.fail('dynamic runtime import');
@@ -104,6 +105,8 @@ test('t14_io_graph_is_closed_and_has_no_product_or_dynamic_runtime_imports',()=>
  assert.throws(()=>inspect('boundedDocumentIo','fetch("https://example.invalid");'),/unknown runtime/);
  assert.throws(()=>inspect('boundedDocumentIo','setTimeout(()=>{},1);'),/unknown runtime/);
  assert.throws(()=>inspect('deadlineCancellation','import {spawn} from "node:child_process";'),/unknown or product/);
+ assert.throws(()=>inspect('boundedDocumentIo','import {addAbortListener} from "node:events";'),/unknown or product/);
+ for(const text of ['import {EventEmitter} from "node:events";','import * as events from "node:events";','export {addAbortListener} from "node:events";'])assert.throws(()=>inspect('deadlineCancellation',text),/only abort subscription/);
 });
 
 

@@ -231,7 +231,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "0930e7fefe894c151e4e9e1bf3729af6810bf68b",
+      "afterBlobSha": "3b25d7554aac4e2f5558c8e8e798d72545548e90",
       "beforeBlobSha": "05628f97cb206005da8fbd326a208c9752dc1d4d",
       "mode": "100644",
       "path": "packages/processing-budget-runtime/test/processingBudgetContracts.test.js",
