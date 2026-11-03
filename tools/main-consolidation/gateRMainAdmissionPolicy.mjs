@@ -1,4 +1,5 @@
-import {applyInputProcessSourceAdmission,validateInputProcessRepository} from './inputProcessAdmissionPolicy.mjs';
+import {applyDeadlineSourceAdmission,validateDeadlineRepository} from './deadlineAdmissionPolicy.mjs';
+import {applyInputProcessSourceAdmission} from './inputProcessAdmissionPolicy.mjs';
 import {applyAggregateDocumentSourceAdmission} from './aggregateDocumentAdmissionPolicy.mjs';
 import {applyBoundedDocumentSourceAdmission} from './boundedDocumentAdmissionPolicy.mjs';
 import { createHash } from 'node:crypto';
@@ -297,7 +298,7 @@ export function gateRUpstreamMainFiles(){return applyRegistryDiscoveryUpstreamAd
 export function gateRDiscoveryMainFiles(){validateRegistryDiscoveryCoverage(readGateRContainedFile(root,'docs/release-evidence/reg-bridge-discovery-source-coverage-2026-10-20.json'));return applyRegistryDiscoverySourceAdmission(readGateRContainedFile(root,'tools/main-consolidation/registry-discovery-source-admission.json'),gateRUpstreamMainFiles());}
 export function gateRBoundedDocumentMainFiles(){return applyBoundedDocumentSourceAdmission(readGateRContainedFile(root,'tools/main-consolidation/bounded-document-source-admission.json'),{domain:'gate_r_shipping',baseFiles:gateRDiscoveryMainFiles()});}
 export function gateRAggregateDocumentMainFiles(){return applyAggregateDocumentSourceAdmission(readGateRContainedFile(root,'tools/main-consolidation/aggregate-document-source-admission.json'),{domain:'gate_r_shipping',baseFiles:gateRBoundedDocumentMainFiles()});}
-export function gateRCurrentMainFiles(){return applyInputProcessSourceAdmission(readGateRContainedFile(root,'tools/main-consolidation/input-process-source-admission.json'),{domain:'gate_r_shipping',baseFiles:gateRAggregateDocumentMainFiles()});}
+export function gateRInputProcessMainFiles(){return applyInputProcessSourceAdmission(readGateRContainedFile(root,'tools/main-consolidation/input-process-source-admission.json'),{domain:'gate_r_shipping',baseFiles:gateRAggregateDocumentMainFiles()});}
 export function validateGateRMainRepositoryFiles(input) {
  gateRCanonicalJson(input);if(!Array.isArray(input))fail('source files array');gateRPathRows(input,'source files');
  if(!gateRCanonicalJson(input).equals(gateRCanonicalJson(gateRCurrentMainFiles())))fail('unselected source/shipping change or blob drift');return true;
@@ -305,7 +306,7 @@ export function validateGateRMainRepositoryFiles(input) {
 const blobHash = bytes => createHash('sha1').update(Buffer.from('blob '+bytes.length+'\0')).update(bytes).digest('hex');
 function measuredBlob(bytes,expected){if(blobHash(bytes)===expected)return expected;if(!bytes.subarray(0,8000).includes(0)&&blobHash(Buffer.from(bytes.toString('utf8').replaceAll('\r\n','\n')))===expected)return expected;fail('source blob identity drift');}
 export function validateGateRMainRepository() {
- validateInputProcessRepository(root);
+ validateDeadlineRepository(root);
  const expected=gateRCurrentMainFiles(),known=new Set(expected.map(f=>f.path)),snapshot=[];
  for(const f of expected)snapshot.push({path:f.path,mode:f.mode,blobSha:measuredBlob(readGateRContainedFile(root,f.path),f.blobSha)});
  function scan(p,top=false){for(const entry of readdirSync(resolve(root,p),{withFileTypes:true})){
@@ -319,3 +320,6 @@ export function validateGateRMainRepository() {
  scan('tools/workflow-evidence');
  validateGateRMainRepositoryFiles(snapshot);
 }
+
+export function gateRDeadlineMainFiles(){return applyDeadlineSourceAdmission(readGateRContainedFile(root,'tools/main-consolidation/deadline-source-admission.json'),{domain:'gate_r_shipping',baseFiles:gateRInputProcessMainFiles()});}
+export function gateRCurrentMainFiles(){return gateRDeadlineMainFiles();}

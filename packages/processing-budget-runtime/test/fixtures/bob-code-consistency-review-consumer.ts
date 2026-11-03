@@ -81,3 +81,10 @@ processing.reserve("single_document_bytes", 1)
 void processing.ledger
 // @ts-expect-error processing owner input is closed
 createProcessingOperation({ profile, skipCharge: true })
+
+import { createAbsoluteDeadline, createCancellationScope, type AbsoluteProcessingDeadline } from "../.."
+const deadline: AbsoluteProcessingDeadline = createAbsoluteDeadline(1000)
+const scope = createCancellationScope({ deadline })
+scope.remainingMilliseconds(); scope.throwIfCancelled(); scope.dispose()
+// @ts-expect-error deadline timestamps must be numbers
+createCancellationScope({ deadline: { expires_at_monotonic_ms: "later" } })

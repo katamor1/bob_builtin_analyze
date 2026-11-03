@@ -148,15 +148,18 @@ type Part = { facts: PartFacts } | { failed: true }
 // Called only with entries already checked by the existing ZIP owner. Errors
 // from unused candidate parts are deferred; bytes and decoded strings escape
 // neither this callback nor its small structural facts.
-export function createXlsxInspectionObserver(): { observeEntry(name: string, validatedBytes: Uint8Array): void; finish(): XlsxWorkbookInspection } {
+export function createXlsxInspectionObserver(check: () => void = () => {}): { observeEntry(name: string, validatedBytes: Uint8Array): void; finish(): XlsxWorkbookInspection } {
   const parts = new Map<string, Part>()
   let finished = false
   return Object.freeze({
     observeEntry(entry: string, bytes: Uint8Array): void {
+      check()
       if (finished || typeof entry !== "string" || parts.has(entry)) unsafe()
-      try { parts.set(entry, { facts: inspectPart(entry, bytes) }) } catch { parts.set(entry, { failed: true }) }
+      try { parts.set(entry, { facts: inspectPart(entry, bytes, check) }) } catch { check(); parts.set(entry, { failed: true }) }
+      check()
     },
     finish(): XlsxWorkbookInspection {
+      check()
       if (finished) unsafe()
       finished = true
       function required(entry: string, root: string): PartFacts {
@@ -168,6 +171,7 @@ export function createXlsxInspectionObserver(): { observeEntry(name: string, val
       const relationships = required("xl/_rels/workbook.xml.rels", "Relationships").relationships
       const names = new Set<string>(), ids = new Set<string>(), targets = new Set<string>()
       const sheets = declarations.map(sheet => {
+        check()
         if (names.has(sheet.name) || ids.has(sheet.relationshipId)) unsafe()
         names.add(sheet.name); ids.add(sheet.relationshipId)
         const relationship = relationships.get(sheet.relationshipId)
@@ -182,15 +186,17 @@ export function createXlsxInspectionObserver(): { observeEntry(name: string, val
         if (rowSpan > 0 && facts.dimensionLastRow > rowSpan) unsafe()
         return Object.freeze({ name: sheet.name, partName: target, rowSpan })
       })
+      check()
       return Object.freeze({ sheets: Object.freeze(sheets) })
     }
   })
 }
 
-function inspectPart(entry: string, bytes: Uint8Array): PartFacts {
+function inspectPart(entry: string, bytes: Uint8Array, check: () => void): PartFacts {
   const sheets: SheetDeclaration[] = [], relationships = new Map<string, Relationship>()
   let row = 0, rowSpan = 0, dimensionLastRow = 0
   const root = scanXml(bytes, tag => {
+    check()
     const local = localName(tag.name)
     if (entry === "xl/workbook.xml" && local === "sheet") {
       const ids = Object.entries(tag.attributes).filter(([key]) => localName(key) === "id").map(([, value]) => value)
@@ -223,7 +229,8 @@ function inspectPart(entry: string, bytes: Uint8Array): PartFacts {
         row = Math.max(row, cellRow); rowSpan = Math.max(rowSpan, cellRow)
       }
     }
-  })
+  }, check)
+  check()
   return { root, sheets: Object.freeze(sheets), relationships, rowSpan, dimensionLastRow }
 }
 
@@ -248,9 +255,10 @@ function resolveTarget(base: string, target: string): string {
 }
 
 function xmlCharacters(value: string): void { if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/.test(value)) unsafe() }
-function entities(value: string): string {
+function entities(value: string, check: () => void): string {
   let output = "", offset = 0
   while (offset < value.length) {
+    check()
     const amp = value.indexOf("&", offset)
     if (amp < 0) { output += value.slice(offset); break }
     output += value.slice(offset, amp)
@@ -272,9 +280,10 @@ function entities(value: string): string {
   return output
 }
 function terminator(xml: string, offset: number, token: string): number { const end = xml.indexOf(token, offset); if (end < 0) unsafe(); return end }
-function tagEnd(xml: string, start: number): number {
+function tagEnd(xml: string, start: number, check: () => void): number {
   let quote: string | undefined
   for (let index = start; index < xml.length; index++) {
+    if (((index - start) & 4095) === 0) check()
     const character = xml[index]
     if (quote !== undefined) { if (character === quote) quote = undefined }
     else if (character === '"' || character === "'") quote = character
@@ -283,13 +292,14 @@ function tagEnd(xml: string, start: number): number {
   }
   return unsafe()
 }
-function parseTag(source: string): { tag: XmlTag; closed: boolean } {
+function parseTag(source: string, check: () => void): { tag: XmlTag; closed: boolean } {
   let offset = 0
   const whitespace = () => { const start = offset; while (/[\t\r\n ]/.test(source[offset] ?? "") && offset < source.length) offset++; return offset > start }
   const readName = () => { const match = /^[A-Za-z_:][A-Za-z0-9_.:-]*/.exec(source.slice(offset)); if (!match) unsafe(); offset += match[0].length; return match[0] }
   const name = readName(), attributes: Record<string, string> = Object.create(null) as Record<string, string>
   let closed = false
   while (offset < source.length) {
+    check()
     const separated = whitespace()
     if (offset === source.length) break
     if (source[offset] === "/") { closed = true; offset++; if (offset !== source.length) unsafe(); break }
@@ -302,37 +312,41 @@ function parseTag(source: string): { tag: XmlTag; closed: boolean } {
     if (end < 0 || Object.hasOwn(attributes, key)) unsafe()
     const raw = source.slice(offset, end)
     if (raw.includes("<")) unsafe()
-    attributes[key] = entities(raw); offset = end + 1
+    attributes[key] = entities(raw, check); offset = end + 1
   }
   return { tag: Object.freeze({ name, attributes: Object.freeze(attributes) }), closed }
 }
-function scanXml(bytes: Uint8Array, visit: (tag: XmlTag) => void): string {
+function scanXml(bytes: Uint8Array, visit: (tag: XmlTag) => void, check: () => void): string {
+  check()
   let xml: string
   try { xml = new TextDecoder("utf-8", { fatal: true }).decode(bytes) } catch { return unsafe() }
+  check()
   xmlCharacters(xml)
   const stack: string[] = []
   let offset = 0, root: string | undefined
   while (offset < xml.length) {
+    check()
     const start = xml.indexOf("<", offset), text = xml.slice(offset, start < 0 ? xml.length : start)
-    entities(text)
+    entities(text, check)
     if (!stack.length && text.trim()) unsafe()
     if (start < 0) { offset = xml.length; break }
     if (xml.startsWith("<!--", start)) { const end = terminator(xml, start + 4, "-->"); if (xml.slice(start + 4, end).includes("--")) unsafe(); offset = end + 3; continue }
     if (xml.startsWith("<![CDATA[", start)) { if (!stack.length) unsafe(); offset = terminator(xml, start + 9, "]]>") + 3; continue }
     if (xml.startsWith("<?", start)) { offset = terminator(xml, start + 2, "?>") + 2; continue }
     if (xml.startsWith("<!", start)) unsafe()
-    const end = tagEnd(xml, start + 1), source = xml.slice(start + 1, end)
+    const end = tagEnd(xml, start + 1, check), source = xml.slice(start + 1, end)
     if (source.startsWith("/")) {
       const match = /^\/([A-Za-z_:][A-Za-z0-9_.:-]*)[\t\r\n ]*$/.exec(source)
       if (!match || stack.pop() !== match[1]) unsafe()
     } else {
-      const { tag, closed } = parseTag(source)
+      const { tag, closed } = parseTag(source, check)
       if (!stack.length) { if (root !== undefined) unsafe(); root = localName(tag.name) }
       visit(tag)
       if (!closed) stack.push(tag.name)
     }
     offset = end + 1
   }
+  check()
   if (stack.length || root === undefined) unsafe()
   return root
 }

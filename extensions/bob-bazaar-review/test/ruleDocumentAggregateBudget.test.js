@@ -3,7 +3,7 @@ const {test,mock}=require('node:test'),assert=require('node:assert/strict'),fs=r
 const shared=require('../out/sharedProcessingBudgetRuntime'),api=require('../out/ruleAuthoring/extraction/documentExtractor'),xlsx=require('../out/ruleAuthoring/extraction/xlsxExtractor');
 const {DEFAULT_RULE_AUTHORING_LIMITS:defaults}=require('../out/ruleAuthoring/ruleAuthoringLimits'),{createXlsxFixture}=require('./helpers/ruleDocumentFixtures');
 async function fixture(t,name='source.doc',bytes=Buffer.from('legacy')){const root=await fs.mkdtemp(path.join(os.tmpdir(),'bob-t15-rule-'));t.after(async()=>{assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep));await fs.rm(root,{recursive:true,force:true});});const filePath=path.join(root,name);await fs.writeFile(filePath,bytes);return{root,filePath,bytes};}
-function observe(t){assert.equal(typeof shared.createRuleDocumentOperation,'function','rule operation factory must exist');const create=shared.createRuleDocumentOperation,operations=[],m=mock.method(shared,'createRuleDocumentOperation',(...args)=>{const op=create(...args);operations.push(op);return op;});t.after(()=>m.mock.restore());return operations;}
+function observe(t){assert.equal(typeof shared.createRuleDocumentOperation,'function','rule operation factory must exist');const create=shared.createProcessingOperation,operations=[],m=mock.method(shared,'createProcessingOperation',(...args)=>{const op=create(...args);operations.push(op);return op;});t.after(()=>m.mock.restore());return operations;}
 const usage=(op,id)=>op.snapshot().categories.find(x=>x.category===id).committed;
 
 // Break caught: per-document contexts, or the count reservation after source I/O starts.

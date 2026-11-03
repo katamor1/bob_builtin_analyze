@@ -48,7 +48,7 @@ test("Windows cancellation waits for taskkill tree completion after the parent e
       args: [],
       cwd: process.cwd(),
       maxStdoutBytes: 1024,
-      timeoutMs: 1000,
+      deadline: require("../out/sharedProcessingBudgetRuntime").createAbsoluteDeadline(1000),
       signal: controller.signal
     })
     let settled = false

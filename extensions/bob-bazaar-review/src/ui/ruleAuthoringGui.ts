@@ -137,7 +137,8 @@ export interface RuleAuthoringGuiDependencies {
   extractRuleDocuments: (
     requests: readonly RuleDocumentExtractionRequest[],
     existingManifest: RuleSourceManifestV1 | undefined,
-    limits: RuleAuthoringLimits
+    limits: RuleAuthoringLimits,
+    options?: { signal?: AbortSignal }
   ) => Promise<RuleDocumentBatchResult>
   persistRuleAuthoringExtraction: (
     input: PersistRuleAuthoringExtractionInput
@@ -429,6 +430,7 @@ class RuleAuthoringGuiController {
   private warnings: string[] = []
   private status: string
   private operationGeneration = 0
+  private extractionAbortController?: AbortController
   private disposed = false
   private confirmationStarted = false
   private externalCompletionStarted = false
@@ -456,6 +458,7 @@ class RuleAuthoringGuiController {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
+    this.abortExtraction()
     this.operationGeneration += 1
     if (!this.externalCompletionStarted) this.input.settle({ status: "cancelled" }, false)
   }
@@ -494,7 +497,7 @@ class RuleAuthoringGuiController {
         await this.resumeRun(message.runId)
         return
       case "cancelRun":
-        this.input.settle({ status: "cancelled" })
+        this.handlePriorityCancel()
     }
   }
 
@@ -611,7 +614,11 @@ class RuleAuthoringGuiController {
       this.render()
       return
     }
+    this.abortExtraction()
+    const abortController = new AbortController()
+    this.extractionAbortController = abortController
     const generation = ++this.operationGeneration
+    try {
     let selected: SelectedSource[]
     try {
       selected = await revalidateSelectedSources(this.selectedSources, this.input.limits)
@@ -639,7 +646,8 @@ class RuleAuthoringGuiController {
     const batch = await this.input.dependencies.extractRuleDocuments(
       requests,
       existingManifest,
-      this.input.limits
+      this.input.limits,
+      { signal: abortController.signal }
     )
     if (!this.operationIsCurrent(generation)) return
 
@@ -687,6 +695,8 @@ class RuleAuthoringGuiController {
       ? "Extraction scope is ready. Review chunks, then use the separate AI payload confirmation action."
       : "AI payload consent is disabled until every exclusion is explicitly approved."
     this.render()
+
+    } finally { if (this.extractionAbortController === abortController) this.extractionAbortController = undefined }
   }
 
   private async setChunkIncluded(chunkId: string, included: boolean): Promise<void> {
@@ -848,6 +858,11 @@ class RuleAuthoringGuiController {
     this.extractionReady = false
     this.canonicalOverflow = false
     this.canonicalMismatch = false
+  }
+
+  private abortExtraction(): void {
+    this.extractionAbortController?.abort()
+    this.extractionAbortController = undefined
   }
 
   private operationIsCurrent(generation: number): boolean {

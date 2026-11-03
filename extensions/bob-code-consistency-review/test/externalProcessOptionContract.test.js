@@ -7,7 +7,7 @@ test('all_process_callers_use_explicit_stdout_without_legacy_alias',()=>{
   const source=fs.readFileSync(path.join(__dirname,'..',relative),'utf8'),tree=ts.createSourceFile(relative,source,ts.ScriptTarget.Latest,true);
   function visit(node){
    if(ts.isIdentifier(node))assert.notEqual(node.text,'maxBufferBytes',relative);
-   if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['runExternalProcess','runner'].includes(node.expression.text)){const options=node.arguments[0];assert.ok(options&&ts.isObjectLiteralExpression(options),relative);assert.ok(options.properties.some(p=>p.name?.getText(tree)==='maxStdoutBytes'),relative);calls++;}
+   if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['runExternalProcess','runner'].includes(node.expression.text)){const options=node.arguments[0];assert.ok(options&&ts.isObjectLiteralExpression(options),relative);assert.ok(options.properties.some(p=>p.name?.getText(tree)==='maxStdoutBytes'),relative);assert.ok(options.properties.some(p=>p.name?.getText(tree)==='deadline'),relative);assert.equal(options.properties.some(p=>p.name?.getText(tree)==='timeoutMs'),false,relative);calls++;}
    ts.forEachChild(node,visit);
   }visit(tree);
  }

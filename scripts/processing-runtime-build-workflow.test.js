@@ -18,8 +18,8 @@ test("every_companion_build_prepares_shared_dependencies_first", () => {
   const runtime = workflow("processing-budget-runtime")
   assert.match(runtime, /timeout-minutes: 20/)
   for (const extension of ["bob-bazaar-review", "bob-code-consistency-review"]) assert.ok(runtime.includes("npm run package --prefix extensions/" + extension))
-  assert.match(runtime, /xvfb-run -a node scripts\/t16-input-process-installed-smoke.mjs/)
-  assert.match(runtime, /node scripts\/t16-input-process-installed-smoke.mjs --artifacts/)
+  assert.match(runtime, /xvfb-run -a node scripts\/t17-deadline-installed-smoke.mjs/)
+  assert.match(runtime, /node scripts\/t17-deadline-installed-smoke.mjs --artifacts/)
   const contract = JSON.parse(fs.readFileSync(path.join(root, "tools/main-consolidation/exact-head-ci-contract.json")))
   assert.equal(contract.workflows.flatMap(x => x.jobs).length, 18)
 })
@@ -53,9 +53,9 @@ test("clean_parser_contracts_and_artifact_inputs_precede_mutating_host_tooling",
  assert.ok(pack<contracts&&contracts<prepare&&prepare<tooling&&tooling<host,"clean npm-ci parser bytes must be tested/captured before no-save tooling mutates their layout");
 });
 
-test('workflow_builds_before_host_tooling_and_runs_t15_on_both_os',()=>{
+test('workflow_retains_T15_admission_and_runs_current_host_on_both_os',()=>{
  const source=workflow('processing-budget-runtime');for(const event of ['pull_request','push']){const start=source.indexOf('  '+event+':'),end=source.indexOf(event==='pull_request'?'  push:':'  workflow_dispatch:');const block=source.slice(start,end);for(const entry of ['scripts/t15-aggregate-installed*','tools/main-consolidation/aggregateDocumentAdmissionPolicy.mjs','tools/main-consolidation/aggregate-document-source-admission.json','tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs','docs/release-evidence/proc-t15-aggregate-source-coverage-2026-10-26.json'])assert.ok(block.includes('"'+entry+'"'),entry);}
- assert.match(source,/xvfb-run -a node scripts\/t16-input-process-installed-smoke\.mjs/);assert.match(source,/name: t16-input-process-\$\{\{ matrix\.os \}\}/);assert.ok(source.indexOf('createArtifactManifest')<source.indexOf('npm install --no-save'));assert.match(source,/scripts\/t14-bounded-document-installed-smoke\.test\.mjs/);assert.match(source,/scripts\/t16-input-process-installed-smoke\.test\.mjs/);
+ assert.match(source,/xvfb-run -a node scripts\/t17-deadline-installed-smoke\.mjs/);assert.match(source,/name: t17-deadline-\$\{\{ matrix\.os \}\}/);assert.ok(source.indexOf('createArtifactManifest')<source.indexOf('npm install --no-save'));assert.match(source,/scripts\/t14-bounded-document-installed-smoke\.test\.mjs/);assert.match(source,/scripts\/t16-input-process-installed-smoke\.test\.mjs/);
 });
 test('companion_vsix_excludes_development_payload_before_manifest',()=>{
  for(const name of ['bob-bazaar-review','bob-code-consistency-review']){const source=fs.readFileSync(path.join(root,'extensions',name,'.vscodeignore'),'utf8');assert.ok(source.split(/\r?\n/).includes('out/shared-processing-budget-runtime/*.d.ts'),name);assert.ok(source.split(/\r?\n/).includes('out/**/*.map'),name);}
@@ -72,6 +72,12 @@ test('runtime_installs_workflow_schema_owner_before_admission',()=>{
  assert.ok(guard<install&&install<admission,'the gate R schema test resolves Ajv from the Workflow owner');assert.equal(source.split(command).length-1,1);
 });
 
-test('workflow_builds_before_host_tooling_and_runs_t16_on_both_os',()=>{
- const source=workflow('processing-budget-runtime');for(const token of ['scripts/t16-input-process-installed*','t16-input-process-installed-smoke.test.mjs','xvfb-run -a node scripts/t16-input-process-installed-smoke.mjs','name: t16-input-process-','b3d18e2d9c3aa272f861a28c69e8e963572186c8','49f39e1a6ec35e5db98e9ef698d4ce43369c9760'])assert.ok(source.includes(token),token);assert.ok(source.indexOf('createArtifactManifest')<source.indexOf('npm install --no-save'));
+test('workflow_retains_T16_admission_and_runs_current_host_on_both_os',()=>{
+ const source=workflow('processing-budget-runtime');for(const token of ['scripts/t16-input-process-installed*','t16-input-process-installed-smoke.test.mjs','xvfb-run -a node scripts/t17-deadline-installed-smoke.mjs','name: t17-deadline-','b3d18e2d9c3aa272f861a28c69e8e963572186c8','49f39e1a6ec35e5db98e9ef698d4ce43369c9760'])assert.ok(source.includes(token),token);assert.ok(source.indexOf('createArtifactManifest')<source.indexOf('npm install --no-save'));
+});
+
+test('T17_runtime_flow_uses_same_real_artifacts_and_both_native_OS_jobs',()=>{const source=workflow('processing-budget-runtime'),block=job(source,'test');assert.match(block,/os: \[ubuntu-latest, windows-latest\]/);assert.match(block,/t17-deadline-installed-smoke\.mjs/);assert.match(block,/xvfb-run -a node scripts\/t17-deadline-installed-smoke\.mjs/);for(const extension of ['workflow-register','bob-bazaar-review','bob-code-consistency-review'])assert.ok(block.includes('npm run package --prefix extensions/'+extension));const guard=block.indexOf('run: node scripts/verify-ci-head.js'),fetch=block.indexOf('6ce384313c1072e34ced342260304c9c7dd07e9e');assert.ok(guard>=0&&fetch>guard);assert.ok(block.includes('t17-deadline-installed-smoke.test.mjs'));assert.equal((source.match(/^  test:$/gm)||[]).length,1);});
+
+test('T17_quality_GateR_jobs_fetch_exact_immutable_subjects_after_guard',()=>{
+ const source=workflow('extensions-quality');for(const id of ['workflow-register','windows-smoke']){const block=job(source,id),guard=block.indexOf('run: node scripts/verify-ci-head.js'),start=block.indexOf('- name: Fetch immutable deadline admission subjects'),tests=block.indexOf('- name: Unit tests');assert.ok(guard>=0&&start>guard&&tests>start,id+' guard/fetch/test order');const next=block.indexOf('\n      - name:',start+8),fetch=block.slice(start,next<0?block.length:next);assert.ok(fetch.includes('shell: bash'));assert.ok(fetch.includes('working-directory: '+String.fromCharCode(36)+'{{ github.workspace }}'));assert.ok(fetch.includes('set -euo pipefail'));for(const sha of ['6ce384313c1072e34ced342260304c9c7dd07e9e','7ea786afd5715d841526000a402c831d6c2a203c']){assert.ok(fetch.includes('git fetch --no-tags --depth=1 --no-write-fetch-head origin '+sha));assert.ok(fetch.includes('git cat-file -e '+sha+'^{commit}'));}if(id==='windows-smoke')assert.ok(fetch.includes("if: matrix.extension == 'workflow-register'"));}
 });

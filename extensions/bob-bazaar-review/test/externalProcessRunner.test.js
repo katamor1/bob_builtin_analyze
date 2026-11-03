@@ -6,21 +6,21 @@ const { test, mock } = require("node:test")
 
 const {
   ExternalProcessError,
-  normalizeExternalProcessTimeoutMs,
   runExternalProcess
 } = require("../out/bazaar/externalProcessRunner")
 
 const cwd = process.cwd()
 
 function runNode(script, options = {}) {
+  const {timeoutMs=10000,...rest}=options
   return runExternalProcess({
     command: process.execPath,
     args: ["-e", script],
     cwd,
     maxStdoutBytes: 1024 * 1024,
-    timeoutMs: 10000,
+    deadline: require("../out/sharedProcessingBudgetRuntime").createAbsoluteDeadline(timeoutMs),
     allowedExitCodes: [0],
-    ...options
+    ...rest
   })
 }
 
@@ -42,12 +42,7 @@ test("external process runner terminates commands that exceed the hard timeout",
   assert.ok(elapsedMs < 5000, `timeout and bounded process-tree cleanup took ${elapsedMs}ms`)
 })
 
-test("external process runner clamps timeouts to the safety range", () => {
-  assert.equal(normalizeExternalProcessTimeoutMs(1), 1000)
-  assert.equal(normalizeExternalProcessTimeoutMs(1000), 1000)
-  assert.equal(normalizeExternalProcessTimeoutMs(600000), 600000)
-  assert.equal(normalizeExternalProcessTimeoutMs(Number.MAX_SAFE_INTEGER), 600000)
-})
+
 
 test("external process runner propagates AbortSignal cancellation", async () => {
   const controller = new AbortController()
@@ -57,21 +52,11 @@ test("external process runner propagates AbortSignal cancellation", async () => 
 })
 
 test("external process runner closes the preflight-to-listener cancellation race", async () => {
-  let abortedReads = 0
-  const signal = {
-    get aborted() {
-      abortedReads += 1
-      return abortedReads >= 2
-    },
-    addEventListener() {},
-    removeEventListener() {}
-  }
-
-  await rejectsWithKind(
-    runNode("setInterval(() => {}, 1000)", { signal, timeoutMs: 100 }),
-    "cancelled"
-  )
-  assert.ok(abortedReads >= 2)
+  const controller = new AbortController(), signal = controller.signal
+  const add = signal.addEventListener.bind(signal)
+  signal.addEventListener = (...args) => { add(...args); controller.abort() }
+  await rejectsWithKind(runNode("setInterval(() => {}, 1000)", { signal, timeoutMs: 100 }), "cancelled")
+  assert.equal(signal.aborted, true)
 })
 
 // Break: stderr consumes stdout allowance, or an overflowing slice retains the giant input chunk.

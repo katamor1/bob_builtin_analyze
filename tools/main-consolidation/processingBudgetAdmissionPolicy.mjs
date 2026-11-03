@@ -1,4 +1,5 @@
-import {applyInputProcessSourceAdmission,validateInputProcessRepository} from './inputProcessAdmissionPolicy.mjs';
+import {applyDeadlineSourceAdmission,validateDeadlineRepository} from './deadlineAdmissionPolicy.mjs';
+import {applyInputProcessSourceAdmission} from './inputProcessAdmissionPolicy.mjs';
 import {applyAggregateDocumentSourceAdmission} from './aggregateDocumentAdmissionPolicy.mjs';
 import {applyBoundedDocumentSourceAdmission} from './boundedDocumentAdmissionPolicy.mjs';
 import fs from 'node:fs';
@@ -190,12 +191,12 @@ export function processingBudgetT14SourceFiles(){return applyBoundedDocumentSour
 
 export function processingBudgetT15SourceFiles(){return applyAggregateDocumentSourceAdmission(fs.readFileSync(path.join(ROOT,'tools/main-consolidation/aggregate-document-source-admission.json')),{domain:'processing_budget',baseFiles:processingBudgetT14SourceFiles()});}
 
-export function processingBudgetCurrentSourceFiles(){return applyInputProcessSourceAdmission(fs.readFileSync(path.join(ROOT,'tools/main-consolidation/input-process-source-admission.json')),{domain:'processing_budget',baseFiles:processingBudgetT15SourceFiles()});}
+export function processingBudgetT16SourceFiles(){return applyInputProcessSourceAdmission(fs.readFileSync(path.join(ROOT,'tools/main-consolidation/input-process-source-admission.json')),{domain:'processing_budget',baseFiles:processingBudgetT15SourceFiles()});}
 export function validateProcessingBudgetRepository(root=ROOT){
  root=path.resolve(root);if(!fs.lstatSync(root).isDirectory()||fs.lstatSync(root).isSymbolicLink())fail('repository root');
  for(const [relative,expected] of Object.entries(baselines))if(gateRDigest(fs.readFileSync(safeFile(root,relative)))!==expected)fail('unchanged Owner/Discovery baseline');
  validateProcessingBudgetSourceAdmission(read(root,ADMISSION));validateProcessingBudgetCoverage(read(root,COVERAGE));
- validateInputProcessRepository(root);
+ validateDeadlineRepository(root);
  const git=(args,input)=>execFileSync('git',args,{cwd:root,input,encoding:'utf8',maxBuffer:16*1024*1024,stdio:['pipe','pipe','pipe']}).trim();
  const expected=processingBudgetCurrentSourceFiles(),controls=[ADMISSION,'tools/main-consolidation/processingBudgetAdmissionPolicy.mjs'];
  const required=[...new Set([...expected.map(row=>row.path),...controls])].sort();
@@ -222,3 +223,6 @@ export function validateProcessingBudgetRepository(root=ROOT){
  if(JSON.stringify(actual.sort())!==JSON.stringify(packagePaths))fail('unadmitted package inventory');
  for(const relative of [packagePrefix+'contracts/processing-budget-definition.v1.json',packagePrefix+'src/generatedProcessingBudgetDefinition.ts',packagePrefix+'schema/processing-budget-profile.v1.schema.json'])if(fs.readFileSync(safeFile(root,relative)).includes(13))fail('canonical contract LF');
 }
+
+export function processingBudgetT17DeadlineSourceFiles(){return applyDeadlineSourceAdmission(fs.readFileSync(path.join(ROOT,'tools/main-consolidation/deadline-source-admission.json')),{domain:'processing_budget',baseFiles:processingBudgetT16SourceFiles()});}
+export function processingBudgetCurrentSourceFiles(){return processingBudgetT17DeadlineSourceFiles();}

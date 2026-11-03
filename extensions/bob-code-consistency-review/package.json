@@ -168,7 +168,7 @@
           "default": 120000,
           "minimum": 1000,
           "maximum": 600000,
-          "description": "Git／Bazaar コマンド1回あたりの実行上限時間（ミリ秒）です。"
+          "description": "Git／Bazaar を含む前処理一回全体で共有する実行期限（ミリ秒）です。"
         },
         "bobCodeConsistency.textEncoding": {
           "type": "string",

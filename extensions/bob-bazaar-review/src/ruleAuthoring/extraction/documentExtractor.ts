@@ -1,7 +1,7 @@
 import * as path from "node:path"
 import { DEFAULT_RULE_AUTHORING_LIMITS, type RuleAuthoringLimits } from "../ruleAuthoringLimits"
 import type { SourceFingerprint } from "../ruleSourceHash"
-import { createRuleDocumentOperation, normalizeRuleDocumentLimits, assertDocumentNotCancelled, BoundedDocumentError, ProcessingBudgetError, type DocumentOperation, type DocumentAdmission } from "../../sharedProcessingBudgetRuntime"
+import { createProcessingOperation, createRuleDocumentProfile, createAbsoluteDeadline, remainingDeadlineMilliseconds, type ProcessingOperation, type SharedAbsoluteDeadline, normalizeRuleDocumentLimits, assertDocumentNotCancelled, BoundedDocumentError, ProcessingBudgetError, type DocumentOperation, type DocumentAdmission } from "../../sharedProcessingBudgetRuntime"
 import {
   assignSourceIds,
   buildRuleSourceManifest,
@@ -15,7 +15,7 @@ import type {
 } from "../ruleAuthoringTypes"
 import { extractDocx } from "./docxExtractor"
 import { withRuleOoxmlParserInput } from "./ooxmlArchive"
-import { extractPdf, type PdfExtractionOptions } from "./pdfExtractor"
+import { extractPdf, normalizePdfTimeout, type PdfExtractionOptions } from "./pdfExtractor"
 import { extractXlsx } from "./xlsxExtractor"
 
 type LocalDocumentMediaType = RuleSourceMediaType | "doc" | "xls"
@@ -23,8 +23,9 @@ type LocalDocumentMediaType = RuleSourceMediaType | "doc" | "xls"
 export interface RuleDocumentExtractionRequest {
   filePath: string
   logicalName?: string
+  deadline?: SharedAbsoluteDeadline
   signal?: AbortSignal
-  pdf?: Omit<PdfExtractionOptions, "sourceId" | "maxChunkBytes" | "maxOutputBytes">
+  pdf?: Omit<PdfExtractionOptions, "sourceId" | "maxChunkBytes" | "maxOutputBytes" | "processingOperation">
 }
 
 export interface DocumentExtractionResult {
@@ -86,6 +87,7 @@ interface ExtractionContext {
   limits: RuleAuthoringLimits
   sourceId?: string
   operation: DocumentOperation
+  processingOperation: ProcessingOperation
   selectionIndex: number
   admission?: DocumentAdmission
   signal?: AbortSignal
@@ -97,13 +99,15 @@ const LEGACY_EXTRACTOR = Object.freeze({ id: "legacy-office", version: "1" })
 export async function extractRuleDocument(
   request: RuleDocumentExtractionRequest
 ): Promise<DocumentExtractionResult> {
-  const selected = validatedRequest(request), signal = selected.signal ?? selected.pdf?.signal
-  assertDocumentNotCancelled(signal)
+  const selected = validatedRequest(request), source = selected.signal ?? selected.pdf?.signal
+  assertDocumentNotCancelled(source)
   const limits = boundedRuleAuthoringLimits(DEFAULT_RULE_AUTHORING_LIMITS)
-  const operation = createRuleDocumentOperation(1, limits, signal)
-  const result = await extractRuleDocumentWithContext(selected, { limits, operation, selectionIndex: 0, signal })
-  assertDocumentNotCancelled(signal)
-  return result
+  const { owner, operation } = createRuleDocumentControl(1, limits, source === undefined ? [] : [source], selectedDeadline([selected]))
+  try {
+    const result = await extractRuleDocumentWithContext(selected, { limits, operation, processingOperation: owner, selectionIndex: 0, signal: owner.signal })
+    owner.throwIfCancelled()
+    return result
+  } finally { owner.dispose() }
 }
 
 async function extractRuleDocumentWithContext(
@@ -150,6 +154,8 @@ async function extractRuleDocumentWithContext(
   } else {
     extracted = await extractPdf(absolutePath, {
       ...request.pdf,
+      processingOperation: context.processingOperation,
+      deadline: context.processingOperation.deadline,
       signal: context.signal,
       sourceId,
       maxChunkBytes: limits.maxChunkBytes,
@@ -180,27 +186,30 @@ export async function extractRuleDocuments(
   requests: readonly RuleDocumentExtractionRequest[],
   existingManifest: RuleSourceManifestV1 | undefined,
   limits: RuleAuthoringLimits = DEFAULT_RULE_AUTHORING_LIMITS,
-  options?: { signal?: AbortSignal }
+  options?: { signal?: AbortSignal; deadline?: SharedAbsoluteDeadline }
 ): Promise<RuleDocumentBatchResult> {
-  const common = ownRuleData(options ?? {}, [], ["signal"]).signal as AbortSignal | undefined
+  const settings = ownRuleData(options ?? {}, [], ["signal", "deadline"]), common = settings.signal as AbortSignal | undefined
   assertDocumentNotCancelled(common)
   const sourceArray = requestArray(requests), effectiveLimits = boundedRuleAuthoringLimits(limits)
-  const operation = createRuleDocumentOperation(sourceArray.count, effectiveLimits, common)
-  if (existingManifest) assertCanonicalExistingManifest(existingManifest)
+  assertSourceCount(sourceArray.count, effectiveLimits)
   const selected = sourceArray.values().map(value => {
     const request = validatedRequest(value), signal = common ?? request.signal ?? request.pdf?.signal
     return Object.freeze({ ...request, signal })
   })
-  const assertActive = () => { assertDocumentNotCancelled(common); for (const item of selected) assertDocumentNotCancelled(item.signal) }
+  const sources = common === undefined ? selected.map(item => item.signal).filter((signal): signal is AbortSignal => signal !== undefined) : [common]
+  const { owner, operation } = createRuleDocumentControl(sourceArray.count, effectiveLimits, sources, selectedDeadline(selected, settings.deadline as SharedAbsoluteDeadline | undefined))
+  try {
+  if (existingManifest) assertCanonicalExistingManifest(existingManifest)
+  const assertActive = () => owner.throwIfCancelled()
   assertActive()
   const fingerprinted: FingerprintedRequest[] = []
   for (const [selectionIndex, request] of selected.entries()) {
     assertActive()
     const absolutePath = path.resolve(request.filePath), logicalName = request.logicalName ?? path.basename(absolutePath)
     assertLogicalName(logicalName)
-    const admission = await admitSource(operation, selectionIndex, absolutePath, path.dirname(absolutePath), request.signal, effectiveLimits)
+    const admission = await admitSource(operation, selectionIndex, absolutePath, path.dirname(absolutePath), owner.signal, effectiveLimits)
     assertActive()
-    fingerprinted.push({ selectionIndex, admission, signal: request.signal, request, absolutePath, logicalName, fingerprint: admission.fingerprint })
+    fingerprinted.push({ selectionIndex, admission, signal: owner.signal, request, absolutePath, logicalName, fingerprint: admission.fingerprint })
   }
 
   const prepared: PreparedRequest[] = fingerprinted.map((item) => ({
@@ -265,7 +274,7 @@ export async function extractRuleDocuments(
     }, {
       limits: effectiveLimits,
       sourceId,
-      operation, selectionIndex: item.selectionIndex, admission: item.admission, signal: item.signal
+      operation, processingOperation: owner, selectionIndex: item.selectionIndex, admission: item.admission, signal: item.signal
     }))
   }
 
@@ -314,6 +323,25 @@ export async function extractRuleDocuments(
     duplicates,
     diagnostics
   }
+
+  } finally { owner.dispose() }
+}
+
+function assertSourceCount(count: number, limits: RuleAuthoringLimits): void {
+  if (count > limits.maxSourceFiles) throw new ProcessingBudgetError("processing_budget_exceeded", `Rule source file count exceeds the ${limits.maxSourceFiles}-file limit`, { constrainedCategory: "document_count", limit: limits.maxSourceFiles, observed: count })
+}
+function createRuleDocumentControl(count: number, limits: RuleAuthoringLimits, signals: readonly AbortSignal[], deadline: SharedAbsoluteDeadline): { owner: ProcessingOperation; operation: DocumentOperation } {
+  const owner = createProcessingOperation({ profile: createRuleDocumentProfile(limits), signals, deadline })
+  try { return { owner, operation: owner.documents(count) } }
+  catch (error) { owner.dispose(); throw error }
+}
+function selectedDeadline(requests: readonly RuleDocumentExtractionRequest[], common?: SharedAbsoluteDeadline): SharedAbsoluteDeadline {
+  const deadlines = [common, ...requests.flatMap(request => [request.deadline, request.pdf?.deadline])].filter((value): value is SharedAbsoluteDeadline => value !== undefined)
+  if (deadlines.length > 0) {
+    const endpoints = deadlines.map(deadline => { remainingDeadlineMilliseconds(deadline, 0); return Object.getOwnPropertyDescriptor(deadline, "expires_at_monotonic_ms")!.value as number })
+    return Object.freeze({ expires_at_monotonic_ms: Math.min(...endpoints) })
+  }
+  return createAbsoluteDeadline(requests.length === 0 ? normalizePdfTimeout(undefined) : Math.min(...requests.map(request => normalizePdfTimeout(request.pdf?.timeoutMs))))
 }
 
 function classifyExtension(logicalName: string): LocalDocumentMediaType {
@@ -392,12 +420,12 @@ function ownRuleData(value: unknown, required: readonly string[], optional: read
   return result
 }
 function validatedRequest(value: unknown): RuleDocumentExtractionRequest {
-  const data = ownRuleData(value, ["filePath"], ["logicalName", "pdf", "signal", "limits", "sourceId"])
+  const data = ownRuleData(value, ["filePath"], ["logicalName", "pdf", "signal", "deadline", "limits", "sourceId"])
   if (typeof data.filePath !== "string" || (data.logicalName !== undefined && typeof data.logicalName !== "string")) throw new BoundedDocumentError("bounded_document_input_invalid")
-  const pdf = data.pdf == null ? undefined : Object.freeze(ownRuleData(data.pdf, [], ["sourceId", "command", "timeoutMs", "maxOutputBytes", "maxChunkBytes", "signal", "runner"]))
+  const pdf = data.pdf == null ? undefined : Object.freeze(ownRuleData(data.pdf, [], ["sourceId", "command", "timeoutMs", "maxOutputBytes", "maxChunkBytes", "signal", "deadline", "runner"]))
   // Legacy JavaScript hints remain inert; neither identity nor budgets may be
   // supplied through a per-document request, and no nested hint is evaluated.
-  return Object.freeze({ filePath: data.filePath, logicalName: data.logicalName, pdf, signal: data.signal ?? undefined }) as unknown as RuleDocumentExtractionRequest
+  return Object.freeze({ filePath: data.filePath, logicalName: data.logicalName, pdf, signal: data.signal ?? undefined, deadline: data.deadline }) as unknown as RuleDocumentExtractionRequest
 }
 function requestArray(value: readonly RuleDocumentExtractionRequest[]): { count: number; values(): unknown[] } {
   if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) throw new BoundedDocumentError("bounded_document_input_invalid")

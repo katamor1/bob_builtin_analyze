@@ -91,6 +91,17 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/workflow-register/package-lock.json
 
+      - name: Fetch immutable deadline admission subjects
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 --no-write-fetch-head origin 6ce384313c1072e34ced342260304c9c7dd07e9e
+          git cat-file -e 6ce384313c1072e34ced342260304c9c7dd07e9e^{commit}
+          git fetch --no-tags --depth=1 --no-write-fetch-head origin 7ea786afd5715d841526000a402c831d6c2a203c
+          git cat-file -e 7ea786afd5715d841526000a402c831d6c2a203c^{commit}
+
+
       - name: Prepare shared processing runtime
         working-directory: ${{ github.workspace }}
         shell: bash
@@ -466,6 +477,18 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: extensions/${{ matrix.extension }}/package-lock.json
+
+      - name: Fetch immutable deadline admission subjects
+        if: matrix.extension == 'workflow-register'
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 --no-write-fetch-head origin 6ce384313c1072e34ced342260304c9c7dd07e9e
+          git cat-file -e 6ce384313c1072e34ced342260304c9c7dd07e9e^{commit}
+          git fetch --no-tags --depth=1 --no-write-fetch-head origin 7ea786afd5715d841526000a402c831d6c2a203c
+          git cat-file -e 7ea786afd5715d841526000a402c831d6c2a203c^{commit}
+
 
       - name: Prepare shared processing runtime
         working-directory: ${{ github.workspace }}

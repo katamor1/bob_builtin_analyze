@@ -1,3 +1,5 @@
+import { assertOperationNotAborted, ownData, validateSignal } from "./boundedDocumentRequest"
+
 const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50
 const CENTRAL_DIRECTORY_ENTRY_SIGNATURE = 0x02014b50
 const LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50
@@ -81,8 +83,12 @@ interface ParsedCentralDirectory {
 
 export async function preflightOoxmlArchive(
   archiveBytes: Buffer,
-  limits: OoxmlPreflightLimits
+  limits: OoxmlPreflightLimits,
+  options?: Readonly<{ signal?: AbortSignal }>
 ): Promise<OoxmlPreflightResult> {
+  const data = options === undefined ? {} : ownData(options, [], ["signal"])
+  const signal = validateSignal(data.signal), check = () => assertOperationNotAborted(signal)
+  check()
   const effectiveLimits = effectiveOoxmlLimits(limits)
   if (!Buffer.isBuffer(archiveBytes)) throw new Error("OOXML preflight requires a snapshot Buffer")
   if (archiveBytes.length < END_OF_CENTRAL_DIRECTORY_BYTES) {
@@ -95,7 +101,7 @@ export async function preflightOoxmlArchive(
   )
   const tailOffset = archiveBytes.length - tailLength
   const tail = readExactly(archiveBytes, tailLength, tailOffset, "OOXML ZIP tail")
-  const end = readEndOfCentralDirectory(tail, tailOffset, archiveBytes.length)
+  const end = readEndOfCentralDirectory(tail, tailOffset, archiveBytes.length, check)
   assertZip32EndRecord(end, tail, tailOffset)
 
   if (end.entryCount > effectiveLimits.maxEntries) {
@@ -127,8 +133,9 @@ export async function preflightOoxmlArchive(
     end.centralDirectoryOffset,
     "OOXML ZIP central directory"
   )
-  const parsed = parseCentralDirectory(centralDirectory, end, effectiveLimits)
-  const entries = validateLocalEntries(archiveBytes, parsed.entries, end.centralDirectoryOffset)
+  const parsed = parseCentralDirectory(centralDirectory, end, effectiveLimits, check)
+  const entries = validateLocalEntries(archiveBytes, parsed.entries, end.centralDirectoryOffset, check)
+  check()
   return {
     entryCount: parsed.entryNames.length,
     declaredUncompressedBytes: parsed.declaredUncompressedBytes,
@@ -179,7 +186,8 @@ function readExactly(
 function readEndOfCentralDirectory(
   tail: Buffer,
   tailOffset: number,
-  fileSize: number
+  fileSize: number,
+  check: () => void
 ): EndOfCentralDirectory {
   const firstCandidateOffset = Math.max(
     0,
@@ -190,6 +198,7 @@ function readEndOfCentralDirectory(
     offset >= firstCandidateOffset;
     offset -= 1
   ) {
+    check()
     if (tail.readUInt32LE(offset) !== END_OF_CENTRAL_DIRECTORY_SIGNATURE) continue
     const commentLength = tail.readUInt16LE(offset + 20)
     const absoluteOffset = tailOffset + offset
@@ -242,7 +251,8 @@ function assertZip32EndRecord(
 function parseCentralDirectory(
   buffer: Buffer,
   end: EndOfCentralDirectory,
-  limits: EffectiveOoxmlLimits
+  limits: EffectiveOoxmlLimits,
+  check: () => void
 ): ParsedCentralDirectory {
   const entryNames: string[] = []
   const entries: CentralDirectoryEntry[] = []
@@ -251,6 +261,7 @@ function parseCentralDirectory(
   let offset = 0
 
   for (let index = 0; index < end.entryCount; index += 1) {
+    check()
     assertAvailable(buffer, offset, CENTRAL_DIRECTORY_ENTRY_BYTES, `entry ${index} header`)
     if (buffer.readUInt32LE(offset) !== CENTRAL_DIRECTORY_ENTRY_SIGNATURE) {
       throw new Error(`OOXML ZIP central-directory entry ${index} has an invalid signature`)
@@ -270,8 +281,10 @@ function parseCentralDirectory(
     assertAvailable(buffer, offset, entryLength, `entry ${index}`)
 
     const fileNameStart = offset + CENTRAL_DIRECTORY_ENTRY_BYTES
+    check()
     const fileNameBytes = Buffer.from(buffer.subarray(fileNameStart, fileNameStart + fileNameLength))
     const fileName = fileNameBytes.toString("utf8")
+    check()
     const extraStart = fileNameStart + fileNameLength
     const extra = buffer.subarray(extraStart, extraStart + extraLength)
 
@@ -283,7 +296,7 @@ function parseCentralDirectory(
     ) {
       throw new Error(`OOXML ZIP64 marker is not supported for entry ${fileName || index}`)
     }
-    assertNoZip64Extra(extra, fileName || String(index))
+    assertNoZip64Extra(extra, fileName || String(index), check)
     if (diskNumberStart !== 0) {
       throw new Error(`OOXML multi-disk ZIP entry is not supported: ${fileName || index}`)
     }
@@ -346,11 +359,13 @@ function parseCentralDirectory(
 function validateLocalEntries(
   archiveBytes: Buffer,
   centralEntries: readonly CentralDirectoryEntry[],
-  centralDirectoryOffset: number
+  centralDirectoryOffset: number,
+  check: () => void
 ): OoxmlPreflightEntry[] {
   const validated: Array<OoxmlPreflightEntry & { physicalEnd: number }> = []
 
   for (const entry of centralEntries) {
+    check()
     const header = readExactly(
       archiveBytes,
       LOCAL_FILE_HEADER_BYTES,
@@ -393,7 +408,7 @@ function validateLocalEntries(
     if (!localFileNameBytes.equals(entry.fileNameBytes)) {
       throw new Error(`OOXML ZIP local filename does not match the central directory: ${entry.name}`)
     }
-    assertNoZip64Extra(variable.subarray(localFileNameLength), entry.name)
+    assertNoZip64Extra(variable.subarray(localFileNameLength), entry.name, check)
 
     if ((entry.flags & DATA_DESCRIPTOR_FLAG) === 0) {
       if (
@@ -418,6 +433,7 @@ function validateLocalEntries(
     const physicalEnd = (entry.flags & DATA_DESCRIPTOR_FLAG) === 0
       ? dataEnd
       : validateDataDescriptor(archiveBytes, dataEnd, centralDirectoryOffset, entry)
+    check()
     validated.push({
       name: entry.name,
       flags: entry.flags,
@@ -432,16 +448,19 @@ function validateLocalEntries(
     })
   }
 
+  check()
   const ordered = [...validated].sort((left, right) => left.localHeaderOffset - right.localHeaderOffset)
   let previousEnd = 0
   for (const entry of ordered) {
+    check()
     if (entry.localHeaderOffset < previousEnd) {
       throw new Error(`OOXML ZIP local entry ranges overlap: ${entry.name}`)
     }
     previousEnd = entry.physicalEnd
   }
 
-  return validated.map(({ physicalEnd: _physicalEnd, ...entry }) => entry)
+  check()
+  return validated.map(({ physicalEnd: _physicalEnd, ...entry }) => { check(); return entry })
 }
 
 function isZeroOrEqual(value: number, expected: number): boolean {
@@ -495,9 +514,10 @@ function assertAvailable(buffer: Buffer, offset: number, length: number, descrip
   }
 }
 
-function assertNoZip64Extra(extra: Buffer, entryName: string): void {
+function assertNoZip64Extra(extra: Buffer, entryName: string, check: () => void): void {
   let offset = 0
   while (offset < extra.length) {
+    check()
     if (offset + 4 > extra.length) {
       throw new Error(`OOXML ZIP entry has malformed extra fields: ${entryName}`)
     }

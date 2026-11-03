@@ -1,0 +1,1088 @@
+{
+  "baseFilesDigests": {
+    "gateRInputProcess": "76a5d7b3b2695a3ef60cbcd698b5dd1080d2a9e66a0370b8d404f398b658cec9",
+    "processingBudgetT16": "13006150039baa35c13e3e92451de58d2576390227ed15c4b0dcaaaafe2c8438"
+  },
+  "baseMainSha": "6ce384313c1072e34ced342260304c9c7dd07e9e",
+  "baseTreeSha": "8b2738d648aeff346be05167cd30d952e974686a",
+  "controlRows": [
+    {
+      "afterBlobSha": "f897f1fec0f776bf2cf60eb000f085896595b616",
+      "beforeBlobSha": "2b2e97c7e4bd0b0b302bc89a092e210c02ec4d38",
+      "mode": "100644",
+      "path": ".gitattributes",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "e16073582491b4bae4ffffecc58cb80768f9ce81",
+      "beforeBlobSha": "059fa43e3b2f00e6f4084cc8e7c4570df66cf661",
+      "mode": "100644",
+      "path": ".github/workflows/extensions-quality.yml",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "8e0584f4e7ad460627a27614e68211d6b5a60117",
+      "beforeBlobSha": "b3ce7eb17dea870d2214e103d99e788fbabfe20a",
+      "mode": "100644",
+      "path": ".github/workflows/processing-budget-runtime.yml",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "825b3e921bbb9d1d3f34ea34615d49cd7091ab68",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "docs/release-evidence/proc-t17-deadline-source-coverage-2026-11-02.json",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "59ecdc47f16e5dbf05ac5f8fb097897639e8fae0",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "docs/superpowers/plans/2026-11-02-proc-t17-deadline.md",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "d0758de54248e093a8e1164b8a0331b562c75cd4",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "docs/superpowers/specs/2026-11-02-proc-t17-deadline-design.md",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "18fb80b49e9a021fbda2e418a401ba0bdfaa653b",
+      "beforeBlobSha": "4b4faacdef5e69d7962f754302b3d6c6c888b189",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/bazaar/bazaarReviewCommands.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "3d15cf798976766c1d7cb003790df07a16b37194",
+      "beforeBlobSha": "09fbce82d3697a7a9fc7660f996921f0dbe06f7c",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/ui/reviewGui.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "85c23142759573f6912b1338932a2ef6fbda2789",
+      "beforeBlobSha": "b0979dc4dc4a14e17d10a197ee48a68f925f04f3",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/bazaarReviewCommandWiring.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "166e0b136eaf4cab36f532aa249521743d2ad973",
+      "beforeBlobSha": "6c20bbf14fe6791186908d38fc759967c9a81cab",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/dependencyPolicy.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "c200d33189bd656179998f58cd65e6b616bd8944",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/helpers/ruleAuthoringGuiHarness.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "93c446183142e9c678a36385c0450b54dc670c4d",
+      "beforeBlobSha": "601061fcd103778ecb8c33e8e7b2995efb6d115c",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/reviewGuiLifecycle.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "6731a90e1d1db5dad39bbda6746b3ba4616c71cb",
+      "beforeBlobSha": "c93d7eb06f4c5ae0c39367d6230985e220b9f9d8",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/reviewInputValidator.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "8d44d857b3205e70206afe3054a28928ff772610",
+      "beforeBlobSha": "ab01f27f7867cd0dc886a79eedc8755b7f9f0423",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/reviewPackageBuilder.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "4314371d6a30c0ffffb03b26a57f2469b76df8ad",
+      "beforeBlobSha": "529e9529ab39d3b75553e3e37c9ca4bbaee3182f",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/reviewPackageWriter.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "5c08a40c6a7357d946a3a95ec9174884f8a4f390",
+      "beforeBlobSha": "23d26383b11c64fd3af538625d614467fb5d5668",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/stableReviewInput.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "f4525fb4b4826b8038cab0325e2bbd2f794da2d9",
+      "beforeBlobSha": "f7caf32611700c72d1be539394d9ecb53ad1d1d0",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/dependencyPolicy.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "b5f990a9d39f8468c474a69ebeb3d92ced41d7a1",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/helpers/deadlinePipelineHarness.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "5fe997ba7983ebb7b2969ad1a477e7c67f06c848",
+      "beforeBlobSha": "8d2bdda1fa94a13ccc5d7e6febe9a4d1f8e59890",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/processingBudgetPipelineProfile.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "2fd27b2312fe8c6534d873c993e02dba215b588d",
+      "beforeBlobSha": "823bfc17f34cb78eda6b5cec0612bf6b69b18ae8",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/vcsValidation.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "a0ab283495fcd0d8e9e74187d9c863067004ba5a",
+      "beforeBlobSha": "27588791371872d0256595e4d54f8859afbb2d1c",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/README.md",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "d77e51db0163eb44e8861d7ba787f178b4ad4436",
+      "beforeBlobSha": "1da5b2ad4547a1a9c0f6ec2f594a85dad3da1278",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/scripts/runtime-payload.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "71be37a433d634c20c9d546cadf1e47a4352dce3",
+      "beforeBlobSha": "683fee6e6cd773a6c55d9b3c6f07da840186f3e7",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/documentBudget.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "8479c68670641adb2d15bf76c221f6e527cd7762",
+      "beforeBlobSha": "02c97632351c0552e169292d2ea29b10d1000d28",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/workbookBudget.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "1181de65604bc38ae73c15678829102c4a9a9e69",
+      "beforeBlobSha": "3726061b33f56ad2d385dbee55430ce655b8588d",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/aggregateIntegrationContract.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "c2b7caa25dd48824cf47cfe3ec52f1f6a934dfa4",
+      "beforeBlobSha": "79baa0b9b2e15b5b0c61d26209f16cb3e352e3bd",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/boundedDocumentPackaging.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "345672edacf51b644101f1bb63b24526cc97f93b",
+      "beforeBlobSha": "403468c5d6fc530c25d67f7a83879e22551e3d27",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/extensionIntegrationContract.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "e0cd8a91317c208e1077d4a5d5451c9eb75f1d6d",
+      "beforeBlobSha": "384c97698fe58d1edd41210b55f7f9cf74ad695f",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/fixtures/bob-bazaar-review-consumer.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "c731380f6d0b8602fcf7dd2edbd355c2d73163cf",
+      "beforeBlobSha": "7e34560ab01f7141fe99b5f89ebffa8751e18fe5",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/fixtures/bob-code-consistency-review-consumer.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "c731380f6d0b8602fcf7dd2edbd355c2d73163cf",
+      "beforeBlobSha": "7e34560ab01f7141fe99b5f89ebffa8751e18fe5",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/fixtures/workflow-register-consumer.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "8ec7f7d4886ed8cc667a17dcbf75a091ef89fc71",
+      "beforeBlobSha": "ac640de39e34c3ba67e53bf8908c42d0475e4546",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/helpers.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "04e2d688038972a14ac334a213d28fa7fcbcf378",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/helpers/deadlineClock.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "fcd8e7d450f77f2ffc44d11754e58eb79d53b6de",
+      "beforeBlobSha": "88b2073d848b5ec3ab0ffad7d740088506d07440",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/packageContract.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "3b25d7554aac4e2f5558c8e8e798d72545548e90",
+      "beforeBlobSha": "05628f97cb206005da8fbd326a208c9752dc1d4d",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/processingBudgetContracts.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "da3798d2d83d4274db02dc7c3dae9bb26251a226",
+      "beforeBlobSha": "20e6c05b6486c72ed3b5ddb0293b285f28c6abe9",
+      "mode": "100644",
+      "path": "scripts/extension-host-smoke-contract.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "095ad7c462e30de363de3a14d55b23d20408887d",
+      "beforeBlobSha": "3f231e8c49cb6780c2a7c52a55f36e55e3223644",
+      "mode": "100644",
+      "path": "scripts/processing-runtime-build-workflow.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "f483caa75536f1239c4854f436e3740cc87adff7",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/t17-deadline-installed-baseline-cases.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "9a274b5d9bb0b067d342b65e7c8540ce1a5b0382",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/t17-deadline-installed-extension-host.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "f46223f8f4aec446b7c109a506735f7ac6c6cf61",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/t17-deadline-installed-smoke.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "b7a5925a5a8f40d7de76ecf309fcfad3294ab26d",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/t17-deadline-installed-smoke.test.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "0f13c1b7f8a52d0f1a21fcda570bfe6ab9e2c47b",
+      "beforeBlobSha": "7fd53aebdc8c140a97845c1e2dda6c572215704b",
+      "mode": "100644",
+      "path": "scripts/three-extension-ui-contract-workflow.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "64bb1f2b6ce62fb17b130fa615aa2b6f6eedd61e",
+      "beforeBlobSha": "21935059b18dbf565a1e2bde2c551afeb5d253f9",
+      "mode": "100644",
+      "path": "tools/main-consolidation/gateRMainAdmissionPolicy.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "90c6871befe7904da1345f0db979ab59fcb1f6b6",
+      "beforeBlobSha": "6b4bf8e3a6e926eada5be7f32f6541fb33f97569",
+      "mode": "100644",
+      "path": "tools/main-consolidation/processingBudgetAdmissionPolicy.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "22125371ef9c4fff6b79c71e6e07556a34ec42fc",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "tools/main-consolidation/test/deadlineAdmissionPolicy.test.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "b9808a65390b20aedfd7c6129d8c889e61f7989a",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "tools/main-consolidation/test/helpers/deadlineAdmissionFixture.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "fec89e179a576ab16b9debbbdf1adf9088b00aa3",
+      "beforeBlobSha": "45e4ea9b176c81f89defc931c9dff4fad90b23f5",
+      "mode": "100644",
+      "path": "tools/main-consolidation/test/inputProcessAdmissionPolicy.test.mjs",
+      "sourceItemIds": []
+    }
+  ],
+  "schemaVersion": "bob-builtin-analyze/deadline-source-admission/v1",
+  "sourceCoverageDigest": "92e4d751a96ec04ba843892e087c7315c9392a7e6ede55383ff15465134761f5",
+  "sourceRows": [
+    {
+      "afterBlobSha": "07f2d7269fdc85ea79c739720a73ddf47e7906ad",
+      "beforeBlobSha": "c1a99c82e58dc367008ac7cfeb6ae8f943a506bc",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/bazaar/bazaar.ts",
+      "sourceItemIds": [
+        "source-7d745b5944c1a7b68cfb1465"
+      ]
+    },
+    {
+      "afterBlobSha": "6dc97f1bf14058245bfe5a934e11f69b40fcb9b5",
+      "beforeBlobSha": "3f1a4fddbf9c42247a456c741c01b580b4a4828b",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/bazaar/externalProcessRunner.ts",
+      "sourceItemIds": [
+        "source-d6e35ead5bdf9406a3ec4f01"
+      ]
+    },
+    {
+      "afterBlobSha": "996621bf76b1a93bfbc439a39da31d3c83b31056",
+      "beforeBlobSha": "f43151cd69b9ea9b27e603ef181a0dc35772a31e",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/mcp/tools.ts",
+      "sourceItemIds": [
+        "source-859cf9b394d1bc84511ef37d"
+      ]
+    },
+    {
+      "afterBlobSha": "63e8507e72bc2c2c321e0455954bfb30fcc4f40a",
+      "beforeBlobSha": "f068e6920fa28e0bbb1dc9ab835df159bccedbaf",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/ruleAuthoring/extraction/documentExtractor.ts",
+      "sourceItemIds": [
+        "source-0242818ae8483b31a38c73a6"
+      ]
+    },
+    {
+      "afterBlobSha": "6eae779d5c4fd6b13668540196dbfd496a493b2f",
+      "beforeBlobSha": "6eae779d5c4fd6b13668540196dbfd496a493b2f",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/ruleAuthoring/extraction/docxExtractor.ts",
+      "sourceItemIds": [
+        "source-e69de915da3b2c2508e9cb90"
+      ]
+    },
+    {
+      "afterBlobSha": "7abd22ab21565c411439fa173634fbc69476f1b6",
+      "beforeBlobSha": "ab4ef68738ce43fd50397a41ab40c0a5cc436e1b",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/ruleAuthoring/extraction/pdfExtractor.ts",
+      "sourceItemIds": [
+        "source-c7836f19ab61ab5583ec71aa"
+      ]
+    },
+    {
+      "afterBlobSha": "f624f57a1b51cea7ba0f3b29fc931fe20cd3d15e",
+      "beforeBlobSha": "f624f57a1b51cea7ba0f3b29fc931fe20cd3d15e",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/ruleAuthoring/extraction/xlsxExtractor.ts",
+      "sourceItemIds": [
+        "source-bda3c142c71b53f9bbdd6e2d"
+      ]
+    },
+    {
+      "afterBlobSha": "d1d2627a06e692b005acbe233d11f2cd76059804",
+      "beforeBlobSha": "d1d2627a06e692b005acbe233d11f2cd76059804",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/ruleAuthoring/ruleSourceHash.ts",
+      "sourceItemIds": [
+        "source-5af29fd63ef8b7045a65ff67"
+      ]
+    },
+    {
+      "afterBlobSha": "fe25107e6b934b2ad20a4addf5056688e5d808c9",
+      "beforeBlobSha": "b71f591648a09a6d4ff8cfce28d16b4340e968a0",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/sharedProcessingBudgetRuntime.ts",
+      "sourceItemIds": [
+        "source-6d627a871a7f238b34893ad7"
+      ]
+    },
+    {
+      "afterBlobSha": "9a6fc1678e28866b4ffde878fa1b4b1f7fa8c23d",
+      "beforeBlobSha": "7112b27266bb3b55e67c7f3f9e39a9c8e9fcf84e",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/ui/ruleAuthoringGui.ts",
+      "sourceItemIds": [
+        "source-dd222a5fc261fb64b45fba8b"
+      ]
+    },
+    {
+      "afterBlobSha": "9be6074cbc35b0e0dc589797bf30180977802585",
+      "beforeBlobSha": "6ac583e82030dc5d02c85a9c548507c764283683",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js",
+      "sourceItemIds": [
+        "source-730c5e064055f1b7adffeb69",
+        "source-7d745b5944c1a7b68cfb1465",
+        "source-b81959ae019101dc335c9c98",
+        "source-d51d0f0701cb68ddc04dc206"
+      ]
+    },
+    {
+      "afterBlobSha": "d1101731d8814712be402545d2f9cb77161423d6",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/bazaarOperationLifecycle.test.js",
+      "sourceItemIds": [
+        "source-7d745b5944c1a7b68cfb1465"
+      ]
+    },
+    {
+      "afterBlobSha": "47e5b811c80b77de47cb3b2509836ed96cc2fbaf",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js",
+      "sourceItemIds": [
+        "source-7d745b5944c1a7b68cfb1465",
+        "source-b81959ae019101dc335c9c98",
+        "source-b8b9df65d1f3050c70c13f7c",
+        "source-d6e35ead5bdf9406a3ec4f01"
+      ]
+    },
+    {
+      "afterBlobSha": "d5d8a51491733e89839517e05e533082cf55c549",
+      "beforeBlobSha": "36a1be18b97d3a155e36a10706c1b8d4be458bfc",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/externalProcessOptionContract.test.js",
+      "sourceItemIds": [
+        "source-b81959ae019101dc335c9c98"
+      ]
+    },
+    {
+      "afterBlobSha": "0941a2db0197694a61a0e081249f903643d8c1a6",
+      "beforeBlobSha": "a6c51eb59f930717b5f1ad2b70cfb381189c1f67",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/externalProcessRunner.test.js",
+      "sourceItemIds": [
+        "source-b81959ae019101dc335c9c98",
+        "source-d6e35ead5bdf9406a3ec4f01"
+      ]
+    },
+    {
+      "afterBlobSha": "2c79e3b054b9baeb074a380c1422f4a410895249",
+      "beforeBlobSha": "6b68c28fd8285fa31e2276171dde94908d0ad257",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/externalProcessWiring.test.js",
+      "sourceItemIds": [
+        "source-6d627a871a7f238b34893ad7",
+        "source-730c5e064055f1b7adffeb69",
+        "source-c84f819d75a53bfcc42d3531"
+      ]
+    },
+    {
+      "afterBlobSha": "8c6433a298e7e0bfb0b9e6bf778f3db43cb15ea4",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/mcpToolDeadline.test.js",
+      "sourceItemIds": [
+        "source-2df85f46e62ea5d5fc8545f9",
+        "source-730c5e064055f1b7adffeb69",
+        "source-859cf9b394d1bc84511ef37d"
+      ]
+    },
+    {
+      "afterBlobSha": "8eb605365a3d526fdb50a16e6d1793b2da29043b",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/posixProcessTreeTermination.test.js",
+      "sourceItemIds": [
+        "source-401a97fced069da2bee6384b",
+        "source-d6e35ead5bdf9406a3ec4f01"
+      ]
+    },
+    {
+      "afterBlobSha": "7e4adbd412cb354d3946725658308d1d74e10431",
+      "beforeBlobSha": "0178b3e972dbfd04fc0b86e7917672b4242bb4cf",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleAuthoringGui.test.js",
+      "sourceItemIds": [
+        "source-dd222a5fc261fb64b45fba8b"
+      ]
+    },
+    {
+      "afterBlobSha": "44177fdf63763a10fe0ece6c3ec85b414e6c73b5",
+      "beforeBlobSha": "828db48182fcd663bcd45cf2979e0aee7ff528b7",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleBoundedOoxmlExtraction.test.js",
+      "sourceItemIds": [
+        "source-0242818ae8483b31a38c73a6",
+        "source-e69de915da3b2c2508e9cb90"
+      ]
+    },
+    {
+      "afterBlobSha": "690c6979a6d8c332587016230b0cbb7d6672ba50",
+      "beforeBlobSha": "45d9c7c5f91105da12a58961c2152b7c2575382c",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleConfiguredFingerprintLimit.test.js",
+      "sourceItemIds": [
+        "source-5af29fd63ef8b7045a65ff67"
+      ]
+    },
+    {
+      "afterBlobSha": "1ce8911b71f0d9aab6174a670c721bfeb957d5af",
+      "beforeBlobSha": "fd00338876a6d154ebfff58f7f1dc673bb55f9fe",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleDocumentAggregateBudget.test.js",
+      "sourceItemIds": [
+        "source-0242818ae8483b31a38c73a6",
+        "source-6e83ef7a0f958789ba1fa2ed",
+        "source-bda3c142c71b53f9bbdd6e2d"
+      ]
+    },
+    {
+      "afterBlobSha": "f2f89133fdaa55b0642c0b66581956ee320587db",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleDocumentDeadline.test.js",
+      "sourceItemIds": [
+        "source-0242818ae8483b31a38c73a6",
+        "source-5af29fd63ef8b7045a65ff67",
+        "source-6d627a871a7f238b34893ad7",
+        "source-6e83ef7a0f958789ba1fa2ed",
+        "source-730c5e064055f1b7adffeb69",
+        "source-bda3c142c71b53f9bbdd6e2d",
+        "source-c7836f19ab61ab5583ec71aa",
+        "source-e69de915da3b2c2508e9cb90"
+      ]
+    },
+    {
+      "afterBlobSha": "4158ba5dc65318380bba73d71b755a6898690cdf",
+      "beforeBlobSha": "2beb99d8b1402b9e1d0006701f96c47b71d92fb2",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleDocumentSignalCompatibility.test.js",
+      "sourceItemIds": [
+        "source-0242818ae8483b31a38c73a6",
+        "source-6e83ef7a0f958789ba1fa2ed"
+      ]
+    },
+    {
+      "afterBlobSha": "4924724f2e1caeb63f0a3dfd0d8bcd566142a225",
+      "beforeBlobSha": "581630277fe8c5d6ff1fcbf9a02246f2d1831f0e",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/rulePdfExtraction.test.js",
+      "sourceItemIds": [
+        "source-4b4730055bf291daeb1a9b42",
+        "source-730c5e064055f1b7adffeb69",
+        "source-c7836f19ab61ab5583ec71aa"
+      ]
+    },
+    {
+      "afterBlobSha": "96860b26f1c0883c3dcd3e5dca525103f0d81785",
+      "beforeBlobSha": "8bd48f71c4990f48f9108b890c73afb155abedb8",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleSourceHash.test.js",
+      "sourceItemIds": [
+        "source-5af29fd63ef8b7045a65ff67"
+      ]
+    },
+    {
+      "afterBlobSha": "5f2d32a35d1f8b6286997eed2c5b34471deebbac",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/task17RuleAuthoringCancellation.test.js",
+      "sourceItemIds": [
+        "source-bb91584f71612f3e175e76f2",
+        "source-dd222a5fc261fb64b45fba8b"
+      ]
+    },
+    {
+      "afterBlobSha": "44103127b4c231d5d61a9b7633b87c7cd445fc64",
+      "beforeBlobSha": "df8955f53728dcc23912c80ee1b565477602fc4d",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/windowsProcessTreeTermination.test.js",
+      "sourceItemIds": [
+        "source-01f7821ee897fedfb488ca62",
+        "source-d6e35ead5bdf9406a3ec4f01"
+      ]
+    },
+    {
+      "afterBlobSha": "50be925d19d634b9b645bb63ff2c8013f6878bc1",
+      "beforeBlobSha": "364ae0bb19f14a20b09cb2ab22da3c2d149f9e1f",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/package.json",
+      "sourceItemIds": [
+        "source-6b16cf78cbd9cf1ded5f9240"
+      ]
+    },
+    {
+      "afterBlobSha": "eb85f2600d5e2045c24fa43b7ed1af0fc4a04f1d",
+      "beforeBlobSha": "09549af00129446d0f4abdac31e8cc825acc4ae5",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/analyzers/documentExtractor.ts",
+      "sourceItemIds": [
+        "source-9909fe163821c8d49a50588a"
+      ]
+    },
+    {
+      "afterBlobSha": "6dc97f1bf14058245bfe5a934e11f69b40fcb9b5",
+      "beforeBlobSha": "3f1a4fddbf9c42247a456c741c01b580b4a4828b",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/externalProcessRunner.ts",
+      "sourceItemIds": [
+        "source-9659ba5cde0d919ac0a0e8c8"
+      ]
+    },
+    {
+      "afterBlobSha": "631a7018bb5cc4db0c1408913b383384a7f64ed7",
+      "beforeBlobSha": "b7f39a1c6a356deebc850b97f2ba70a6626c3899",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/gitDiffCollector.ts",
+      "sourceItemIds": [
+        "source-48166ff553110df8983d5257",
+        "source-a2b03f10fed5ed28286aed02"
+      ]
+    },
+    {
+      "afterBlobSha": "a969634389e95718a7b9b89ba5ba97411b6b3377",
+      "beforeBlobSha": "8a5369e34a9a00795b3c47050fffdb546476d202",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/pipeline.ts",
+      "sourceItemIds": [
+        "source-a2b03f10fed5ed28286aed02"
+      ]
+    },
+    {
+      "afterBlobSha": "46b0efdd8bb7f2c581dca4d852926815cd5cc74d",
+      "beforeBlobSha": "2f2af601de0b4a107ec19e6d3a67711b01ab5327",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/processingBudgetPipeline.ts",
+      "sourceItemIds": [
+        "source-a2b03f10fed5ed28286aed02"
+      ]
+    },
+    {
+      "afterBlobSha": "02beb08c3c7c24f5571469f214259b4161c38618",
+      "beforeBlobSha": "2be3011c74fe05af2f64aa685d8a461e33994043",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/evidenceScope/repositorySymbolIndexProducer.ts",
+      "sourceItemIds": [
+        "source-d0917810045b5739bc8f6370"
+      ]
+    },
+    {
+      "afterBlobSha": "625764235b0f3ed2322ec0c2c174c9f661d5aec2",
+      "beforeBlobSha": "bddcd29cc4f3571055c302b49523aae287717798",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/sharedProcessingBudgetRuntime.ts",
+      "sourceItemIds": [
+        "source-ed1e49e2ede1bb77d9551e9d"
+      ]
+    },
+    {
+      "afterBlobSha": "3d61f2a08783efbb1b9e990239ee820c90a4ce1d",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/deadlineConfigurationContract.test.js",
+      "sourceItemIds": [
+        "source-4d3c8c1d47eea6437944309c",
+        "source-6b16cf78cbd9cf1ded5f9240",
+        "source-6c4642fcb7b9c15c901d72c2",
+        "source-730c5e064055f1b7adffeb69",
+        "source-a2b03f10fed5ed28286aed02"
+      ]
+    },
+    {
+      "afterBlobSha": "ec0709be69677968b598b91dbabe22b056d36ce9",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js",
+      "sourceItemIds": [
+        "source-48166ff553110df8983d5257",
+        "source-6c4642fcb7b9c15c901d72c2",
+        "source-730c5e064055f1b7adffeb69",
+        "source-9909fe163821c8d49a50588a",
+        "source-a2b03f10fed5ed28286aed02",
+        "source-d0917810045b5739bc8f6370",
+        "source-ed1e49e2ede1bb77d9551e9d"
+      ]
+    },
+    {
+      "afterBlobSha": "21a3753e22c6fff231418de797bfd5832bdb1587",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/deadlineSettlement.test.js",
+      "sourceItemIds": [
+        "source-4d3c8c1d47eea6437944309c",
+        "source-70c2dea15f32dc8ddf7a81e4",
+        "source-9659ba5cde0d919ac0a0e8c8"
+      ]
+    },
+    {
+      "afterBlobSha": "7fa3f657e3582fdf503d425d70d1ed92d6d85aa9",
+      "beforeBlobSha": "65f4e8366cb9d75cef5a8723007fcf9aaa2b6ba9",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/diffFixturePathBoundary.test.js",
+      "sourceItemIds": [
+        "source-48166ff553110df8983d5257",
+        "source-5237c6af1c153c9400cd06cf"
+      ]
+    },
+    {
+      "afterBlobSha": "4cbfd091b057c42f1042cc4bcdc5f45806c89e30",
+      "beforeBlobSha": "28ff8a16521f303c607a3be8ed48fe8fb1de4d4b",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/diffProcessingBudget.test.js",
+      "sourceItemIds": [
+        "source-48166ff553110df8983d5257"
+      ]
+    },
+    {
+      "afterBlobSha": "78ac72d0b32dd6f69a105013141ba4a987a60aa1",
+      "beforeBlobSha": "78ac72d0b32dd6f69a105013141ba4a987a60aa1",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/documentXlsxCancellationOrder.test.js",
+      "sourceItemIds": [
+        "source-9909fe163821c8d49a50588a"
+      ]
+    },
+    {
+      "afterBlobSha": "891bf7b3bf1053c06914360bb93b703b177cac5e",
+      "beforeBlobSha": "a86d35182cddd78188492746dea98ddb115733bc",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/externalProcessOptionContract.test.js",
+      "sourceItemIds": [
+        "source-4d3c8c1d47eea6437944309c"
+      ]
+    },
+    {
+      "afterBlobSha": "a5376bc525867c7310cb10c71aa02ffff6aad83b",
+      "beforeBlobSha": "cf8121458b11e4e7950929d0049345fe893523f5",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/externalProcessRunner.test.js",
+      "sourceItemIds": [
+        "source-4d3c8c1d47eea6437944309c",
+        "source-9659ba5cde0d919ac0a0e8c8"
+      ]
+    },
+    {
+      "afterBlobSha": "f8bc233df7f65c0cecf9e077d8a6429d36a3af46",
+      "beforeBlobSha": "efdcb810e2238c9e1f8800480579256c17291405",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/externalProcessWiring.test.js",
+      "sourceItemIds": [
+        "source-2b646d5d315a539415d3e73c",
+        "source-6b16cf78cbd9cf1ded5f9240",
+        "source-ed1e49e2ede1bb77d9551e9d"
+      ]
+    },
+    {
+      "afterBlobSha": "fac23abe40e5abae16d76d76e0f86080703be3b8",
+      "beforeBlobSha": "c22dd26aa8fa6dd5dac23bef955d6944727064d9",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/pipelineDocumentCancellation.test.js",
+      "sourceItemIds": [
+        "source-9909fe163821c8d49a50588a"
+      ]
+    },
+    {
+      "afterBlobSha": "d21bae8eb9d051c00f478443c02c92c2feed4398",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/pipelineFinalCancellation.test.js",
+      "sourceItemIds": [
+        "source-a2b03f10fed5ed28286aed02",
+        "source-ea3a1c93f1943b1e70e5990c"
+      ]
+    },
+    {
+      "afterBlobSha": "946aaa62799124d1117b3e42a5e0fc5b0cc89dc2",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/posixProcessTreeTermination.test.js",
+      "sourceItemIds": [
+        "source-9659ba5cde0d919ac0a0e8c8",
+        "source-ad09a42bee1d878c41fe9e79"
+      ]
+    },
+    {
+      "afterBlobSha": "6a67b79ea93d039751c8432da29e6e1405300c88",
+      "beforeBlobSha": "fc17874fdb7a01fc5182f8c3889bf4633d7ecfb3",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/processingBudgetPipelineContract.test.js",
+      "sourceItemIds": [
+        "source-a2b03f10fed5ed28286aed02"
+      ]
+    },
+    {
+      "afterBlobSha": "c7f3e25e93fbaf5a35e9c087699138ff46c73024",
+      "beforeBlobSha": "f700eabe28a1807092a2a75f187739086ab19868",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/repositorySymbolIndexProducer.test.js",
+      "sourceItemIds": [
+        "source-d0917810045b5739bc8f6370"
+      ]
+    },
+    {
+      "afterBlobSha": "fa6d8649a1a2e2f3e56c7617d8e30b7de17bec35",
+      "beforeBlobSha": "7b6c5b3b1454222897989d740fa94774842999d2",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/windowsProcessTreeTermination.test.js",
+      "sourceItemIds": [
+        "source-85b0b67dff73be4be2abfbd4",
+        "source-9659ba5cde0d919ac0a0e8c8"
+      ]
+    },
+    {
+      "afterBlobSha": "a18a4551e262c1de158eeab647ecb98b64791dd2",
+      "beforeBlobSha": "ca7a785516a2c9a4edec34ffdb046ab7307f74af",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/boundedDocumentFile.ts",
+      "sourceItemIds": [
+        "source-cdf15f7d0d73f91e0a022cfd",
+        "source-d47d8a1ad7e651d178c4ecb1"
+      ]
+    },
+    {
+      "afterBlobSha": "91d25df0573e7dd8b926a6321acfeb41db2cf081",
+      "beforeBlobSha": "91d25df0573e7dd8b926a6321acfeb41db2cf081",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/boundedDocumentIo.ts",
+      "sourceItemIds": [
+        "source-01a9655f527e3c20b24c6835",
+        "source-4e660869aa1ada148aeb2bda",
+        "source-d47d8a1ad7e651d178c4ecb1"
+      ]
+    },
+    {
+      "afterBlobSha": "5e3889b6a7a030cee97e0ed5c39af6741841f9aa",
+      "beforeBlobSha": "bc97be88ceb382e38778a084457f7e6e5aac9317",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/boundedDocumentRequest.ts",
+      "sourceItemIds": [
+        "source-cdf15f7d0d73f91e0a022cfd"
+      ]
+    },
+    {
+      "afterBlobSha": "012a3e26f02749421fc3ff1f8e52b7acd5696bb5",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/deadlineCancellation.ts",
+      "sourceItemIds": [
+        "source-3df4b118944857706a292a71",
+        "source-bf5a1d63ef4b8f946cc8f95b"
+      ]
+    },
+    {
+      "afterBlobSha": "cf6f158a6056a2d27f7de561f0548f2913cda8ec",
+      "beforeBlobSha": "7db63c6a9319d58b99b3e7c6f34f1757817513ea",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/index.ts",
+      "sourceItemIds": [
+        "source-4d84e287ca61db22836ab0d4"
+      ]
+    },
+    {
+      "afterBlobSha": "6afa11c4589aad5a70fd98326f90a2e5e20fde6f",
+      "beforeBlobSha": "65395856e76877616d4c5e772cf72e9b0ef9062a",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/ooxmlParserInput.ts",
+      "sourceItemIds": [
+        "source-01a9655f527e3c20b24c6835",
+        "source-3492db8bbbc56bda287a9055"
+      ]
+    },
+    {
+      "afterBlobSha": "ba7f6d4530b7a7b3fe63aa64ae50f3bd89520e88",
+      "beforeBlobSha": "3e7b96982cdc72a55f82b63dc60f18a0f10a805e",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/ooxmlPreflight.ts",
+      "sourceItemIds": [
+        "source-01a9655f527e3c20b24c6835",
+        "source-3492db8bbbc56bda287a9055"
+      ]
+    },
+    {
+      "afterBlobSha": "39a2241a89a7e8445ec2b991e89594b373cc40ae",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/boundedArchiveCancellation.test.js",
+      "sourceItemIds": [
+        "source-01a9655f527e3c20b24c6835",
+        "source-3492db8bbbc56bda287a9055",
+        "source-3df4b118944857706a292a71",
+        "source-4e660869aa1ada148aeb2bda",
+        "source-6eeca2d26a9aa16ab8ef600e",
+        "source-b335aea38d77e70867dbff68",
+        "source-bf5a1d63ef4b8f946cc8f95b",
+        "source-cdf15f7d0d73f91e0a022cfd",
+        "source-d47d8a1ad7e651d178c4ecb1"
+      ]
+    },
+    {
+      "afterBlobSha": "5f4bb9f247c36135414aad75cae8d025ecd62592",
+      "beforeBlobSha": "5f4bb9f247c36135414aad75cae8d025ecd62592",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/boundedDocumentIo.test.js",
+      "sourceItemIds": [
+        "source-84c0ecbeece6f1a6ebd7f215"
+      ]
+    },
+    {
+      "afterBlobSha": "a5a8b63e56ed4f5360511725ce68e17d0070f38d",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/cancellationReasonPropagation.test.js",
+      "sourceItemIds": [
+        "source-01a9655f527e3c20b24c6835",
+        "source-3492db8bbbc56bda287a9055",
+        "source-3df4b118944857706a292a71",
+        "source-422ee5e3fe35e7ae1ca2f981",
+        "source-6eeca2d26a9aa16ab8ef600e",
+        "source-bf5a1d63ef4b8f946cc8f95b",
+        "source-cdf15f7d0d73f91e0a022cfd",
+        "source-d47d8a1ad7e651d178c4ecb1"
+      ]
+    },
+    {
+      "afterBlobSha": "73e3071ca53a4c7826eac40c4fe78a172b193816",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js",
+      "sourceItemIds": [
+        "source-01a9655f527e3c20b24c6835",
+        "source-3492db8bbbc56bda287a9055",
+        "source-3df4b118944857706a292a71",
+        "source-4d84e287ca61db22836ab0d4",
+        "source-bf5a1d63ef4b8f946cc8f95b",
+        "source-cadf6df2cd6d0b41cd4b897f",
+        "source-cdf15f7d0d73f91e0a022cfd",
+        "source-d47d8a1ad7e651d178c4ecb1"
+      ]
+    },
+    {
+      "afterBlobSha": "4a97715615aeb19a61845dedca7540e7eadfe8ee",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/deadlineLongTimer.test.js",
+      "sourceItemIds": [
+        "source-01a9655f527e3c20b24c6835",
+        "source-3492db8bbbc56bda287a9055",
+        "source-3df4b118944857706a292a71",
+        "source-bf5a1d63ef4b8f946cc8f95b",
+        "source-c22f6c70eb524373f02f229b",
+        "source-cdf15f7d0d73f91e0a022cfd",
+        "source-d47d8a1ad7e651d178c4ecb1"
+      ]
+    },
+    {
+      "afterBlobSha": "ae1052f4a1eae49b9a1a6597dcb68bb4e01bcf8e",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/deadlineOperation.test.js",
+      "sourceItemIds": [
+        "source-01a9655f527e3c20b24c6835",
+        "source-3492db8bbbc56bda287a9055",
+        "source-3df4b118944857706a292a71",
+        "source-4d84e287ca61db22836ab0d4",
+        "source-84c0ecbeece6f1a6ebd7f215",
+        "source-bf5a1d63ef4b8f946cc8f95b",
+        "source-cdf15f7d0d73f91e0a022cfd",
+        "source-d47d8a1ad7e651d178c4ecb1"
+      ]
+    },
+    {
+      "afterBlobSha": "0c52aa93578cb41f87016c3e3d1969e6d7722ab8",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/deadlineReasonAuthentication.test.js",
+      "sourceItemIds": [
+        "source-01a9655f527e3c20b24c6835",
+        "source-3492db8bbbc56bda287a9055",
+        "source-3af20d158a95f6e5eb6bc244",
+        "source-3df4b118944857706a292a71",
+        "source-6eeca2d26a9aa16ab8ef600e",
+        "source-bf5a1d63ef4b8f946cc8f95b",
+        "source-cdf15f7d0d73f91e0a022cfd",
+        "source-d47d8a1ad7e651d178c4ecb1"
+      ]
+    },
+    {
+      "afterBlobSha": "8c1da4c606d8814746ffef5cea6da692a80965c2",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/deadlineSynchronousExpiry.test.js",
+      "sourceItemIds": [
+        "source-01a9655f527e3c20b24c6835",
+        "source-3492db8bbbc56bda287a9055",
+        "source-3df4b118944857706a292a71",
+        "source-9ce8c736275573d2f95cb081",
+        "source-bf5a1d63ef4b8f946cc8f95b",
+        "source-cdf15f7d0d73f91e0a022cfd",
+        "source-d47d8a1ad7e651d178c4ecb1"
+      ]
+    },
+    {
+      "afterBlobSha": "040debab957344b7da17a90cdc4a1433fd2f1559",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/ooxmlCancellationWiring.test.js",
+      "sourceItemIds": [
+        "source-01a9655f527e3c20b24c6835",
+        "source-3492db8bbbc56bda287a9055",
+        "source-3df4b118944857706a292a71",
+        "source-4e660869aa1ada148aeb2bda",
+        "source-6d627a871a7f238b34893ad7",
+        "source-bf5a1d63ef4b8f946cc8f95b",
+        "source-c3ad921f37b6a82d27d7af4e",
+        "source-cdf15f7d0d73f91e0a022cfd",
+        "source-d47d8a1ad7e651d178c4ecb1",
+        "source-ed1e49e2ede1bb77d9551e9d"
+      ]
+    },
+    {
+      "afterBlobSha": "d483da5f651067f527721f50625498d6002f9186",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/synchronousBoundedDeadline.test.js",
+      "sourceItemIds": [
+        "source-01a9655f527e3c20b24c6835",
+        "source-3492db8bbbc56bda287a9055",
+        "source-3df4b118944857706a292a71",
+        "source-4e660869aa1ada148aeb2bda",
+        "source-6eeca2d26a9aa16ab8ef600e",
+        "source-84c0ecbeece6f1a6ebd7f215",
+        "source-bf5a1d63ef4b8f946cc8f95b",
+        "source-ca7404fcccfb8012f2637dd7",
+        "source-cdf15f7d0d73f91e0a022cfd",
+        "source-d47d8a1ad7e651d178c4ecb1"
+      ]
+    },
+    {
+      "afterBlobSha": "31aa837d26843ac53573ae482b2989341d0a83a9",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/task17IntegrationContract.test.js",
+      "sourceItemIds": [
+        "source-4d84e287ca61db22836ab0d4",
+        "source-6d627a871a7f238b34893ad7",
+        "source-730c5e064055f1b7adffeb69",
+        "source-ed1e49e2ede1bb77d9551e9d"
+      ]
+    },
+    {
+      "afterBlobSha": "e4d160f0e399cedae685f6d39a517dd81b599362",
+      "beforeBlobSha": "e4d160f0e399cedae685f6d39a517dd81b599362",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/workbookBudget.test.js",
+      "sourceItemIds": [
+        "source-6eeca2d26a9aa16ab8ef600e"
+      ]
+    }
+  ]
+}

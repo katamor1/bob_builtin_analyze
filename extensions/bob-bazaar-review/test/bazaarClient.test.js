@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict")
-const test = require("node:test")
+const {test,mock} = require("node:test")
 
 const { BazaarClient, validateRelativePath, validateRevision } = require("../out/bazaar/bazaar")
 
@@ -20,9 +20,10 @@ test("BazaarClient.cat separates option parsing before relative file paths", asy
 })
 
 test("BazaarClient clamps command timeouts to the manifest range", async () => {
+  const clock = mock.method(require("node:perf_hooks").performance,"now",()=>100)
   const captured = []
   const processRunner = async (options) => {
-    captured.push(options.timeoutMs)
+    captured.push(options.deadline.expires_at_monotonic_ms - 100)
     return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), exitCode: 0 }
   }
 
@@ -30,6 +31,7 @@ test("BazaarClient clamps command timeouts to the manifest range", async () => {
   await new BazaarClient({ bzrPath: "bzr", timeoutMs: Number.MAX_SAFE_INTEGER, processRunner }).status(process.cwd())
   await new BazaarClient({ bzrPath: "bzr", timeoutMs: Number.NaN, processRunner }).status(process.cwd())
 
+  clock.mock.restore()
   assert.deepEqual(captured, [1000, 600000, 120000])
 })
 
@@ -89,3 +91,6 @@ test("validateRelativePath rejects traversal, dot, empty, control-character, and
     assert.throws(() => validateRelativePath(candidate), /Bazaar パス|親ディレクトリ/)
   }
 })
+
+// Break: creating a fresh deadline per nested command refreshes the operation.
+test('Bazaar_nested_calls_borrow_same_deadline_and_dispose_keeps_parent',async()=>{const r=require('../out/sharedProcessingBudgetRuntime'),owner=r.createProcessingOperation({profile:r.DEFAULT_PROCESSING_BUDGET_PROFILE}),calls=[],client=new BazaarClient({bzrPath:'bzr',processingOperation:owner,deadline:owner.deadline,signal:owner.signal,timeoutMs:1,processRunner:async options=>{calls.push(options);return{stdout:Buffer.from('root'),stderr:Buffer.alloc(0),exitCode:0};}});try{await client.root(process.cwd());await client.status(process.cwd());assert.equal(calls.length,2);assert.ok(calls.every(c=>c.deadline===owner.deadline&&c.signal===owner.signal));client.dispose();assert.equal(owner.signal.aborted,false);owner.throwIfCancelled();}finally{client.dispose?.();owner.dispose();}});

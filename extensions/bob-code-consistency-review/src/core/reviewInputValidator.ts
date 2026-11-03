@@ -1,4 +1,4 @@
-import { assertDocumentNotCancelled, type ProcessingOperation } from "../sharedProcessingBudgetRuntime"
+import { assertDocumentNotCancelled, assertProcessingOperation, BoundedDocumentError, remainingDeadlineMilliseconds, type SharedAbsoluteDeadline, type ProcessingOperation } from "../sharedProcessingBudgetRuntime"
 import * as path from "node:path"
 import YAML from "yaml"
 import { pathExists, resolveWorkspacePathStrict } from "./fileSystem"
@@ -15,18 +15,27 @@ export async function validateReviewInput(
   workspaceRoot = process.cwd(),
   textEncoding = "auto",
   maxInputBytes = DEFAULT_REVIEW_PROCESSING_LIMITS.maxDocumentBytes,
-  options?: { signal?: AbortSignal; beforeArtifactPaths?: (reviewInput: ReviewInput) => void; processingOperation?: ProcessingOperation }
+  options?: { signal?: AbortSignal; deadline?: SharedAbsoluteDeadline; beforeArtifactPaths?: (reviewInput: ReviewInput) => void; processingOperation?: ProcessingOperation }
 ): Promise<ReviewInput> {
   assertDocumentNotCancelled(options?.signal)
-  const resolvedInputPath = resolveWorkspacePathStrict(workspaceRoot, inputPath, "reviewInputPath")
   const inputByteLimit = normalizeReviewProcessingLimits({ maxDocumentBytes: maxInputBytes }).maxDocumentBytes
-  const operation = options?.processingOperation ?? createPipelineProcessingOperation(normalizeReviewProcessingLimits({ maxDocumentBytes: inputByteLimit }), undefined, options?.signal)
-  const raw = await readStableReviewInputText({ filePath: resolvedInputPath, textEncoding, maximumBytes: inputByteLimit, operation, signal: options?.signal })
-  assertDocumentNotCancelled(options?.signal)
+  const operation = options?.processingOperation ?? createPipelineProcessingOperation(normalizeReviewProcessingLimits({ maxDocumentBytes: inputByteLimit }), undefined, options?.signal, options?.deadline)
+  try {
+  assertProcessingOperation(operation)
+  if (options?.processingOperation !== undefined && options.signal !== undefined && options.signal !== operation.signal) throw new BoundedDocumentError("bounded_document_input_invalid")
+  const signal = operation.signal
+  if (options?.deadline !== undefined) {
+    remainingDeadlineMilliseconds(options?.deadline, 0)
+    if (Object.getOwnPropertyDescriptor(options?.deadline, "expires_at_monotonic_ms")?.value !== operation.deadline.expires_at_monotonic_ms) throw new BoundedDocumentError("bounded_document_input_invalid")
+  }
+  operation.throwIfCancelled()
+  const resolvedInputPath = resolveWorkspacePathStrict(workspaceRoot, inputPath, "reviewInputPath")
+  const raw = await readStableReviewInputText({ filePath: resolvedInputPath, textEncoding, maximumBytes: inputByteLimit, operation, signal, deadline: operation.deadline })
+  assertDocumentNotCancelled(signal)
   const parsed = YAML.parse(raw) as unknown
 
   const validate = await loadSchemaValidator("review-input")
-  assertDocumentNotCancelled(options?.signal)
+  assertDocumentNotCancelled(signal)
   if (!validate(parsed)) {
     const errors = formatSchemaErrors(validate)
     throw new Error(`Invalid review-input.yaml:\n${errors.map((error) => `- ${error}`).join("\n")}`)
@@ -40,11 +49,11 @@ export async function validateReviewInput(
     )
   }
 
-  assertDocumentNotCancelled(options?.signal)
+  assertDocumentNotCancelled(signal)
   options?.beforeArtifactPaths?.(reviewInput)
-  assertDocumentNotCancelled(options?.signal)
-  const artifactValidation = await validateArtifactPaths(reviewInput, workspaceRoot, options?.signal)
-  assertDocumentNotCancelled(options?.signal)
+  assertDocumentNotCancelled(signal)
+  const artifactValidation = await validateArtifactPaths(reviewInput, workspaceRoot, signal)
+  assertDocumentNotCancelled(signal)
   if (artifactValidation.escaped.length > 0) {
     throw new Error(`review-input.yaml artifact path escapes workspace:\n${artifactValidation.escaped.map((file) => `- ${file}`).join("\n")}`)
   }
@@ -53,6 +62,7 @@ export async function validateReviewInput(
   }
 
   return reviewInput
+  } finally { if (options?.processingOperation === undefined) operation.dispose() }
 }
 
 function countArtifactReferences(reviewInput: ReviewInput): number {

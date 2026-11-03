@@ -32,7 +32,8 @@ test("extractPdf invokes the bounded runner with the fixed argument array and no
   assert.equal(captured.command, "/configured/pdftotext")
   assert.deepEqual(captured.args, ["-layout", "-enc", "UTF-8", absolutePath, "-"])
   assert.equal(captured.cwd, path.dirname(absolutePath))
-  assert.equal(captured.timeoutMs, 4321)
+  assert.ok(captured.deadline.expires_at_monotonic_ms > 0)
+  assert.equal(Object.hasOwn(captured, "timeoutMs"), false)
   assert.equal(captured.maxStdoutBytes, 32 * 1024 * 1024)
   assert.deepEqual(captured.allowedExitCodes, [0])
   assert.equal(Object.hasOwn(captured, "shell"), false)
@@ -124,3 +125,5 @@ for (const [kind, warning] of [
     assert.doesNotMatch(JSON.stringify(result), /private|raw diagnostic/)
   })
 }
+
+test('borrowed_PDF_uses_owner_and_returns_auth_cancel_before_blocked',async()=>{const r=require('../out/sharedProcessingBudgetRuntime'),controller=new AbortController(),owner=r.createProcessingOperation({profile:r.DEFAULT_PROCESSING_BUDGET_PROFILE,signal:controller.signal}),reason=new Error('operator');try{await assert.rejects(()=>extractPdf('borrowed.pdf',options(async call=>{assert.equal(call.deadline,owner.deadline);assert.equal(call.signal,owner.signal);controller.abort(reason);throw new ExternalProcessError('overflow','bufferExceeded','pdf',[],process.cwd());},{processingOperation:owner,deadline:owner.deadline,signal:owner.signal})),e=>e===reason);assert.equal(r.cancellationKindFromSignal(owner.signal),'user');}finally{owner.dispose();}});

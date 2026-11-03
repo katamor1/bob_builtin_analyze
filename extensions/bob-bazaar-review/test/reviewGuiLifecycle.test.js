@@ -517,3 +517,5 @@ async function until(predicate, attempts = 50) {
 function turn() {
   return new Promise((resolve) => setImmediate(resolve))
 }
+
+test('review_gui_disposes_owned_client_after_pending_panel_disposal',async t=>{const {BazaarClient}=require('../out/bazaar/bazaar'),original=BazaarClient.prototype.dispose,completion=deferred(),seen=[],disposed=[];t.mock.method(BazaarClient.prototype,'dispose',function(){disposed.push(this);return original.call(this);});const harness=controllerHarness({prepareTarget:async client=>{seen.push(client);return completion.promise;}});harness.controller.bazaarWorkspaceFolder={uri:{fsPath:'/workspace'},name:'workspace',index:0};harness.panel.emitWithoutWaiting({type:'loadTarget',mode:'singleRevision',revision:'42'});await until(()=>seen.length===1);harness.panel.dispose();completion.reject(new Error('pending prepare failed'));await until(()=>disposed.length===1);assert.equal(disposed[0],seen[0]);});

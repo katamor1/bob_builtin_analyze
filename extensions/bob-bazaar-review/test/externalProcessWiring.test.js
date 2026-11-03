@@ -11,7 +11,7 @@ test("BazaarClient delegates process execution to the bounded runner", () => {
   const source = readSource("bazaar", "bazaar.ts")
 
   assert.match(source, /runExternalProcess/)
-  assert.match(source, /timeoutMs/)
+  assert.match(source, /deadline/)
   assert.match(source, /signal/)
   assert.doesNotMatch(source, /execFile\(/)
 })

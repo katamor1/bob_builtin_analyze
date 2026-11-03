@@ -30,7 +30,7 @@ export async function reviewRevision(context: vscode.ExtensionContext, withProje
   await withProgress("Bazaar 1リビジョンレビュー packet を作成しています", async (signal) => {
     const client = makeBazaarClient(signal)
     const [prepared, projectRulesSection] = await Promise.all([
-      prepareTarget(client, bazaarFolder.uri.fsPath, { mode: "singleRevision", revision }, {
+      prepareOwnedTarget(client, bazaarFolder.uri.fsPath, { mode: "singleRevision", revision }, {
         includeAddedFiles: true,
         maxAddedFileContentBytes: getMaxAddedFileContentBytes()
       }),
@@ -79,7 +79,7 @@ export async function reviewRange(context: vscode.ExtensionContext, withProjectR
   await withProgress("Bazaar リビジョン範囲レビュー packet を作成しています", async (signal) => {
     const client = makeBazaarClient(signal)
     const [prepared, projectRulesSection] = await Promise.all([
-      prepareTarget(client, bazaarFolder.uri.fsPath, { mode: "revisionRange", baseRevision, targetRevision }, {
+      prepareOwnedTarget(client, bazaarFolder.uri.fsPath, { mode: "revisionRange", baseRevision, targetRevision }, {
         includeAddedFiles: true,
         maxAddedFileContentBytes: getMaxAddedFileContentBytes()
       }),
@@ -211,4 +211,9 @@ async function withProgress<T>(title: string, task: (signal: AbortSignal) => Pro
       cancellation.dispose()
     }
   })
+}
+
+async function prepareOwnedTarget(client: BazaarClient, workspacePath: string, request: Parameters<typeof prepareTarget>[2], options: Parameters<typeof prepareTarget>[3]): ReturnType<typeof prepareTarget> {
+  try { return await prepareTarget(client, workspacePath, request, options) }
+  finally { client.dispose() }
 }

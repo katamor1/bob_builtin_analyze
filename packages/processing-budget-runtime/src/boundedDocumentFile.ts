@@ -1,3 +1,4 @@
+import { cancellationKindFromSignal } from "./deadlineCancellation"
 import { createHash } from "node:crypto"
 import { constants as fileFlags, type BigIntStats } from "node:fs"
 import * as fs from "node:fs/promises"
@@ -18,12 +19,14 @@ function within(root: string, file: string): boolean {
   const relative = path.relative(root, file)
   return relative !== "" && relative !== ".." && !relative.startsWith(".." + path.sep) && !path.isAbsolute(relative)
 }
-async function rejectLinks(filePath: string): Promise<void> {
+async function rejectLinks(filePath: string, check: () => void): Promise<void> {
   const parsed = path.parse(filePath)
   let current = parsed.root
   for (const part of filePath.slice(parsed.root.length).split(path.sep).filter(Boolean)) {
+    check()
     current = path.join(current, part)
     const stat = await fs.lstat(current)
+    check()
     if (stat.isSymbolicLink()) throw new BoundedDocumentError("bounded_document_source_invalid")
   }
 }
@@ -36,22 +39,29 @@ function sameStat(before: BigIntStats, after: BigIntStats): void {
 function expectedMatches(expected: BoundedDocumentFingerprint, actual: BoundedDocumentFingerprint): void {
   for (const key of ["byteSize", "mtimeNs", "device", "inode", "sha256"] as const) if (expected[key] !== actual[key]) changed()
 }
-async function sourcePath(input: BoundedDocumentReadInput, rootIdentity?: BigIntStats): Promise<{ root: string, stat: BigIntStats }> {
+async function sourcePath(input: BoundedDocumentReadInput, rootIdentity: BigIntStats | undefined, check: () => void): Promise<{ root: string, stat: BigIntStats }> {
+  check()
   if (!within(input.rootPath, input.filePath)) throw new BoundedDocumentError("bounded_document_source_invalid")
-  await rejectLinks(input.rootPath)
-  await rejectLinks(input.filePath)
+  await rejectLinks(input.rootPath, check)
+  await rejectLinks(input.filePath, check)
   if (!(await fs.lstat(input.filePath)).isFile()) throw new BoundedDocumentError("bounded_document_source_invalid")
+  check()
   const rootStat = await fs.lstat(input.rootPath, { bigint: true })
+  check()
   if (!rootStat.isDirectory()) throw new BoundedDocumentError("bounded_document_source_invalid")
   if (rootIdentity && (rootIdentity.dev !== rootStat.dev || rootIdentity.ino !== rootStat.ino)) changed()
   const root = await fs.realpath(input.rootPath)
+  check()
   if (!within(root, await fs.realpath(input.filePath))) throw new BoundedDocumentError("bounded_document_source_invalid")
+  check()
   return { root, stat: rootStat }
 }
-async function readExactly(file: fs.FileHandle, buffer: Buffer, position = 0): Promise<void> {
+async function readExactly(file: fs.FileHandle, buffer: Buffer, check: () => void, position = 0): Promise<void> {
   let offset = 0
   while (offset < buffer.length) {
+    check()
     const read = await file.read(buffer, offset, buffer.length - offset, position + offset)
+    check()
     if (!Number.isSafeInteger(read.bytesRead) || read.bytesRead <= 0 || read.bytesRead > buffer.length - offset) throw new BoundedDocumentError("bounded_document_read_failed", { phase: "read" })
     offset += read.bytesRead
   }
@@ -59,17 +69,18 @@ async function readExactly(file: fs.FileHandle, buffer: Buffer, position = 0): P
 async function verify(file: fs.FileHandle, input: BoundedDocumentReadInput, before: BigIntStats, initial: BoundedDocumentFingerprint, root: { root: string, stat: BigIntStats }, check: () => void): Promise<void> {
   check()
   sameStat(before, await file.stat({ bigint: true }))
+  check()
   const hash = createHash("sha256")
   const chunk = Buffer.alloc(Math.min(65536, Number(before.size)))
   for (let offset = 0; offset < Number(before.size); offset += chunk.length) {
     check()
     const view = chunk.subarray(0, Math.min(chunk.length, Number(before.size) - offset))
-    await readExactly(file, view, offset)
+    await readExactly(file, view, check, offset)
     hash.update(view)
   }
   sameStat(before, await file.stat({ bigint: true }))
   if (hash.digest("hex") !== initial.sha256) changed()
-  const currentRoot = await sourcePath(input, root.stat)
+  const currentRoot = await sourcePath(input, root.stat, check)
   if (currentRoot.root !== root.root) changed()
   sameStat(before, await fs.lstat(input.filePath, { bigint: true }))
   check()
@@ -122,22 +133,29 @@ async function withSnapshot<T>(value: BoundedDocumentReadInput, consume: (snapsh
   let result: T | undefined
   let byteLength = 0
   try {
-    const root = await fileOperation(() => sourcePath(input), "bounded_document_source_invalid")
+    const root = await fileOperation(() => sourcePath(input, undefined, check), "bounded_document_source_invalid")
+    check()
     file = await fileOperation(() => fs.open(input.filePath, fileFlags.O_RDONLY | (fileFlags.O_NOFOLLOW ?? 0) | (fileFlags.O_NONBLOCK ?? 0)), "bounded_document_source_invalid")
+    check()
     const before = await fileOperation(() => file!.stat({ bigint: true }))
+    check()
     if (!before.isFile() || before.size < 0n || before.size > BigInt(input.maximumFileBytes)) throw new BoundedDocumentError("bounded_document_source_invalid", { phase: "read", limit: input.maximumFileBytes })
     sameStat(before, await fileOperation(() => fs.lstat(input.filePath, { bigint: true })))
     if (input.expectedFingerprint) {
       expectedMatches(input.expectedFingerprint, asFingerprint(before, input.expectedFingerprint.sha256))
     }
+    check()
     byteLength = Number(before.size)
     if (accounting !== "admitted") {
       if (accounting === "admission") assertAggregateCapacity(input, byteLength)
+      check()
       reservation = input.ledger.reserveForTarget("single_document_bytes", input.target, byteLength)
     }
     check()
     const bytes = Buffer.alloc(byteLength)
-    await fileOperation(() => readExactly(file!, bytes))
+    check()
+    await fileOperation(() => readExactly(file!, bytes, check))
+    check()
     const fingerprint = asFingerprint(before, createHash("sha256").update(bytes).digest("hex"))
     sameStat(before, await fileOperation(() => file!.stat({ bigint: true })))
     if (input.expectedFingerprint) expectedMatches(input.expectedFingerprint, fingerprint)
@@ -146,7 +164,7 @@ async function withSnapshot<T>(value: BoundedDocumentReadInput, consume: (snapsh
     await fileOperation(() => verify(file!, input, before, fingerprint, root, check))
   } catch (error) {
     failed = true; primary = error
-    if (accounting !== "normal") { try { check() } catch (reason) { primary = reason } }
+    if (accounting !== "normal" || (input.signal && cancellationKindFromSignal(input.signal) === "deadline")) { try { check() } catch (reason) { primary = reason } }
   }
   finally {
     if (file) {
@@ -154,7 +172,7 @@ async function withSnapshot<T>(value: BoundedDocumentReadInput, consume: (snapsh
         if (!failed) { failed = true; primary = new BoundedDocumentError("bounded_document_cleanup_failed", { phase: "close" }) }
       }
     }
-    if (!failed) {
+    if (!failed || accounting !== "normal" || (input.signal && cancellationKindFromSignal(input.signal) === "deadline")) {
       try { check() } catch (error) { failed = true; primary = error }
     }
     if (failed && reservation) {
@@ -168,5 +186,6 @@ async function withSnapshot<T>(value: BoundedDocumentReadInput, consume: (snapsh
       throw error
     }
   }
+  check()
   return result as T
 }

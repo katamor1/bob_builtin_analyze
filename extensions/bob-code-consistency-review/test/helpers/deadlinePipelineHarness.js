@@ -1,0 +1,8 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),{performance}=require('node:perf_hooks');
+const shared=require('../../out/sharedProcessingBudgetRuntime');
+function fixture(t,extra={}){const root=fs.mkdtempSync(path.join(os.tmpdir(),'bob-t17-pipeline-'));t.after(()=>{const p=path.resolve(root);if(!p.startsWith(path.resolve(os.tmpdir())+path.sep))throw Error('unsafe fixture cleanup');fs.rmSync(p,{recursive:true,force:true});});const review={schema_version:1,review:{id:'deadline',title:'Deadline review',change_type:'bugfix',purpose:'test',base:'a',head:'b',vcs:'git'},artifacts:{requirements:[{path:'source.md'}]},review_focus:['requirement-code-consistency'],...extra};fs.writeFileSync(path.join(root,'source.md'),'# REQ-001\nThe device must stay bounded.\n');fs.writeFileSync(path.join(root,'input.json'),JSON.stringify(review));fs.writeFileSync(path.join(root,'diff.json'),JSON.stringify({base:'a',head:'b',files:[],unifiedDiff:'raw',warnings:[]}));return{root,review,input:{workspaceRoot:root,inputPath:'input.json',outDir:'.bob-review/package',diffFixturePath:'diff.json'}};}
+function clock(t){const value={now:100};t.mock.method(performance,'now',()=>value.now);return value;}
+function owners(t){const create=shared.createProcessingOperation,values=[];t.mock.method(shared,'createProcessingOperation',(...args)=>{const owner=create(...args);values.push(owner);t.after(()=>owner.dispose());return owner;});return values;}
+function wrap(t,module,name,observe){const original=module[name];t.mock.method(module,name,async(...args)=>{observe(...args);return original(...args);});}
+module.exports={fs,path,shared,fixture,clock,owners,wrap};
