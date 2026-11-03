@@ -16,8 +16,8 @@ const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const ADMISSION="tools/main-consolidation/deadline-source-admission.json",COVERAGE="docs/release-evidence/proc-t17-deadline-source-coverage-2026-11-02.json",POLICY="tools/main-consolidation/deadlineAdmissionPolicy.mjs";
 const BASE="6ce384313c1072e34ced342260304c9c7dd07e9e",TREE="8b2738d648aeff346be05167cd30d952e974686a",OWNER="7ea786afd5715d841526000a402c831d6c2a203c";
 function freeze(value){if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;}
-export const DEADLINE_SOURCE_ADMISSION_SHA256="10637fe6f72a8339179d802a7a8f78594052aaa3a05a43d69542d3219a8c66e7";
-export const DEADLINE_SOURCE_COVERAGE_SHA256="ed50eeb1782a12dc375eb68fc77092a653fc07ef25213014079ac5a25b9cc60c";
+export const DEADLINE_SOURCE_ADMISSION_SHA256="261f65a60149719ab26fbf1be5e1a44292fc93e9730000ec63f9fb96c54f5bcb";
+export const DEADLINE_SOURCE_COVERAGE_SHA256="9e045f8f18855776dc67e6e1e2b702306febc9aa6748bd0638b5e63f817b063c";
 export const DEADLINE_HISTORICAL_BINDINGS=freeze({
   "tools/main-consolidation/registry-bridge-source-admission.json": {
     "blobSha": "c03c3477038bb1a96aa339e9c9a0b4868055cc85",

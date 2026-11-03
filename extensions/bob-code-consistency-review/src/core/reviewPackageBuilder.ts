@@ -118,10 +118,10 @@ export async function buildReviewPackage(input: {
     if (bobStat.size !== bobInput.retainedBytes) {
       throw new Error("Bob input output size changed")
     }
-    assertDocumentNotCancelled(processingOperation.signal)
-    // No asynchronous work between the final check and this reservation group.
-    bobReservation.commit()
+    // The writer performs the one final check before any reservation in this group commits.
     writer.commit()
+    bobReservation.commit()
+    bobReservation = undefined
     return packageWarnings
   } catch (error) {
     writer.release()

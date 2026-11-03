@@ -1,4 +1,5 @@
 import { performance } from "node:perf_hooks"
+import { addAbortListener } from "node:events"
 
 export interface AbsoluteProcessingDeadline {
   readonly expires_at_monotonic_ms: number
@@ -116,7 +117,10 @@ export function createCancellationScope(value: CreateProcessingCancellationScope
     if (!Array.isArray(data.signals)) invalid()
     sources = [...new Set(Array.from(data.signals, nativeSignal))]
   } else sources = data.signal === undefined ? [] : [nativeSignal(data.signal)]
-  const controller = new AbortController(), listeners: { signal: AbortSignal; listener: () => void }[] = []
+  // Node20.0–20.4 lack addAbortListener; poll the same absolute scope timer there.
+  const subscribe = typeof addAbortListener === "function" ? addAbortListener : undefined
+  const pollSources = sources.length > 0 && subscribe === undefined
+  const controller = new AbortController(), listeners: { dispose(): void }[] = []
   let disposed = false, timer: unknown, timerActive = false, lastNow = -1
   const readNow = (): number => {
     const current = timestamp(now())
@@ -126,7 +130,7 @@ export function createCancellationScope(value: CreateProcessingCancellationScope
   }
   const clearResources = (): void => {
     if (timerActive) { timerActive = false; cancelSchedule(timer) }
-    for (const row of listeners.splice(0)) EventTarget.prototype.removeEventListener.call(row.signal, "abort", row.listener)
+    for (const row of listeners.splice(0)) row.dispose()
   }
   const state: AuthenticatedCause = {
     refresh(): void {
@@ -153,7 +157,7 @@ export function createCancellationScope(value: CreateProcessingCancellationScope
     if (disposed || state.kind !== undefined) return
     const remaining = Math.max(0, Math.ceil(deadline.expires_at_monotonic_ms - readNow()))
     if (remaining === 0) { state.refresh(); return }
-    timer = schedule(() => { timerActive = false; state.refresh(); armTimer() }, Math.min(remaining, MAX_TIMER_DELAY_MS))
+    timer = schedule(() => { timerActive = false; state.refresh(); armTimer() }, Math.min(remaining, MAX_TIMER_DELAY_MS, pollSources ? 25 : MAX_TIMER_DELAY_MS))
     timerActive = true
     const handle = timer as { unref?: () => void } | undefined
     if (typeof handle?.unref === "function") handle.unref()
@@ -164,8 +168,14 @@ export function createCancellationScope(value: CreateProcessingCancellationScope
     for (const source of sources) {
       if (state.kind !== undefined) break
       const listener = (): void => state.refresh()
-      listeners.push({ signal: source, listener })
-      source.addEventListener("abort", listener, { once: true })
+      const row = { dispose: (): void => EventTarget.prototype.removeEventListener.call(source, "abort", listener) }
+      listeners.push(row)
+      if (subscribe) {
+        const subscription = subscribe(source, listener)
+        row.dispose = (): void => subscription[Symbol.dispose]()
+        // Registration may synchronously cancel and clear the placeholder subscription.
+        if (disposed || state.kind !== undefined) row.dispose()
+      } else source.addEventListener("abort", listener, { once: true })
       state.refresh()
     }
     armTimer()

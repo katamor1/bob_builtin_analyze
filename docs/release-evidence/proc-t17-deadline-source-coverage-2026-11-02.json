@@ -605,6 +605,14 @@
           "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
         },
         {
+          "name": "source_subscription_early_node20_still_wakes_after_suppressed_abort",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
+          "name": "source_subscription_resists_stop_immediate_propagation",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
           "name": "early_timer_reschedules_until_clock_expires",
           "path": "packages/processing-budget-runtime/test/deadlineLongTimer.test.js"
         },
@@ -1062,11 +1070,11 @@
           "path": "extensions/bob-code-consistency-review/test/externalProcessWiring.test.js"
         },
         {
-          "name": "VCS command timeout is clamped to the manifest range",
+          "name": "preprocess progress propagates cancellation into VCS collection",
           "path": "extensions/bob-code-consistency-review/test/externalProcessWiring.test.js"
         },
         {
-          "name": "preprocess progress propagates cancellation into VCS collection",
+          "name": "VCS command timeout is clamped to the manifest range",
           "path": "extensions/bob-code-consistency-review/test/externalProcessWiring.test.js"
         }
       ],
@@ -1326,6 +1334,14 @@
           "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
         },
         {
+          "name": "source_subscription_early_node20_still_wakes_after_suppressed_abort",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
+          "name": "source_subscription_resists_stop_immediate_propagation",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
           "name": "early_timer_reschedules_until_clock_expires",
           "path": "packages/processing-budget-runtime/test/deadlineLongTimer.test.js"
         },
@@ -1496,7 +1512,7 @@
       ]
     },
     {
-      "adaptation": "Implement one native TypeScript module with closed absolute endpoints, native AbortSignal intrinsic getters, a private WeakMap of actual signal/reason identities and monotonic refresh. Public error metadata, copied reasons and foreign-runtime signals cannot authenticate deadline authority; user Error identity remains compatible.",
+      "adaptation": "Implement one native TypeScript module with closed absolute endpoints, native AbortSignal intrinsic getters, a private WeakMap of actual signal/reason identities and monotonic refresh. Public error metadata, copied reasons and foreign-runtime signals cannot authenticate deadline authority; user Error identity remains compatible. Review fix: source abort subscription resists stopImmediatePropagation and is disposed across registration races; API-unavailable early Node20 uses the existing absolute scope timer to poll sources every25ms without renewing the endpoint.",
       "family": "deadline-cancellation",
       "kind": "symbol",
       "origin": {
@@ -1712,7 +1728,7 @@
       ],
       "targets": [
         {
-          "blobSha": "b74399bda719af5fdec3b1d1b636f8bb270184ce",
+          "blobSha": "012a3e26f02749421fc3ff1f8e52b7acd5696bb5",
           "mode": "100644",
           "path": "packages/processing-budget-runtime/src/deadlineCancellation.ts",
           "symbols": [
@@ -1774,6 +1790,14 @@
         },
         {
           "name": "nested_deadlines_do_not_refresh",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
+          "name": "source_subscription_early_node20_still_wakes_after_suppressed_abort",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
+          "name": "source_subscription_resists_stop_immediate_propagation",
           "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
         },
         {
@@ -2156,6 +2180,10 @@
       "testCases": [
         {
           "name": "cleanup_expiry_preserves_transport_but_cancels_adoption",
+          "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
+        },
+        {
+          "name": "commit_entry_expiry_releases_pending_bob_and_artifacts_and_cleans_managed_files",
           "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
         },
         {
@@ -2648,7 +2676,7 @@
           ]
         },
         {
-          "blobSha": "0729fd254267d9bbf44003fc8812a913514ab809",
+          "blobSha": "21a3753e22c6fff231418de797bfd5832bdb1587",
           "mode": "100644",
           "path": "extensions/bob-code-consistency-review/test/deadlineSettlement.test.js",
           "symbols": [
@@ -2656,7 +2684,9 @@
             "deadline_rechecked_immediately_before_spawn_and_allowed_close",
             "first_transport_failure_is_stable_during_cleanup",
             "nonzero_after_parent_exit_waits_for_tree",
-            "subsecond_parent_deadline_never_reclamps"
+            "subsecond_parent_deadline_never_reclamps",
+            "suppressed_effective_abort_cancels_silent_child_before_deadline",
+            "suppressed_source_abort_cancels_silent_child_before_deadline"
           ]
         },
         {
@@ -2721,6 +2751,14 @@
         },
         {
           "name": "subsecond_parent_deadline_never_reclamps",
+          "path": "extensions/bob-code-consistency-review/test/deadlineSettlement.test.js"
+        },
+        {
+          "name": "suppressed_effective_abort_cancels_silent_child_before_deadline",
+          "path": "extensions/bob-code-consistency-review/test/deadlineSettlement.test.js"
+        },
+        {
+          "name": "suppressed_source_abort_cancels_silent_child_before_deadline",
           "path": "extensions/bob-code-consistency-review/test/deadlineSettlement.test.js"
         },
         {
@@ -2895,6 +2933,14 @@
         },
         {
           "name": "nested_deadlines_do_not_refresh",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
+          "name": "source_subscription_early_node20_still_wakes_after_suppressed_abort",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
+          "name": "source_subscription_resists_stop_immediate_propagation",
           "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
         },
         {
@@ -3406,11 +3452,11 @@
           "path": "extensions/bob-code-consistency-review/test/externalProcessWiring.test.js"
         },
         {
-          "name": "VCS command timeout is clamped to the manifest range",
+          "name": "preprocess progress propagates cancellation into VCS collection",
           "path": "extensions/bob-code-consistency-review/test/externalProcessWiring.test.js"
         },
         {
-          "name": "preprocess progress propagates cancellation into VCS collection",
+          "name": "VCS command timeout is clamped to the manifest range",
           "path": "extensions/bob-code-consistency-review/test/externalProcessWiring.test.js"
         }
       ],
@@ -3483,11 +3529,12 @@
           ]
         },
         {
-          "blobSha": "e6fca83d76127c5c015de490e839f9d2370788b6",
+          "blobSha": "ec0709be69677968b598b91dbabe22b056d36ce9",
           "mode": "100644",
           "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js",
           "symbols": [
             "cleanup_expiry_preserves_transport_but_cancels_adoption",
+            "commit_entry_expiry_releases_pending_bob_and_artifacts_and_cleans_managed_files",
             "late_user_error_identity_precedes_overflow_parsing",
             "one_owner_deadline_reaches_every_selected_boundary",
             "owned_pipeline_releases_native_timer_on_success_and_failure",
@@ -3515,6 +3562,10 @@
         },
         {
           "name": "cleanup_expiry_preserves_transport_but_cancels_adoption",
+          "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
+        },
+        {
+          "name": "commit_entry_expiry_releases_pending_bob_and_artifacts_and_cleans_managed_files",
           "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
         },
         {
@@ -4152,6 +4203,30 @@
           "path": "packages/processing-budget-runtime/test/boundedArchiveCancellation.test.js"
         },
         {
+          "name": "falsey_original_failure_survives_without_cancel",
+          "path": "packages/processing-budget-runtime/test/cancellationReasonPropagation.test.js"
+        },
+        {
+          "name": "reason_replay_never_authenticates_deadline",
+          "path": "packages/processing-budget-runtime/test/cancellationReasonPropagation.test.js"
+        },
+        {
+          "name": "typed_deadline_from_read_is_not_wrapped_as_io_failure",
+          "path": "packages/processing-budget-runtime/test/cancellationReasonPropagation.test.js"
+        },
+        {
+          "name": "authenticated_metadata_ignores_public_mutation_and_other_runtime",
+          "path": "packages/processing-budget-runtime/test/deadlineReasonAuthentication.test.js"
+        },
+        {
+          "name": "opaque_falsey_reasons_and_native_getters_are_preserved",
+          "path": "packages/processing-budget-runtime/test/deadlineReasonAuthentication.test.js"
+        },
+        {
+          "name": "reason_replay_never_authenticates_deadline",
+          "path": "packages/processing-budget-runtime/test/deadlineReasonAuthentication.test.js"
+        },
+        {
           "name": "expiry_after_stat_prevents_any_reservation",
           "path": "packages/processing-budget-runtime/test/synchronousBoundedDeadline.test.js"
         },
@@ -4186,30 +4261,6 @@
         {
           "name": "late_sheet_failure_releases_every_pending_reservation",
           "path": "packages/processing-budget-runtime/test/workbookBudget.test.js"
-        },
-        {
-          "name": "authenticated_metadata_ignores_public_mutation_and_other_runtime",
-          "path": "packages/processing-budget-runtime/test/deadlineReasonAuthentication.test.js"
-        },
-        {
-          "name": "opaque_falsey_reasons_and_native_getters_are_preserved",
-          "path": "packages/processing-budget-runtime/test/deadlineReasonAuthentication.test.js"
-        },
-        {
-          "name": "reason_replay_never_authenticates_deadline",
-          "path": "packages/processing-budget-runtime/test/deadlineReasonAuthentication.test.js"
-        },
-        {
-          "name": "falsey_original_failure_survives_without_cancel",
-          "path": "packages/processing-budget-runtime/test/cancellationReasonPropagation.test.js"
-        },
-        {
-          "name": "reason_replay_never_authenticates_deadline",
-          "path": "packages/processing-budget-runtime/test/cancellationReasonPropagation.test.js"
-        },
-        {
-          "name": "typed_deadline_from_read_is_not_wrapped_as_io_failure",
-          "path": "packages/processing-budget-runtime/test/cancellationReasonPropagation.test.js"
         }
       ],
       "testPaths": [
@@ -4277,7 +4328,7 @@
       ],
       "targets": [
         {
-          "blobSha": "0729fd254267d9bbf44003fc8812a913514ab809",
+          "blobSha": "21a3753e22c6fff231418de797bfd5832bdb1587",
           "mode": "100644",
           "path": "extensions/bob-code-consistency-review/test/deadlineSettlement.test.js",
           "symbols": [
@@ -4285,7 +4336,9 @@
             "deadline_rechecked_immediately_before_spawn_and_allowed_close",
             "first_transport_failure_is_stable_during_cleanup",
             "nonzero_after_parent_exit_waits_for_tree",
-            "subsecond_parent_deadline_never_reclamps"
+            "subsecond_parent_deadline_never_reclamps",
+            "suppressed_effective_abort_cancels_silent_child_before_deadline",
+            "suppressed_source_abort_cancels_silent_child_before_deadline"
           ]
         }
       ],
@@ -4308,6 +4361,14 @@
         },
         {
           "name": "subsecond_parent_deadline_never_reclamps",
+          "path": "extensions/bob-code-consistency-review/test/deadlineSettlement.test.js"
+        },
+        {
+          "name": "suppressed_effective_abort_cancels_silent_child_before_deadline",
+          "path": "extensions/bob-code-consistency-review/test/deadlineSettlement.test.js"
+        },
+        {
+          "name": "suppressed_source_abort_cancels_silent_child_before_deadline",
           "path": "extensions/bob-code-consistency-review/test/deadlineSettlement.test.js"
         }
       ],
@@ -4569,11 +4630,12 @@
           ]
         },
         {
-          "blobSha": "e6fca83d76127c5c015de490e839f9d2370788b6",
+          "blobSha": "ec0709be69677968b598b91dbabe22b056d36ce9",
           "mode": "100644",
           "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js",
           "symbols": [
             "cleanup_expiry_preserves_transport_but_cancels_adoption",
+            "commit_entry_expiry_releases_pending_bob_and_artifacts_and_cleans_managed_files",
             "late_user_error_identity_precedes_overflow_parsing",
             "one_owner_deadline_reaches_every_selected_boundary",
             "owned_pipeline_releases_native_timer_on_success_and_failure",
@@ -4592,15 +4654,15 @@
       ],
       "testCases": [
         {
+          "name": "Bazaar_nested_calls_borrow_same_deadline_and_dispose_keeps_parent",
+          "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
+        },
+        {
           "name": "BazaarClient clamps command timeouts to the manifest range",
           "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
         },
         {
           "name": "BazaarClient.cat separates option parsing before relative file paths",
-          "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
-        },
-        {
-          "name": "Bazaar_nested_calls_borrow_same_deadline_and_dispose_keeps_parent",
           "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
         },
         {
@@ -4701,6 +4763,10 @@
         },
         {
           "name": "cleanup_expiry_preserves_transport_but_cancels_adoption",
+          "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
+        },
+        {
+          "name": "commit_entry_expiry_releases_pending_bob_and_artifacts_and_cleans_managed_files",
           "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
         },
         {
@@ -4811,15 +4877,15 @@
       ],
       "testCases": [
         {
+          "name": "Bazaar_nested_calls_borrow_same_deadline_and_dispose_keeps_parent",
+          "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
+        },
+        {
           "name": "BazaarClient clamps command timeouts to the manifest range",
           "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
         },
         {
           "name": "BazaarClient.cat separates option parsing before relative file paths",
-          "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
-        },
-        {
-          "name": "Bazaar_nested_calls_borrow_same_deadline_and_dispose_keeps_parent",
           "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
         },
         {
@@ -4860,6 +4926,14 @@
         },
         {
           "name": "subsecond_parent_deadline_never_reclamps",
+          "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js"
+        },
+        {
+          "name": "suppressed_effective_abort_cancels_silent_child_before_deadline",
+          "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js"
+        },
+        {
+          "name": "suppressed_source_abort_cancels_silent_child_before_deadline",
           "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js"
         }
       ],
@@ -5351,6 +5425,14 @@
           "path": "extensions/bob-code-consistency-review/test/deadlineSettlement.test.js"
         },
         {
+          "name": "suppressed_effective_abort_cancels_silent_child_before_deadline",
+          "path": "extensions/bob-code-consistency-review/test/deadlineSettlement.test.js"
+        },
+        {
+          "name": "suppressed_source_abort_cancels_silent_child_before_deadline",
+          "path": "extensions/bob-code-consistency-review/test/deadlineSettlement.test.js"
+        },
+        {
           "name": "external process runner accepts explicitly allowed non-zero exit codes",
           "path": "extensions/bob-code-consistency-review/test/externalProcessRunner.test.js"
         },
@@ -5715,6 +5797,10 @@
           "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
         },
         {
+          "name": "commit_entry_expiry_releases_pending_bob_and_artifacts_and_cleans_managed_files",
+          "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
+        },
+        {
           "name": "late_user_error_identity_precedes_overflow_parsing",
           "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
         },
@@ -6040,6 +6126,10 @@
         },
         {
           "name": "cleanup_expiry_preserves_transport_but_cancels_adoption",
+          "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
+        },
+        {
+          "name": "commit_entry_expiry_releases_pending_bob_and_artifacts_and_cleans_managed_files",
           "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
         },
         {
@@ -6537,7 +6627,7 @@
           ]
         },
         {
-          "blobSha": "4e99a6bfdc6fcab6bd13df7d3ab0172a8fca1c48",
+          "blobSha": "47e5b811c80b77de47cb3b2509836ed96cc2fbaf",
           "mode": "100644",
           "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js",
           "symbols": [
@@ -6545,7 +6635,9 @@
             "deadline_rechecked_immediately_before_spawn_and_allowed_close",
             "first_transport_failure_is_stable_during_cleanup",
             "nonzero_after_parent_exit_waits_for_tree",
-            "subsecond_parent_deadline_never_reclamps"
+            "subsecond_parent_deadline_never_reclamps",
+            "suppressed_effective_abort_cancels_silent_child_before_deadline",
+            "suppressed_source_abort_cancels_silent_child_before_deadline"
           ]
         },
         {
@@ -6576,15 +6668,15 @@
       ],
       "testCases": [
         {
+          "name": "Bazaar_nested_calls_borrow_same_deadline_and_dispose_keeps_parent",
+          "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
+        },
+        {
           "name": "BazaarClient clamps command timeouts to the manifest range",
           "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
         },
         {
           "name": "BazaarClient.cat separates option parsing before relative file paths",
-          "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
-        },
-        {
-          "name": "Bazaar_nested_calls_borrow_same_deadline_and_dispose_keeps_parent",
           "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
         },
         {
@@ -6625,6 +6717,14 @@
         },
         {
           "name": "subsecond_parent_deadline_never_reclamps",
+          "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js"
+        },
+        {
+          "name": "suppressed_effective_abort_cancels_silent_child_before_deadline",
+          "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js"
+        },
+        {
+          "name": "suppressed_source_abort_cancels_silent_child_before_deadline",
           "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js"
         },
         {
@@ -6736,7 +6836,7 @@
       ],
       "targets": [
         {
-          "blobSha": "4e99a6bfdc6fcab6bd13df7d3ab0172a8fca1c48",
+          "blobSha": "47e5b811c80b77de47cb3b2509836ed96cc2fbaf",
           "mode": "100644",
           "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js",
           "symbols": [
@@ -6744,7 +6844,9 @@
             "deadline_rechecked_immediately_before_spawn_and_allowed_close",
             "first_transport_failure_is_stable_during_cleanup",
             "nonzero_after_parent_exit_waits_for_tree",
-            "subsecond_parent_deadline_never_reclamps"
+            "subsecond_parent_deadline_never_reclamps",
+            "suppressed_effective_abort_cancels_silent_child_before_deadline",
+            "suppressed_source_abort_cancels_silent_child_before_deadline"
           ]
         }
       ],
@@ -6767,6 +6869,14 @@
         },
         {
           "name": "subsecond_parent_deadline_never_reclamps",
+          "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js"
+        },
+        {
+          "name": "suppressed_effective_abort_cancels_silent_child_before_deadline",
+          "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js"
+        },
+        {
+          "name": "suppressed_source_abort_cancels_silent_child_before_deadline",
           "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js"
         }
       ],
@@ -7153,7 +7263,7 @@
       ]
     },
     {
-      "adaptation": "Implement one native TypeScript module with closed absolute endpoints, native AbortSignal intrinsic getters, a private WeakMap of actual signal/reason identities and monotonic refresh. Public error metadata, copied reasons and foreign-runtime signals cannot authenticate deadline authority; user Error identity remains compatible.",
+      "adaptation": "Implement one native TypeScript module with closed absolute endpoints, native AbortSignal intrinsic getters, a private WeakMap of actual signal/reason identities and monotonic refresh. Public error metadata, copied reasons and foreign-runtime signals cannot authenticate deadline authority; user Error identity remains compatible. Review fix: source abort subscription resists stopImmediatePropagation and is disposed across registration races; API-unavailable early Node20 uses the existing absolute scope timer to poll sources every25ms without renewing the endpoint.",
       "family": "deadline-cancellation",
       "kind": "symbol",
       "origin": {
@@ -7345,7 +7455,7 @@
       ],
       "targets": [
         {
-          "blobSha": "b74399bda719af5fdec3b1d1b636f8bb270184ce",
+          "blobSha": "012a3e26f02749421fc3ff1f8e52b7acd5696bb5",
           "mode": "100644",
           "path": "packages/processing-budget-runtime/src/deadlineCancellation.ts",
           "symbols": [
@@ -7407,6 +7517,14 @@
         },
         {
           "name": "nested_deadlines_do_not_refresh",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
+          "name": "source_subscription_early_node20_still_wakes_after_suppressed_abort",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
+          "name": "source_subscription_resists_stop_immediate_propagation",
           "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
         },
         {
@@ -8068,7 +8186,7 @@
       ],
       "targets": [
         {
-          "blobSha": "389b66a8e9549b4cc38dd421e6f5ff7b82a0a75f",
+          "blobSha": "73e3071ca53a4c7826eac40c4fe78a172b193816",
           "mode": "100644",
           "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js",
           "symbols": [
@@ -8076,7 +8194,9 @@
             "first_observed_user_cause_wins",
             "invalid_deadline_and_clock_fail_closed",
             "multi_source_snapshot_and_registration_race",
-            "nested_deadlines_do_not_refresh"
+            "nested_deadlines_do_not_refresh",
+            "source_subscription_early_node20_still_wakes_after_suppressed_abort",
+            "source_subscription_resists_stop_immediate_propagation"
           ]
         }
       ],
@@ -8099,6 +8219,14 @@
         },
         {
           "name": "nested_deadlines_do_not_refresh",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
+          "name": "source_subscription_early_node20_still_wakes_after_suppressed_abort",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
+          "name": "source_subscription_resists_stop_immediate_propagation",
           "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
         }
       ],
@@ -8217,6 +8345,14 @@
         },
         {
           "name": "nested_deadlines_do_not_refresh",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
+          "name": "source_subscription_early_node20_still_wakes_after_suppressed_abort",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
+          "name": "source_subscription_resists_stop_immediate_propagation",
           "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
         },
         {
@@ -8382,6 +8518,10 @@
       "testCases": [
         {
           "name": "cleanup_expiry_preserves_transport_but_cancels_adoption",
+          "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
+        },
+        {
+          "name": "commit_entry_expiry_releases_pending_bob_and_artifacts_and_cleans_managed_files",
           "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
         },
         {
@@ -8600,6 +8740,14 @@
           "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
         },
         {
+          "name": "source_subscription_early_node20_still_wakes_after_suppressed_abort",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
+          "name": "source_subscription_resists_stop_immediate_propagation",
+          "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js"
+        },
+        {
           "name": "early_timer_reschedules_until_clock_expires",
           "path": "packages/processing-budget-runtime/test/deadlineLongTimer.test.js"
         },
@@ -8770,15 +8918,15 @@
       ],
       "testCases": [
         {
+          "name": "Bazaar_nested_calls_borrow_same_deadline_and_dispose_keeps_parent",
+          "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
+        },
+        {
           "name": "BazaarClient clamps command timeouts to the manifest range",
           "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
         },
         {
           "name": "BazaarClient.cat separates option parsing before relative file paths",
-          "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
-        },
-        {
-          "name": "Bazaar_nested_calls_borrow_same_deadline_and_dispose_keeps_parent",
           "path": "extensions/bob-bazaar-review/test/bazaarClient.test.js"
         },
         {
@@ -8934,6 +9082,14 @@
         },
         {
           "name": "subsecond_parent_deadline_never_reclamps",
+          "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js"
+        },
+        {
+          "name": "suppressed_effective_abort_cancels_silent_child_before_deadline",
+          "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js"
+        },
+        {
+          "name": "suppressed_source_abort_cancels_silent_child_before_deadline",
           "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js"
         },
         {
@@ -9895,6 +10051,10 @@
           "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
         },
         {
+          "name": "commit_entry_expiry_releases_pending_bob_and_artifacts_and_cleans_managed_files",
+          "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
+        },
+        {
           "name": "late_user_error_identity_precedes_overflow_parsing",
           "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js"
         },
@@ -9919,11 +10079,11 @@
           "path": "extensions/bob-code-consistency-review/test/externalProcessWiring.test.js"
         },
         {
-          "name": "VCS command timeout is clamped to the manifest range",
+          "name": "preprocess progress propagates cancellation into VCS collection",
           "path": "extensions/bob-code-consistency-review/test/externalProcessWiring.test.js"
         },
         {
-          "name": "preprocess progress propagates cancellation into VCS collection",
+          "name": "VCS command timeout is clamped to the manifest range",
           "path": "extensions/bob-code-consistency-review/test/externalProcessWiring.test.js"
         },
         {

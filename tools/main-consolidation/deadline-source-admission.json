@@ -21,7 +21,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "a510ca09aea3d98c44a171694b35d9bd15288266",
+      "afterBlobSha": "7a48291c611b4f723830d9bb188f75d55cf17296",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "docs/release-evidence/proc-t17-deadline-source-coverage-2026-11-02.json",
@@ -91,7 +91,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "3f5c61c8de625da0ac615f1b83f99f2a1367d8c2",
+      "afterBlobSha": "8d44d857b3205e70206afe3054a28928ff772610",
       "beforeBlobSha": "ab01f27f7867cd0dc886a79eedc8755b7f9f0423",
       "mode": "100644",
       "path": "extensions/bob-code-consistency-review/src/core/reviewPackageBuilder.ts",
@@ -323,7 +323,7 @@
     }
   ],
   "schemaVersion": "bob-builtin-analyze/deadline-source-admission/v1",
-  "sourceCoverageDigest": "ed50eeb1782a12dc375eb68fc77092a653fc07ef25213014079ac5a25b9cc60c",
+  "sourceCoverageDigest": "9e045f8f18855776dc67e6e1e2b702306febc9aa6748bd0638b5e63f817b063c",
   "sourceRows": [
     {
       "afterBlobSha": "07f2d7269fdc85ea79c739720a73ddf47e7906ad",
@@ -437,7 +437,7 @@
       ]
     },
     {
-      "afterBlobSha": "4e99a6bfdc6fcab6bd13df7d3ab0172a8fca1c48",
+      "afterBlobSha": "47e5b811c80b77de47cb3b2509836ed96cc2fbaf",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "extensions/bob-bazaar-review/test/deadlineSettlement.test.js",
@@ -691,7 +691,7 @@
       ]
     },
     {
-      "afterBlobSha": "e6fca83d76127c5c015de490e839f9d2370788b6",
+      "afterBlobSha": "ec0709be69677968b598b91dbabe22b056d36ce9",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "extensions/bob-code-consistency-review/test/deadlinePipeline.test.js",
@@ -706,7 +706,7 @@
       ]
     },
     {
-      "afterBlobSha": "0729fd254267d9bbf44003fc8812a913514ab809",
+      "afterBlobSha": "21a3753e22c6fff231418de797bfd5832bdb1587",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "extensions/bob-code-consistency-review/test/deadlineSettlement.test.js",
@@ -862,7 +862,7 @@
       ]
     },
     {
-      "afterBlobSha": "b74399bda719af5fdec3b1d1b636f8bb270184ce",
+      "afterBlobSha": "012a3e26f02749421fc3ff1f8e52b7acd5696bb5",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "packages/processing-budget-runtime/src/deadlineCancellation.ts",
@@ -943,7 +943,7 @@
       ]
     },
     {
-      "afterBlobSha": "389b66a8e9549b4cc38dd421e6f5ff7b82a0a75f",
+      "afterBlobSha": "73e3071ca53a4c7826eac40c4fe78a172b193816",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "packages/processing-budget-runtime/test/deadlineCancellation.test.js",
