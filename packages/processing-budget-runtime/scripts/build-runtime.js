@@ -1,6 +1,7 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),crypto=require('node:crypto');
 const {MODULES,COMPILED_FILES}=require('./runtime-payload');
+const PATH_COMPILED_FILES=Object.freeze(['pathPolicy.d.ts','pathPolicy.js','pathPolicy.js.map']);
 const packageRoot=path.resolve(__dirname,'..'),repositoryRoot=path.resolve(packageRoot,'../..');
 const cache=path.join(packageRoot,'node_modules/.cache/bob-processing-runtime'),output=path.join(packageRoot,'out');
 const receiptFile=path.join(cache,'last-build.json');
@@ -49,8 +50,11 @@ function freshStaging(prefix){
  return path.join(cache,path.basename(created));
 }
 function publish(staging,target,allowed){
- const resolved=path.resolve(target),permitted=[output,...['bob-bazaar-review','bob-code-consistency-review'].map(name=>path.join(repositoryRoot,'extensions',name,'out/shared-processing-budget-runtime'))];
+ const resolved=path.resolve(target),permitted=[output,...['bob-bazaar-review','bob-code-consistency-review','workflow-register'].map(name=>path.join(repositoryRoot,'extensions',name,'out/shared-processing-budget-runtime'))];
  if(!permitted.includes(resolved))fail('output is not owned');
+ const workflow=path.join(repositoryRoot,'extensions/workflow-register/out/shared-processing-budget-runtime');
+ const profile=resolved===output?COMPILED_FILES:[...(resolved===workflow?PATH_COMPILED_FILES:COMPILED_FILES),'manifest.json'];
+ if(JSON.stringify([...allowed].sort())!==JSON.stringify([...profile].sort()))fail('output profile mismatch');
  if(!path.resolve(staging).startsWith(cache+path.sep))fail('staging is not owned');
  inventory(staging,allowed);ensureDir(path.dirname(resolved));let previous;
  if(fs.statSync(staging).dev!==fs.statSync(path.dirname(resolved)).dev)fail('cross-volume publish');
@@ -74,4 +78,4 @@ function verifiedBuild(){
  const actual=inventory(output,COMPILED_FILES);if(JSON.stringify(receipt.payload)!==JSON.stringify(actual))fail('stale compiled payload');return receipt;
 }
 if(require.main===module){try{if(process.argv.length!==2)fail('unexpected arguments');const r=buildRuntime();process.stdout.write(JSON.stringify({state:'passed',sourceInputDigest:r.sourceInputDigest,files:r.payload.length})+'\n');}catch(error){process.stderr.write(error.message+'\n');process.exitCode=1;}}
-module.exports={packageRoot,repositoryRoot,cache,output,receiptFile,noFollow,ensureDir,binding,inventory,sourceInputs,withBuildLock,freshStaging,publish,buildRuntime,verifiedBuild};
+module.exports={PATH_COMPILED_FILES,packageRoot,repositoryRoot,cache,output,receiptFile,noFollow,ensureDir,binding,inventory,sourceInputs,withBuildLock,freshStaging,publish,buildRuntime,verifiedBuild};

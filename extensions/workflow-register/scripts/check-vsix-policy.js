@@ -83,7 +83,7 @@ function checkForbiddenEntries(entries) {
     { pattern: /^extension\/.*\.vsix$/, reason: "nested VSIX" },
     { pattern: /^extension\/out\/.*\.map$/, reason: "compiled extension source map" }
   ]
-  for (const name of ["run-unused-checks", "recompress-vsix", "check-vsix-policy", "check-import-cycles", "check-export-star-policy", "check-contract-v2-runtime-reachability"]) {
+  for (const name of ["run-unused-checks", "recompress-vsix", "check-vsix-policy", "check-import-cycles", "check-export-star-policy", "check-contract-v2-runtime-reachability", "build-shared-runtime", "check-processing-path-boundary"]) {
     rules.push({ pattern: new RegExp(`^extension/scripts/${name}\\.js$`), reason: "build/CI tool" })
   }
 
@@ -98,7 +98,26 @@ function checkForbiddenEntries(entries) {
   return violations
 }
 
-function main() {
+function validatePathRuntimeArchive(archive, canonicalBuild) {
+  const prefix = "extension/out/shared-processing-budget-runtime/"
+  const files = archive.entries.filter(entry => entry.path.startsWith(prefix) && entry.kind === "file")
+  const names = files.map(entry => entry.path.slice(prefix.length)).sort()
+  if (JSON.stringify(names) !== JSON.stringify(["manifest.json", "pathPolicy.js"])) throw new Error("Path-only VSIX payload required")
+  const manifest = JSON.parse(archive.readEntry(prefix + "manifest.json").toString("utf8"))
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)
+    || JSON.stringify(Object.keys(manifest).sort()) !== JSON.stringify(["payload", "profile", "schemaVersion", "sourceInputDigest"])
+    || manifest.schemaVersion !== "bob-builtin-analyze/processing-runtime-path-copy/v1" || manifest.profile !== "path-only"
+    || manifest.sourceInputDigest !== canonicalBuild.sourceInputDigest || !Array.isArray(manifest.payload)) throw new Error("Path-only VSIX manifest required")
+  const expected = canonicalBuild.payload.filter(row => ["pathPolicy.d.ts", "pathPolicy.js", "pathPolicy.js.map"].includes(row.path))
+  if (expected.length !== 3 || JSON.stringify(manifest.payload) !== JSON.stringify(expected)) throw new Error("Path-only VSIX canonical binding mismatch")
+  const javascript = files.find(entry => entry.path === prefix + "pathPolicy.js")
+  const canonical = expected.find(row => row.path === "pathPolicy.js")
+  if (javascript.bytes !== canonical.bytes || javascript.sha256 !== canonical.sha256) throw new Error("Path-only VSIX runtime hash mismatch")
+  return { state: "passed", profile: "path-only" }
+}
+
+
+async function main() {
   const args = parseArgs(process.argv.slice(2))
   const extensionRoot = process.cwd()
   const packageJson = readJson(path.join(extensionRoot, "package.json"))
@@ -110,6 +129,10 @@ function main() {
 
   const stat = fs.statSync(vsixPath)
   const entries = readZipEntries(vsixPath)
+  const archiveModule = await import(require("node:url").pathToFileURL(path.resolve(__dirname, "../../../tools/workflow-evidence/lib/vsixArchive.mjs")).href)
+  const archive = archiveModule.validateVsixArchive(fs.readFileSync(vsixPath))
+  const canonicalBuild = require("../../../packages/processing-budget-runtime/scripts/build-runtime.js").verifiedBuild()
+  validatePathRuntimeArchive(archive, canonicalBuild)
   const entryNames = new Set(entries.map((entry) => entry.fileName))
   const errors = []
 
@@ -126,7 +149,7 @@ function main() {
     "workflowRunCommands", "workflowContractV2Product", "workflowContractV2Entrypoint", "workflowContractV2ProviderLifecycle"
   ].map(name => `extension/out/${name}.js`)
   const r2RuntimeEntries = ["providerEnvelopeSnapshot", "providerAttemptStaging", "providerInvocation"].map(name => `extension/out/core/contractV2/${name}.js`)
-  for (const requiredEntry of ["extension/package.json", mainEntry, ...r1RuntimeEntries, ...r2RuntimeEntries]) {
+  for (const requiredEntry of ["extension/package.json", mainEntry, "extension/out/sharedProcessingBudgetRuntime.js", "extension/out/shared-processing-budget-runtime/pathPolicy.js", "extension/out/shared-processing-budget-runtime/manifest.json", ...r1RuntimeEntries, ...r2RuntimeEntries]) {
     if (!entryNames.has(requiredEntry)) {
       errors.push(`Missing required VSIX entry: ${requiredEntry}`)
     }
@@ -146,9 +169,8 @@ function main() {
   console.log(`VSIX policy OK: ${vsixName} (${stat.size} bytes, ${entries.length} entries)`)
 }
 
-try {
-  main()
-} catch (error) {
+if (require.main === module) main().catch(error => {
   console.error(error instanceof Error ? error.message : String(error))
-  process.exit(1)
-}
+  process.exitCode = 1
+})
+module.exports = { validatePathRuntimeArchive }
