@@ -3,6 +3,7 @@
 const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto')
 const { types } = require('node:util'), ts = require('typescript')
 const isProxy = types.isProxy, descriptors = Object.getOwnPropertyDescriptors, ownKeys = Reflect.ownKeys, hasOwn = Object.hasOwn
+const PATH_FACADE_SHA256 = '2b757f517cd4bab89cccb89fc53e4048c157619fb1e4dc87a9c4819965917d22'
 const frozenOwners = Object.freeze({
   'src/workflowContractV2Product.ts': '595ad8ef36b41109f668a095aaa18532227b327573555bdd8d51a62b786220dd',
   'src/workflowContractV2Entrypoint.ts': '4f9bdc0b94393fbcbbcb32c7ff0d41d1454b745645b15d5f6edd3741ae72520b',
@@ -107,6 +108,7 @@ function validateContractV2ProductReachability(sources, rootPaths) {
   for (const row of rows) {
     if (folded.has(row.path.toLowerCase())) fail('duplicate or case alias source path')
     folded.add(row.path.toLowerCase()); all.set(row.path, row)
+    if (row.path === 'src/sharedProcessingBudgetRuntime.ts' && crypto.createHash('sha256').update(row.text.replaceAll('\r\n', '\n')).digest('hex') !== PATH_FACADE_SHA256) fail('fixed path facade source changed')
     if (frozenOwners[row.path] && crypto.createHash('sha256').update(row.text.replaceAll('\r\n', '\n')).digest('hex') !== frozenOwners[row.path]) fail('frozen P6/P5 owner changed: ' + row.path)
   }
   assertR2BridgeOwnership(rows)
@@ -151,6 +153,13 @@ function validateContractV2ProductReachability(sources, rootPaths) {
         if (!typeOnly) checkImport(node.moduleSpecifier.text, node)
       }
       if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))) {
+        const argument = node.arguments[0]
+        const fixedPathLoad = file === 'src/sharedProcessingBudgetRuntime.ts' && ts.isIdentifier(node.expression) && node.expression.text === 'require'
+          && node.arguments.length === 1 && ts.isCallExpression(argument) && ts.isPropertyAccessExpression(argument.expression)
+          && ts.isIdentifier(argument.expression.expression) && argument.expression.expression.text === 'path' && argument.expression.name.text === 'join'
+          && argument.arguments.length === 2 && ts.isIdentifier(argument.arguments[0]) && argument.arguments[0].text === 'directory'
+          && ts.isStringLiteral(argument.arguments[1]) && argument.arguments[1].text === 'pathPolicy.js'
+        if (fixedPathLoad) return
         if (node.arguments.length !== 1 || !ts.isStringLiteral(node.arguments[0])) fail('dynamic module authority')
         checkImport(node.arguments[0].text, node)
       }
@@ -182,6 +191,7 @@ function assertContractV2ProductRuntimeUnreachable() {
     }
   }
   walk(path.join(extensionRoot, 'src'))
+  require('./check-processing-path-boundary').checkProcessingPathBoundary()
   validateContractV2ProductReachability(rows, roots)
 }
 module.exports = { validateContractV2ProductReachability, assertContractV2ProductRuntimeUnreachable }

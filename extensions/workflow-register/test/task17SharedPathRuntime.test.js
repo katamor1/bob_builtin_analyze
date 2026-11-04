@@ -43,3 +43,12 @@ test('workflow_vsix_policy_rejects_full_manifest_extra_module_and_changed_bytes'
  assert.throws(()=>validator(view(manifest,javascript,true),build),/Path-only/);
  assert.throws(()=>validator(view(manifest,Buffer.concat([javascript,Buffer.from(' ')])),build),/hash/);
 });
+
+// Break: reaching the verified path facade either opens arbitrary dynamic modules or rejects the approved leaf entirely.
+test('workflow_path_facade_remains_a_fixed_readonly_leaf_in_v2_graph',()=>{
+ const checker=require('../scripts/check-contract-v2-runtime-reachability'),facade=fs.readFileSync(path.resolve(__dirname,'../src/sharedProcessingBudgetRuntime.ts'),'utf8');
+ const validate=(source,name='src/sharedProcessingBudgetRuntime.ts')=>checker.validateContractV2ProductReachability([{path:'src/product.ts',text:'export * from \"./'+name.slice(4,-3)+'\";'}, {path:name,text:source}],['src/product.ts']);
+ assert.doesNotThrow(()=>validate(facade));
+ for(const source of [facade.replace('pathPolicy.js','index.js'),facade+'\nexport const acquireWorkflowPlan = ()=>undefined;'])assert.throws(()=>validate(source),/path|authority|owner|runtime|reachability/);
+ assert.throws(()=>validate(facade,'src/hidden.ts'),/dynamic|authority|runtime|reachability/);
+});

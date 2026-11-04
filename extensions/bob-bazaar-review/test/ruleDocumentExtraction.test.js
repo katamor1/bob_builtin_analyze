@@ -717,9 +717,10 @@ test("extractRuleDocuments clamps caller-raised file, source, and aggregate byte
   await fs.truncate(aggregateSource, 20 * 1024 * 1024 + 1)
   const aggregatePaths = [aggregateSource]
   for (let index = 1; index < 5; index += 1) {
-    const hardLink = path.join(directory, `aggregate-${index}.doc`)
-    await fs.link(aggregateSource, hardLink)
-    aggregatePaths.push(hardLink)
+    const independentSource = path.join(directory, `aggregate-${index}.doc`)
+    await fs.writeFile(independentSource, "")
+    await fs.truncate(independentSource, 20 * 1024 * 1024 + 1)
+    aggregatePaths.push(independentSource)
   }
   await assert.rejects(
     () => extractRuleDocuments(
