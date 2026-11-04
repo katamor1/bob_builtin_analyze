@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import YAML from "yaml"
-import { pathExists, resolveWorkspacePath, toPosixPath, writeTextFile } from "./fileSystem"
+import { PathPolicyError, resolvePhysicalContainedPathSync } from "../sharedProcessingBudgetRuntime"
 import { formatSchemaErrors, loadSchemaValidator } from "./schemaLoader"
 import type { ReviewInput } from "./reviewTypes"
 
@@ -122,23 +122,43 @@ export async function writeReviewInputFromDraft(input: {
   backupExisting?: boolean
   strictPaths?: boolean
 }): Promise<ReviewInputWriteResult> {
+  let output: string
+  try { output = authoringOutputPath(input.workspaceRoot, input.outputPath) }
+  catch (error) {
+    if (!(error instanceof PathPolicyError)) throw error
+    return { status: "error", outputPath: input.outputPath, errors: [error.message], warnings: [] }
+  }
   const build = await buildReviewInputFromDraft(input.draft, { workspaceRoot: input.workspaceRoot, strictPaths: input.strictPaths })
   if (build.status === "error") return { status: "error", outputPath: input.outputPath, errors: build.errors, warnings: build.warnings }
 
-  const existing = await readIfExists(input.outputPath)
-  if (existing !== undefined && input.overwrite === false) {
-    return { status: "error", outputPath: input.outputPath, errors: [`review-input.yaml already exists: ${input.outputPath}`], warnings: build.warnings }
+  try {
+    const existing = await readIfExists(output)
+    authoringOutputPath(input.workspaceRoot, input.outputPath)
+    if (existing !== undefined && input.overwrite === false) {
+      return { status: "error", outputPath: input.outputPath, errors: [`review-input.yaml already exists: ${input.outputPath}`], warnings: build.warnings }
+    }
+    let backupPath: string | undefined
+    if (existing !== undefined && input.backupExisting !== false) {
+      backupPath = `${input.outputPath}.bak-${timestampForFileName(new Date())}`
+      authoringOutputPath(input.workspaceRoot, input.outputPath)
+      await writeAuthoringText(input.workspaceRoot, backupPath, existing)
+    }
+    await writeAuthoringText(input.workspaceRoot, input.outputPath, build.yaml)
+    return { status: "ok", reviewInput: build.reviewInput, yaml: build.yaml, outputPath: input.outputPath, backupPath, warnings: build.warnings }
+  } catch (error) {
+    if (!(error instanceof PathPolicyError)) throw error
+    return { status: "error", outputPath: input.outputPath, errors: [error.message], warnings: build.warnings }
   }
+}
 
-  let backupPath: string | undefined
-  if (existing !== undefined && input.backupExisting !== false) {
-    // guided authoring の再実行は想定操作なので、既存ファイルは上書き前に時刻付きバックアップへ退避する。
-    backupPath = `${input.outputPath}.bak-${timestampForFileName(new Date())}`
-    await writeTextFile(backupPath, existing)
-  }
-
-  await writeTextFile(input.outputPath, build.yaml)
-  return { status: "ok", reviewInput: build.reviewInput, yaml: build.yaml, outputPath: input.outputPath, backupPath, warnings: build.warnings }
+function authoringOutputPath(root: string, candidate: string): string {
+  return resolvePhysicalContainedPathSync({ rootPath: root, candidatePath: candidate, mustExist: false, expectedType: "file" }).path
+}
+async function writeAuthoringText(root: string, candidate: string, text: string): Promise<void> {
+  const output = authoringOutputPath(root, candidate)
+  await fs.mkdir(path.dirname(output), { recursive: true })
+  const checked = authoringOutputPath(root, candidate)
+  await fs.writeFile(checked, text, "utf8")
 }
 
 function resolveReviewFocus(draft: ReviewInputDraft, errors: string[]): ReviewFocus[] {
@@ -164,28 +184,25 @@ async function buildArtifacts(candidates: ReviewInputArtifactDraft[], workspaceR
 
   for (const candidate of candidates) {
     const kind = enumValue(candidate.kind, ARTIFACT_KIND_VALUES, "artifact.kind", errors)
-    const artifactPath = nonEmpty(candidate.path)
-    if (!kind || !artifactPath) {
-      if (!artifactPath) errors.push("artifact.path must be a non-empty string")
+    const artifactPath = candidate.path
+    if (typeof artifactPath !== "string" || !artifactPath.trim()) {
+      errors.push("artifact.path must be a non-empty string")
       continue
     }
-    const resolvedPath = resolveWorkspacePath(workspaceRoot, artifactPath)
-    // review-input.yaml は人手で編集されるため、存在確認より先に workspace 外参照を拒否する。
-    if (!isInsideWorkspace(workspaceRoot, resolvedPath)) {
-      errors.push(`artifact path escapes workspace: ${artifactPath}`)
+    let storedPath: string
+    try {
+      const physical = resolvePhysicalContainedPathSync({ rootPath: workspaceRoot, candidatePath: artifactPath, mustExist: false, expectedType: "file" })
+      if (strictPaths && !physical.exists) { errors.push(`artifact path does not exist: ${artifactPath}`); continue }
+      storedPath = physical.relative_path
+    } catch (error) {
+      if (!(error instanceof PathPolicyError)) throw error
+      errors.push(error.code === "path_policy_escape" ? `artifact path escapes workspace: ${artifactPath}` : error.code === "path_policy_unavailable" ? `artifact path unavailable: ${artifactPath}` : `artifact path rejected: ${artifactPath}`)
       continue
     }
-
-    if (strictPaths && !(await pathExists(resolvedPath))) {
-      errors.push(`artifact path does not exist: ${artifactPath}`)
-      continue
-    }
-    const storedPath = path.isAbsolute(artifactPath)
-      ? path.relative(workspaceRoot, resolvedPath)
-      : artifactPath
+    if (!kind) continue
 
     const item = compactRecord({
-      path: toPosixPath(storedPath),
+      path: storedPath,
       version: nonEmpty(candidate.version),
       updated_at: nonEmpty(candidate.updated_at),
       sections: uniqueStrings(candidate.sections),
@@ -273,13 +290,6 @@ async function readIfExists(filePath: string): Promise<string | undefined> {
     if (isNodeError(error) && error.code === "ENOENT") return undefined
     throw error
   }
-}
-
-function isInsideWorkspace(workspaceRoot: string, filePath: string): boolean {
-  const root = path.resolve(workspaceRoot)
-  const target = path.resolve(filePath)
-  const relative = path.relative(root, target)
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

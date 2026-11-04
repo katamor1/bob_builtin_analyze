@@ -1,4 +1,4 @@
-import { createProcessingOperation, createAbsoluteDeadline, remainingDeadlineMilliseconds, type SharedAbsoluteDeadline } from "../sharedProcessingBudgetRuntime"
+import { canonicalizePhysicalPathSync, createProcessingOperation, createAbsoluteDeadline, remainingDeadlineMilliseconds, type SharedAbsoluteDeadline } from "../sharedProcessingBudgetRuntime"
 import {
   normalizeChangedFilePathStrict,
   resolveWorkspacePathStrict
@@ -431,7 +431,7 @@ function normalizeVcs(value: ReviewInput["review"]["vcs"]): VcsKind {
 }
 
 function resolveVcsRoot(workspaceRoot: string, value: string | undefined): string {
-  return value ? resolveWorkspacePathStrict(workspaceRoot, value, "vcsRoot") : workspaceRoot
+  return value ? resolveWorkspacePathStrict(workspaceRoot, value, "vcsRoot") : canonicalizePhysicalPathSync(workspaceRoot, { expectedType: "directory" }).path
 }
 
 export function languageFromPath(filePath: string): string {

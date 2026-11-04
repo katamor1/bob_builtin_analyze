@@ -136,14 +136,11 @@ test("gate reports reject a report file alias that resolves to the catalog itsel
   const reportAliasPath = path.join(workspaceRoot, reportRelativePath)
   if (!await createCatalogFileAlias(t, catalogPath, reportAliasPath)) return
 
-  const result = await validateAndWriteTraceabilityGateReport({
+  await assert.rejects(() => validateAndWriteTraceabilityGateReport({
     workspaceRoot,
     reportPath: reportRelativePath,
     expectedRevision: initial.revision
-  })
-
-  assert.equal(result.status, "error")
-  assert.match(result.errors.join("\n"), /same physical target|catalog/i)
+  }), /alias|same physical target|catalog/i)
   assert.deepEqual(await fs.readFile(catalogPath), catalogBytes)
   assert.equal((await fs.lstat(reportAliasPath)).isSymbolicLink(), true)
 })
@@ -292,11 +289,10 @@ test("gate report expected revision rejects a changed catalog without writing a 
   await assert.rejects(fs.readFile(path.join(workspaceRoot, DEFAULT_TRACEABILITY_GATE_REPORT_PATH), "utf8"), /ENOENT/)
 })
 
-test("physical catalog aliases share one CAS queue for an existing target", async (t) => {
+test("safe catalog path spellings share one CAS queue for an existing target", async (t) => {
   const workspaceRoot = await makeWorkspace()
   const initial = await writeTraceabilityCatalog({ workspaceRoot, catalog: catalogWithDocument("initial") })
-  const aliasPath = await createCatalogDirectoryAlias(t, workspaceRoot)
-  if (!aliasPath) return
+  const aliasPath = DEFAULT_TRACEABILITY_CATALOG_PATH.replaceAll("/", "\\")
   const directRead = await readTraceabilityCatalog({ workspaceRoot })
   const aliasRead = await readTraceabilityCatalog({ workspaceRoot, catalogPath: aliasPath })
   assert.equal(directRead.status, "ok")
@@ -322,11 +318,10 @@ test("physical catalog aliases share one CAS queue for an existing target", asyn
   assert.equal(results.find((result) => result.status === "error").code, "stale_revision")
 })
 
-test("physical catalog aliases share one CAS queue while the target is missing", async (t) => {
+test("safe catalog path spellings share one CAS queue while the target is missing", async (t) => {
   const workspaceRoot = await makeWorkspace()
   await fs.mkdir(path.join(workspaceRoot, ".bob-trace"), { recursive: true })
-  const aliasPath = await createCatalogDirectoryAlias(t, workspaceRoot)
-  if (!aliasPath) return
+  const aliasPath = DEFAULT_TRACEABILITY_CATALOG_PATH.replaceAll("/", "\\")
   const directRead = await readTraceabilityCatalog({ workspaceRoot })
   const aliasRead = await readTraceabilityCatalog({ workspaceRoot, catalogPath: aliasPath })
   assert.equal(directRead.status, "ok")
@@ -352,7 +347,7 @@ test("physical catalog aliases share one CAS queue while the target is missing",
   assert.equal(results.find((result) => result.status === "error").code, "stale_revision")
 })
 
-test("a file-symlink catalog alias writes the physical target without forking CAS state", async (t) => {
+test("a file-symlink catalog alias is rejected before read or CAS mutation", async (t) => {
   const workspaceRoot = await makeWorkspace()
   const directWrite = await writeTraceabilityCatalog({
     workspaceRoot,
@@ -372,43 +367,15 @@ test("a file-symlink catalog alias writes the physical target without forking CA
     }
     throw error
   }
-  const aliasReader = await readTraceabilityCatalog({ workspaceRoot, catalogPath: aliasRelativePath })
-  const directReader = await readTraceabilityCatalog({ workspaceRoot })
-  assert.equal(aliasReader.status, "ok")
-  assert.equal(directReader.status, "ok")
-  assert.equal(aliasReader.revision, directReader.revision)
-
-  const aliasWinner = await writeTraceabilityCatalog({
-    workspaceRoot,
-    catalogPath: aliasRelativePath,
-    catalog: catalogWithDocument("alias-winner"),
-    backupExisting: true,
-    expectedRevision: aliasReader.revision
-  })
-  const directLoser = await writeTraceabilityCatalog({
-    workspaceRoot,
-    catalog: catalogWithDocument("direct-stale"),
-    backupExisting: true,
-    expectedRevision: directReader.revision
-  })
-
-  assert.equal(aliasWinner.status, "ok")
-  assert.equal(aliasWinner.catalogPath, aliasPath)
-  assert.equal(directLoser.status, "error")
-  assert.equal(directLoser.code, "stale_revision")
+  const before = await fs.readFile(directPath)
+  await assert.rejects(readTraceabilityCatalog({ workspaceRoot, catalogPath: aliasRelativePath }), /alias/i)
+  await assert.rejects(writeTraceabilityCatalog({ workspaceRoot, catalogPath: aliasRelativePath, catalog: catalogWithDocument("must-not-write"), backupExisting: true, expectedRevision: directWrite.revision }), /alias/i)
+  assert.deepEqual(await fs.readFile(directPath), before)
   assert.equal((await fs.lstat(aliasPath)).isSymbolicLink(), true)
-  assert.equal(normalizePhysicalPath(await fs.realpath(aliasPath)), normalizePhysicalPath(await fs.realpath(directPath)))
-  const aliasBytes = await fs.readFile(aliasPath)
-  const directBytes = await fs.readFile(directPath)
-  assert.deepEqual(aliasBytes, directBytes)
-  assert.equal(JSON.parse(aliasBytes.toString("utf8")).documents[0].document_id, "alias-winner")
-  assert.equal(normalizePhysicalPath(await fs.realpath(path.dirname(aliasWinner.backupPath))), normalizePhysicalPath(await fs.realpath(path.dirname(directPath))))
-  assert.equal(JSON.parse(await fs.readFile(aliasWinner.backupPath, "utf8")).documents[0].document_id, "initial")
-  const physicalBackups = (await fs.readdir(path.dirname(directPath))).filter((name) => name.includes("traceability-catalog.json.bak-"))
-  assert.equal(physicalBackups.length, 1)
+  assert.equal((await fs.readdir(path.dirname(directPath))).some(name => name.includes(".bak-")), false)
 })
 
-test("standalone catalog reads reject a file alias retargeted outside after lexical validation", async (t) => {
+test("standalone catalog reads reject a a plain file replaced by an outside alias after validation", async (t) => {
   const workspaceRoot = await makeWorkspace()
   const directPath = path.join(workspaceRoot, DEFAULT_TRACEABILITY_CATALOG_PATH)
   const initial = await writeTraceabilityCatalog({ workspaceRoot, catalog: catalogWithDocument("inside") })
@@ -416,7 +383,8 @@ test("standalone catalog reads reject a file alias retargeted outside after lexi
 
   const aliasRelativePath = ".custom/read-race-catalog.json"
   const aliasPath = path.join(workspaceRoot, aliasRelativePath)
-  if (!await createCatalogFileAlias(t, directPath, aliasPath)) return
+  await fs.mkdir(path.dirname(aliasPath), { recursive: true })
+  await fs.copyFile(directPath, aliasPath)
   const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-trace-store-outside-read-"))
   const outsidePath = path.join(outsideRoot, "victim.json")
   const outsideBytes = Buffer.from(`${JSON.stringify(catalogWithDocument("outside-victim"), null, 2)}\n`, "utf8")
@@ -437,7 +405,7 @@ test("standalone catalog reads reject a file alias retargeted outside after lexi
   }
 })
 
-test("catalog writes reject a file alias retargeted outside after lexical validation", async (t) => {
+test("catalog writes reject a a plain file replaced by an outside alias after validation", async (t) => {
   const workspaceRoot = await makeWorkspace()
   const directPath = path.join(workspaceRoot, DEFAULT_TRACEABILITY_CATALOG_PATH)
   const initial = await writeTraceabilityCatalog({ workspaceRoot, catalog: catalogWithDocument("inside") })
@@ -445,7 +413,8 @@ test("catalog writes reject a file alias retargeted outside after lexical valida
 
   const aliasRelativePath = ".custom/write-race-catalog.json"
   const aliasPath = path.join(workspaceRoot, aliasRelativePath)
-  if (!await createCatalogFileAlias(t, directPath, aliasPath)) return
+  await fs.mkdir(path.dirname(aliasPath), { recursive: true })
+  await fs.copyFile(directPath, aliasPath)
   const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-trace-store-outside-write-"))
   const outsidePath = path.join(outsideRoot, "victim.json")
   const outsideBytes = Buffer.from(`${JSON.stringify(catalogWithDocument("outside-victim"), null, 2)}\n`, "utf8")
@@ -495,7 +464,7 @@ test("catalog reads and writes reject dangling file aliases", async (t) => {
 
   await assert.rejects(
     readTraceabilityCatalog({ workspaceRoot, catalogPath: aliasRelativePath }),
-    /dangling symbolic link/i
+    /dangling symbolic link|alias/i
   )
   await assert.rejects(
     writeTraceabilityCatalog({
@@ -503,7 +472,7 @@ test("catalog reads and writes reject dangling file aliases", async (t) => {
       catalogPath: aliasRelativePath,
       catalog: catalogWithDocument("must-not-write")
     }),
-    /dangling symbolic link/i
+    /dangling symbolic link|alias/i
   )
 })
 
@@ -553,7 +522,7 @@ async function createCatalogFileAlias(t, targetPath, aliasPath) {
 }
 
 async function retargetCatalogFileAlias(aliasPath, targetPath) {
-  await fs.unlink(aliasPath)
+  await fs.rename(aliasPath, aliasPath + ".retained")
   await fs.symlink(targetPath, aliasPath, "file")
 }
 
