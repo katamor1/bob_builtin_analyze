@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const cp = require('node:child_process');
 const packageRoot = path.resolve(__dirname, '..');
 function loadRuntime(moduleName = 'index') {
-  if (!['generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','index'].includes(moduleName)) throw new Error('unknown runtime module');
+  if (!['generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','index','pathPolicy'].includes(moduleName)) throw new Error('unknown runtime module');
   const entry = path.join(packageRoot,'out',moduleName+'.js');
   if (!fs.existsSync(entry)) throw new Error('processing budget build required');
   return require(entry);
@@ -48,7 +48,7 @@ const consumerNames = ['workflow-register','bob-bazaar-review','bob-code-consist
 const runtimeResult = {state:'passed',entry:'out/index.js',checks:['constructor','reserve_commit','release','snapshot','bounded_read','validated_ooxml','deep_import_rejected','aggregate_operation','workbook_budget']};
 function expectedPayload() {
   const files=['package.json','README.md','contracts/processing-budget-definition.v1.json','schema/processing-budget-profile.v1.schema.json'];
-  for(const name of ['index','generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','boundedDocumentError','boundedDocumentRequest','boundedDocumentFile','boundedDocumentIo','ooxmlPreflight','ooxmlParserInput','validatedOoxml','documentBudget','workbookBudget','deadlineCancellation']) {
+  for(const name of ['index','generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','boundedDocumentError','boundedDocumentRequest','boundedDocumentFile','boundedDocumentIo','ooxmlPreflight','ooxmlParserInput','validatedOoxml','documentBudget','workbookBudget','deadlineCancellation','pathPolicy']) {
     for(const suffix of ['js','d.ts','js.map']) files.push('out/'+name+'.'+suffix);
   }
   return files.sort();
@@ -71,7 +71,8 @@ function packAndInstall(root, outputRoot) {
   for(const consumer of consumerNames){
     const name=consumer+'-consumer.ts';
     const original=fs.readFileSync(path.join(packageRoot,'test/fixtures',name),'utf8');
-    if(!original.includes('from "../.."'))throw new Error('consumer import unavailable');
+    const marker=consumer==='workflow-register'?'from "@bob/processing-budget-runtime/path-policy"':'from "../.."';
+    if(!original.includes(marker)||(consumer==='workflow-register'&&original.includes('from "../.."')))throw new Error('consumer import unavailable');
     fs.writeFileSync(path.join(consumerRoot,name),original.replaceAll('from "../.."','from "@bob/processing-budget-runtime"').replaceAll('from "../../out/validatedOoxml"','from "@bob/processing-budget-runtime/validated-ooxml"'),{flag:'wx'});
     const configPath=path.join(consumerRoot,consumer+'.tsconfig.json');
     const tsconfig=JSON.parse(fs.readFileSync(path.join(packageRoot,'test/fixtures/tsconfig.json'),'utf8'));

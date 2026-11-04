@@ -43,3 +43,7 @@ Earlier committed input remains when a later stage fails; pending reservations s
 ## Operation deadline scopes
 
 `createAbsoluteDeadline` uses process-local monotonic milliseconds. `createCancellationScope` owns a native signal, first observed cancellation cause, timer and source listeners. Dispose owned scopes in `finally`; disposal releases resources without disabling later synchronous expiry checks. Use `cancellationKindFromSignal` to authenticate a cause; public error fields and replayed reasons do not establish deadline authority. Do not persist or transfer an absolute deadline to another process.
+
+## Shared physical path policy
+
+The root and ./path-policy entry export raw syntax validation, portable lexical containment, physical resolution, and physical multi-root selection. The path subpath has no ledger or deadline dependency. Governed roots and existing components reject symbolic links and junction aliases. Only ENOENT permits a missing suffix below an existing directory. Relative canonicalization uses the current process directory after validating the original components. Returned frozen paths are observations; callers must recheck at I/O boundaries. They do not provide atomic traversal or race-free output creation. The package contains 16 modules, 48 compiled files and 52 packed paths.

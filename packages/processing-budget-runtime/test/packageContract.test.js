@@ -17,7 +17,7 @@ test('packed_declarations_enforce_all_three_consumer_contracts',()=>{
 });
 test('payload_is_exact_and_excludes_source_tests_and_stale_out',()=>{
  const p=packed(),expected=['package.json','README.md','contracts/processing-budget-definition.v1.json','schema/processing-budget-profile.v1.schema.json'];
- for(const n of ['index','generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','boundedDocumentError','boundedDocumentRequest','boundedDocumentFile','boundedDocumentIo','ooxmlPreflight','ooxmlParserInput','validatedOoxml','documentBudget','workbookBudget','deadlineCancellation'])for(const e of ['js','d.ts','js.map'])expected.push('out/'+n+'.'+e);
+ for(const n of ['index','generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','boundedDocumentError','boundedDocumentRequest','boundedDocumentFile','boundedDocumentIo','ooxmlPreflight','ooxmlParserInput','validatedOoxml','documentBudget','workbookBudget','deadlineCancellation','pathPolicy'])for(const e of ['js','d.ts','js.map'])expected.push('out/'+n+'.'+e);
  assert.deepEqual(p.manifest,[...expected].sort());assert.equal(p.manifest.some(x=>/^(src|test|scripts|node_modules)\//.test(x)),false);
  const fixture=h.freshArtifactRoot('stale-payload');for(const n of ['package.json','README.md','contracts','schema','out'])fs.cpSync(path.join(h.packageRoot,n),path.join(fixture,n),{recursive:true});
  fs.writeFileSync(path.join(fixture,'out/stale.js'),'module.exports = 1;\n');

@@ -5,7 +5,7 @@ import { createHash } from "node:crypto"
 import type * as Runtime from "../../../packages/processing-budget-runtime/out"
 import type * as Ooxml from "../../../packages/processing-budget-runtime/out/validatedOoxml"
 
-const modules = ["generatedProcessingBudgetDefinition", "processingBudgetError", "processingBudgetProfile", "processingBudgetLedger", "index", "boundedDocumentError", "boundedDocumentRequest", "boundedDocumentFile", "boundedDocumentIo", "ooxmlPreflight", "ooxmlParserInput", "validatedOoxml", "documentBudget", "workbookBudget", "deadlineCancellation"] as const
+const modules = ["generatedProcessingBudgetDefinition", "processingBudgetError", "processingBudgetProfile", "processingBudgetLedger", "index", "boundedDocumentError", "boundedDocumentRequest", "boundedDocumentFile", "boundedDocumentIo", "ooxmlPreflight", "ooxmlParserInput", "validatedOoxml", "documentBudget", "workbookBudget", "deadlineCancellation", "pathPolicy"] as const
 const compiledNames = modules.flatMap(name => [name + ".js", name + ".d.ts", name + ".js.map"]).sort()
 const runtimeNames = modules.map(name => name + ".js")
 const requiredApis = ["ProcessingBudgetLedger", "BoundedDocumentError", "readBoundedDocumentFile", "fingerprintBoundedDocumentFile", "ProcessingBudgetError", "normalizeProcessingBudgetProfile", "createDocumentOperation", "assertDocumentNotCancelled", "commitWorkbookBudget", "commitXlsxWorkbookBudget", "assertParsedXlsxWorkbookWithinBudget", "createProcessingOperation", "assertProcessingOperation", "ProcessingCancellationError", "monotonicNowMilliseconds", "createAbsoluteDeadline", "constrainAbsoluteDeadline", "remainingDeadlineMilliseconds", "createCancellationScope", "cancellationKindFromSignal", "cancellationOriginalReason"] as const
