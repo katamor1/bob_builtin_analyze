@@ -67,7 +67,7 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: CollectG
     const parent = operation.snapshot().categories.find(row => row.category === "total_operation_input_bytes")
     if (!parent || parent.scope !== "operation") throw new ProcessingBudgetError("processing_budget_internal_invariant", "missing operation input budget")
     const maximumBytes = Math.min(maxVcsProcessBufferBytes(operation.profile.limits.raw_diff_bytes), parent.remaining)
-    const fixtureText = await readStableDiffFixtureText({ filePath: fixturePath, maximumBytes, textEncoding: options.textEncoding ?? "auto", signal, deadline: operation.deadline, operation })
+    const fixtureText = await readStableDiffFixtureText({ rootPath: options.workspaceRoot, filePath: fixturePath, maximumBytes, textEncoding: options.textEncoding ?? "auto", signal, deadline: operation.deadline, operation })
     assertDocumentNotCancelled(signal)
     const fixture = parseDiffFixtureText(fixtureText)
     return finalizeDiffProcessingBudget(fixture, operation)
