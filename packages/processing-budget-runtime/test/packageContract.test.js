@@ -4,8 +4,8 @@ const h=require('./helpers');let proof;
 function packed(){return proof??=h.packAndInstall(h.packageRoot,h.freshArtifactRoot('pack'));}
 function binding(p){const b=fs.readFileSync(p);return {sha256:crypto.createHash('sha256').update(b).digest('hex'),bytes:b.length};}
 test('packed_runtime_works_without_repository_out_or_dev_dependencies',()=>{
- const p=packed(),r=JSON.parse(fs.readFileSync(p.receipt.path,'utf8'));
- assert.deepEqual(r.runtimeResult,{state:'passed',entry:'out/index.js',checks:['constructor','reserve_commit','release','snapshot','bounded_read','validated_ooxml','deep_import_rejected','aggregate_operation','workbook_budget']});
+ const p=h.packAndInstall(h.packageRoot,h.freshArtifactRoot('path-pack'),{pathPolicy:true}),r=JSON.parse(fs.readFileSync(p.receipt.path,'utf8'));
+ assert.deepEqual(r.runtimeResult,{state:'passed',entry:'out/index.js',checks:['constructor','reserve_commit','release','snapshot','bounded_read','validated_ooxml','deep_import_rejected','aggregate_operation','workbook_budget','path_policy_root','path_policy_subpath','physical_path']});
  assert.ok(r.installedResolvedPath.startsWith(fs.realpathSync(p.consumerRoot)+path.sep));assert.notEqual(r.installedResolvedPath,path.join(h.packageRoot,'out/index.js'));
  const installed=JSON.parse(fs.readFileSync(path.join(p.consumerRoot,'node_modules/@bob/processing-budget-runtime/package.json'),'utf8'));
  assert.equal(Object.keys(installed.dependencies||{}).length,0);assert.equal(fs.existsSync(path.join(p.consumerRoot,'node_modules/typescript')),false);

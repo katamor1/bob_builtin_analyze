@@ -54,7 +54,7 @@ function expectedPayload() {
   return files.sort();
 }
 
-function packAndInstall(root, outputRoot) {
+function packAndInstall(root, outputRoot, {pathPolicy=false} = {}) {
   root=fs.realpathSync(root);outputRoot=fs.realpathSync(outputRoot);
   const config=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
   if(config.name!=='@bob/processing-budget-runtime'||Object.keys(config.dependencies||{}).length) throw new Error('unexpected package dependencies');
@@ -108,10 +108,20 @@ function packAndInstall(root, outputRoot) {
     assert.equal(operation.snapshot().categories.find(x=>x.category==='total_document_bytes').committed,fs.statSync(filePath).size);
     const book=runtime.commitWorkbookBudget({ledger:new ProcessingBudgetLedger(),workbookTarget:'packed-book',sheets:[{name:'S',rowCount:2}]});assert.deepEqual([book.sheetCount,book.totalRows],[1,2]);
     assert.equal(runtime.createXlsxInspectionObserver,undefined);
+    if (${pathPolicy}) {
+      const policy=require('@bob/processing-budget-runtime/path-policy');
+      const policyFile=fs.realpathSync(require.resolve('@bob/processing-budget-runtime/path-policy'));
+      assert.equal(policyFile,path.join(installed,'out','pathPolicy.js'));
+      assert.equal(runtime.resolvePhysicalContainedPathSync,policy.resolvePhysicalContainedPathSync);
+      assert.equal(policy.normalizeWorkspaceRelativePath('日本語 space/file.txt'),'日本語 space/file.txt');
+      const resolved=policy.resolvePhysicalContainedPathSync({rootPath,candidatePath:'source.docx',expectedType:'file'});
+      assert.equal(resolved.path,fs.realpathSync(filePath));
+      assert.throws(()=>policy.normalizeWorkspaceRelativePath('a/../b'));
+    }
     process.stdout.write(JSON.stringify({entry}));})().catch(e=>{console.error(e);process.exitCode=1;});`;
   const installedResolvedPath=JSON.parse(runNode(['-e',probe],consumerRoot)).entry;
   const receiptPath=path.join(outputRoot,'pack-proof.json');
-  fs.writeFileSync(receiptPath,JSON.stringify({schemaVersion:'bob-builtin-analyze/processing-budget-pack-proof/v1',node:process.version,tarball,manifest,consumerResults,runtimeResult,installedResolvedPath},null,2)+'\n',{flag:'wx'});
+  fs.writeFileSync(receiptPath,JSON.stringify({schemaVersion:'bob-builtin-analyze/processing-budget-pack-proof/v1',node:process.version,tarball,manifest,consumerResults,runtimeResult:pathPolicy?{...runtimeResult,checks:[...runtimeResult.checks,'path_policy_root','path_policy_subpath','physical_path']}:runtimeResult,installedResolvedPath},null,2)+'\n',{flag:'wx'});
   return {tarball,manifest,consumerRoot,receipt:byteBinding(receiptPath)};
 }
 
