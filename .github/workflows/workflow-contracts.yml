@@ -110,6 +110,14 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/workflow-register/package-lock.json
 
+      - name: Prepare shared processing runtime
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund --prefix packages/processing-budget-runtime
+          npm run compile --prefix packages/processing-budget-runtime
+
       - name: Record CI baseline
         run: node ../../scripts/ci-baseline-summary.js
 

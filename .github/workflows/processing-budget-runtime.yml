@@ -11,6 +11,14 @@ on:
       - "scripts/t15-aggregate-installed*"
       - "scripts/t16-input-process-installed*"
       - "scripts/t17-deadline-installed*"
+      - "extensions/workflow-register/**"
+      - "scripts/t17-path-installed*"
+      - "scripts/t17-path-native-unc-fixture.*"
+      - "tools/main-consolidation/pathAdmissionPolicy.mjs"
+      - "tools/main-consolidation/path-source-admission.json"
+      - "tools/main-consolidation/test/pathAdmissionPolicy.test.mjs"
+      - "tools/main-consolidation/test/helpers/pathAdmissionFixture.mjs"
+      - "docs/release-evidence/proc-t17-path-source-coverage-2026-11-04.json"
       - "tools/main-consolidation/deadlineAdmissionPolicy.mjs"
       - "tools/main-consolidation/deadline-source-admission.json"
       - "tools/main-consolidation/test/deadlineAdmissionPolicy.test.mjs"
@@ -46,6 +54,14 @@ on:
       - "scripts/t15-aggregate-installed*"
       - "scripts/t16-input-process-installed*"
       - "scripts/t17-deadline-installed*"
+      - "extensions/workflow-register/**"
+      - "scripts/t17-path-installed*"
+      - "scripts/t17-path-native-unc-fixture.*"
+      - "tools/main-consolidation/pathAdmissionPolicy.mjs"
+      - "tools/main-consolidation/path-source-admission.json"
+      - "tools/main-consolidation/test/pathAdmissionPolicy.test.mjs"
+      - "tools/main-consolidation/test/helpers/pathAdmissionFixture.mjs"
+      - "docs/release-evidence/proc-t17-path-source-coverage-2026-11-04.json"
       - "tools/main-consolidation/deadlineAdmissionPolicy.mjs"
       - "tools/main-consolidation/deadline-source-admission.json"
       - "tools/main-consolidation/test/deadlineAdmissionPolicy.test.mjs"
@@ -134,6 +150,8 @@ jobs:
           git fetch --no-tags --depth=1 --no-write-fetch-head origin 7ea786afd5715d841526000a402c831d6c2a203c
           git cat-file -e 6ce384313c1072e34ced342260304c9c7dd07e9e^{commit}
           git cat-file -e 7ea786afd5715d841526000a402c831d6c2a203c^{commit}
+          git fetch --no-tags --depth=1 --no-write-fetch-head origin cf96788dbdd6836b449b7a31ecd3bae4ee4302a4
+          git cat-file -e cf96788dbdd6836b449b7a31ecd3bae4ee4302a4^{commit}
 
       - name: Prepare physical evidence root
         run: |
@@ -143,6 +161,7 @@ jobs:
           fs.mkdirSync(base,{recursive:true});
           const root=fs.mkdtempSync(path.join(base,'evidence-'));
           fs.appendFileSync(process.env.GITHUB_ENV,'PROCESSING_BUDGET_ARTIFACT_ROOT='+fs.realpathSync(root)+'\n');
+          fs.writeFileSync(path.join(root,'run-subject.json'),JSON.stringify({head:process.env.CI_VERIFIED_HEAD_SHA,runner:process.env.RUNNER_OS})+'\n',{flag:'wx'});
           fs.appendFileSync(process.env.GITHUB_ENV,'npm_config_cache='+path.join(fs.realpathSync(root),'npm-cache')+'\n');
           NODE
 
@@ -166,17 +185,61 @@ jobs:
           npm run package:policy --prefix extensions/bob-code-consistency-review
           npm run package --prefix extensions/workflow-register
           npm run package:policy --prefix extensions/workflow-register
+          node <<'NODE'
+          const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+          const caps={'bob-bazaar-review':12000000,'bob-code-consistency-review':11000000,'workflow-register':1200000};
+          const rows=Object.entries(caps).map(([id,cap])=>{
+            const folder=path.resolve('extensions',id);
+            const pkg=JSON.parse(fs.readFileSync(path.join(folder,'package.json')));
+            const file=path.join(folder,id+'-'+pkg.version+'.vsix');
+            const bytes=fs.readFileSync(file);
+            if(bytes.length<=0||bytes.length>cap)throw Error('VSIX capacity mismatch: '+id);
+            return {id:'local.'+id,cap,bytes:bytes.length,sha256:crypto.createHash('sha256').update(bytes).digest('hex')};
+          });
+          fs.writeFileSync(path.join(process.env.PROCESSING_BUDGET_ARTIFACT_ROOT,'policy-vsix.json'),JSON.stringify(rows,null,2)+'\n',{flag:'wx'});
+          NODE
 
       - name: Verify document build and artifact contracts
-        run: node --test scripts/processing-runtime-build-workflow.test.js scripts/t14-bounded-document-installed-smoke.test.mjs scripts/t15-aggregate-installed-smoke.test.mjs scripts/t16-input-process-installed-smoke.test.mjs scripts/t17-deadline-installed-smoke.test.mjs scripts/extension-host-smoke-contract.test.js scripts/three-extension-ui-contract-workflow.test.js
+        run: node --test scripts/processing-runtime-build-workflow.test.js scripts/t14-bounded-document-installed-smoke.test.mjs scripts/t15-aggregate-installed-smoke.test.mjs scripts/t16-input-process-installed-smoke.test.mjs scripts/t17-deadline-installed-smoke.test.mjs scripts/t17-path-installed-smoke.test.mjs scripts/t17-path-native-unc-fixture.test.mjs scripts/extension-host-smoke-contract.test.js scripts/three-extension-ui-contract-workflow.test.js
+
+      - name: Prepare owned native UNC fixture
+        if: runner.os == 'Windows'
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import crypto from 'node:crypto';
+          import {spawnSync} from 'node:child_process';
+          const nonce=crypto.randomBytes(16).toString('hex');
+          const temp=fs.realpathSync.native(process.env.RUNNER_TEMP);
+          const fixture=path.join(temp,'t17path-files-'+nonce);
+          const evidence=path.join(process.env.PROCESSING_BUDGET_ARTIFACT_ROOT,'t17path-unc-'+nonce);
+          const cleanup=path.join(temp,'t17path-cleanup-'+nonce);
+          fs.appendFileSync(process.env.GITHUB_ENV,[
+            'T17_PATH_UNC_ROOT='+fixture,'T17_PATH_UNC_EVIDENCE='+evidence,
+            'T17_PATH_UNC_CLEANUP='+cleanup,'T17_PATH_NATIVE_UNC_MANIFEST='+path.join(evidence,'native-unc-fixture.json')
+          ].join('\n')+'\n');
+          const result=spawnSync(process.execPath,['scripts/t17-path-native-unc-fixture.mjs','--prepare',
+            '--fixture-root',fixture,'--evidence-root',evidence,'--nonce',nonce],{stdio:'inherit'});
+          if(result.status!==0)throw Error('Windows native UNC fixture is required');
+          NODE
+
 
       - name: Prepare installed document artifacts
         id: document-artifacts
         run: |
           node --input-type=module <<'NODE'
           import fs from "node:fs"; import path from "node:path"; import crypto from "node:crypto";
-          import {createArtifactManifest} from "./scripts/t17-deadline-installed-smoke.mjs";
+          import {createArtifactManifest} from "./scripts/t17-path-installed-smoke.mjs";
           const manifest=await createArtifactManifest(process.cwd(),process.env.PROCESSING_BUDGET_ARTIFACT_ROOT);
+          const policy=JSON.parse(fs.readFileSync(path.join(process.env.PROCESSING_BUDGET_ARTIFACT_ROOT,'policy-vsix.json')));
+          const input=JSON.parse(fs.readFileSync(manifest));
+          if(input.extensions.length!==policy.length)throw Error('policy and installed VSIX inventory differs');
+          for(const [index,item] of input.extensions.entries()){
+            const expected=policy[index];
+            if(item.id!==expected.id||item.vsix.sha256!==expected.sha256||item.vsix.bytes!==expected.bytes)
+              throw Error('policy and installed VSIX bytes differ: '+item.id);
+          }
           const evidenceRoot=path.join(process.env.PROCESSING_BUDGET_ARTIFACT_ROOT,"installed-host-"+crypto.randomBytes(8).toString("hex"));
           fs.appendFileSync(process.env.GITHUB_OUTPUT,"manifest="+manifest+"\ninput_root="+path.dirname(manifest)+"\nevidence_root="+evidenceRoot+"\n");
           NODE
@@ -186,26 +249,82 @@ jobs:
 
       - name: Verify installed document runtime on Ubuntu
         if: runner.os == 'Linux'
-        run: xvfb-run -a node scripts/t17-deadline-installed-smoke.mjs --artifacts "${{ steps.document-artifacts.outputs.manifest }}" --evidence-root "${{ steps.document-artifacts.outputs.evidence_root }}"
+        run: xvfb-run -a node scripts/t17-path-installed-smoke.mjs --artifacts "${{ steps.document-artifacts.outputs.manifest }}" --evidence-root "${{ steps.document-artifacts.outputs.evidence_root }}"
 
       - name: Verify installed document runtime on Windows
         if: runner.os == 'Windows'
-        run: node scripts/t17-deadline-installed-smoke.mjs --artifacts "${{ steps.document-artifacts.outputs.manifest }}" --evidence-root "${{ steps.document-artifacts.outputs.evidence_root }}"
+        run: node scripts/t17-path-installed-smoke.mjs --artifacts "${{ steps.document-artifacts.outputs.manifest }}" --evidence-root "${{ steps.document-artifacts.outputs.evidence_root }}"
+
+      - name: Dispose owned native UNC fixture if needed
+        if: always() && runner.os == 'Windows' && env.T17_PATH_UNC_EVIDENCE != ''
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import {spawnSync} from 'node:child_process';
+          import {createHash} from 'node:crypto';
+          const manifest=process.env.T17_PATH_NATIVE_UNC_MANIFEST;
+          if(!fs.existsSync(manifest))process.exit(0);
+          const cleanup=process.env.T17_PATH_UNC_CLEANUP;
+          const ready=JSON.parse(fs.readFileSync(manifest,'utf8'));
+          const binding=file=>{
+            const bytes=fs.readFileSync(file);
+            return {path:fs.realpathSync(file),bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
+          };
+          const original=path.join(cleanup,'native-unc-cleanup.json');
+          const proof=path.join(process.env.T17_PATH_UNC_EVIDENCE,'portable');
+          fs.mkdirSync(proof);
+          try {
+            if(!fs.existsSync(original)){
+              const target=fs.existsSync(cleanup)?cleanup+'-recovery':cleanup;
+              const result=spawnSync(process.execPath,['scripts/t17-path-native-unc-fixture.mjs','--dispose',
+                '--fixture-manifest',manifest,'--evidence-root',target],{stdio:'inherit'});
+              if(result.status!==0)throw Error('owned UNC cleanup did not complete');
+            }
+          } finally {
+            for(const root of [cleanup,cleanup+'-recovery']){
+              if(!fs.existsSync(root))continue;
+              fs.cpSync(root,path.join(proof,path.basename(root)),{recursive:true,force:false,errorOnExist:true});
+            }
+            const physical=process.env.T17_PATH_UNC_ROOT;
+            const files={
+              ownerMarker:[path.join(physical,'.t17-path-owner.json'),'owner-marker.json'],
+              probeFile:[path.join(physical,'日本語 space.txt'),'probe-file.txt'],
+              nestedProbeFile:[path.join(physical,'content','inner.txt'),'nested-probe-file.txt'],
+              powershellScript:[path.resolve('scripts/t17-path-native-unc-fixture.ps1'),'driver.ps1'],
+              driverScript:[path.resolve('scripts/t17-path-native-unc-fixture.mjs'),'driver.mjs']
+            };
+            const rows=[];
+            for(const [key,[source,name]] of Object.entries(files)){
+              const measured=binding(source),expected=ready.bindings[key];
+              const driveCase=file=>file.replace(/^[a-z]:/,drive=>drive.toUpperCase());
+              if(driveCase(measured.path)!==driveCase(expected.path)||measured.bytes!==expected.bytes||measured.sha256!==expected.sha256)
+                throw Error('portable UNC fixture binding mismatch: '+key);
+              fs.copyFileSync(source,path.join(proof,name),fs.constants.COPYFILE_EXCL);
+              rows.push({key,name,original:expected});
+            }
+            fs.writeFileSync(path.join(proof,'input-bindings.json'),JSON.stringify(rows,null,2)+'\n',{flag:'wx'});
+          }
+          NODE
+
 
       - name: Upload installed document runtime proof
-        if: always() && steps.document-artifacts.outcome == 'success'
+        if: always() && env.PROCESSING_BUDGET_ARTIFACT_ROOT != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: t17-deadline-${{ matrix.os }}
+          name: t17-path-${{ matrix.os }}
           path: |
-            ${{ steps.document-artifacts.outputs.input_root }}
+            ${{ env.PROCESSING_BUDGET_ARTIFACT_ROOT }}/t17path-artifacts-*
+            ${{ env.PROCESSING_BUDGET_ARTIFACT_ROOT }}/t17path-unc-*
+            ${{ env.PROCESSING_BUDGET_ARTIFACT_ROOT }}/policy-vsix.json
+            ${{ env.PROCESSING_BUDGET_ARTIFACT_ROOT }}/run-subject.json
             ${{ steps.document-artifacts.outputs.evidence_root }}/receipt.json
             ${{ steps.document-artifacts.outputs.evidence_root }}/logs
             ${{ steps.document-artifacts.outputs.evidence_root }}/user-data/logs
           if-no-files-found: error
 
       - name: Verify literal admission and current product limits
-        run: node --test --test-concurrency=1 tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/boundedDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/gateRMainAdmissionPolicy.test.mjs scripts/exact-head-ci-contract.test.js tools/main-consolidation/test/inputProcessAdmissionPolicy.test.mjs tools/main-consolidation/test/deadlineAdmissionPolicy.test.mjs
+        run: node --test --test-concurrency=1 tools/main-consolidation/test/processingBudgetAdmissionPolicy.test.mjs tools/main-consolidation/test/aggregateDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/boundedDocumentAdmissionPolicy.test.mjs tools/main-consolidation/test/gateRMainAdmissionPolicy.test.mjs scripts/exact-head-ci-contract.test.js tools/main-consolidation/test/inputProcessAdmissionPolicy.test.mjs tools/main-consolidation/test/deadlineAdmissionPolicy.test.mjs tools/main-consolidation/test/pathAdmissionPolicy.test.mjs
 
       - name: Bind actual installed package evidence
         id: evidence

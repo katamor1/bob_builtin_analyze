@@ -167,7 +167,7 @@ test('aggregate document payload pins the same isolated native host',()=>{const 
 
 test('input process payload pins the same isolated host and preserves baseline files',()=>{const source=readRepoFile('scripts','t16-input-process-installed-smoke.mjs');for(const token of ["version:'1.106.1'",'reuseMachineInstall:false','--user-data-dir=','--extensions-dir=',"productActivationProbe:'not_run'",'hostExit=await runTests','t15-aggregate-installed-extension-host.test.js','t16-config.json','t16-host-receipt.json','baselineRunner.prepareInstalledArtifacts','baselineRunner.validateInstalledHostReceipt'])assert.ok(source.includes(token),token);});
 
-test('T17_installed_host_has_a_versioned_probe_and_separate_baseline_adapter',()=>{const source=readRepoFile('.github','workflows','processing-budget-runtime.yml');assert.match(source,/t17-deadline-installed-smoke\.mjs/);for(const file of ['t17-deadline-installed-extension-host.test.js','t17-deadline-installed-baseline-cases.js'])assert.ok(fs.existsSync(path.join(repoRoot,'scripts',file)),file);});
+test('T17_installed_host_has_a_versioned_probe_and_separate_baseline_adapter',()=>{const source=readRepoFile('.github','workflows','processing-budget-runtime.yml');assert.match(source,/t17-deadline-installed-smoke\.test\.mjs/);assert.match(source,/t17-path-installed-smoke\.mjs --artifacts/);for(const file of ['t17-deadline-installed-extension-host.test.js','t17-deadline-installed-baseline-cases.js'])assert.ok(fs.existsSync(path.join(repoRoot,'scripts',file)),file);});
 
 test('PATH installed host retains its frozen predecessor and separate UNC contract',()=>{
  const harness=readRepoFile('scripts','t17-path-installed-smoke.mjs');

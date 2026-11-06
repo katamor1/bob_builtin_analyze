@@ -1,0 +1,813 @@
+{
+  "baseFilesDigests": {
+    "gate_r_shipping": "72705be8addbc35f04f2fe89ee769af465df0ad874de5f03b158d4013100b94c",
+    "processing_budget": "5fd207142398975251cd798da0f9e01cc865de14b7f94c52eaef7256529903d5"
+  },
+  "baseMainSha": "cf96788dbdd6836b449b7a31ecd3bae4ee4302a4",
+  "baseTreeSha": "4955685da8d99efbb7424efcf278be3262d34dac",
+  "controlRows": [
+    {
+      "afterBlobSha": "5154d36e3b17e0f3da4bd8c05a21d59e377722ee",
+      "beforeBlobSha": "f897f1fec0f776bf2cf60eb000f085896595b616",
+      "mode": "100644",
+      "path": ".gitattributes",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "0ff4aa078dab43784f678411e3dfdab528e54b75",
+      "beforeBlobSha": "e16073582491b4bae4ffffecc58cb80768f9ce81",
+      "mode": "100644",
+      "path": ".github/workflows/extensions-quality.yml",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "e24764fc887dada665dde8d9c68c93b9db90c90c",
+      "beforeBlobSha": "8e0584f4e7ad460627a27614e68211d6b5a60117",
+      "mode": "100644",
+      "path": ".github/workflows/processing-budget-runtime.yml",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "c47aebe9f0728b96070d7ecfc70d127814de3a8e",
+      "beforeBlobSha": "14fc9da25bdc9367e300c79303ae095a8a6bb5af",
+      "mode": "100644",
+      "path": ".github/workflows/three-extension-ui-contracts.yml",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "8857da7c73c5e34c919d4e794d3a6878e59374ad",
+      "beforeBlobSha": "5f4b3034cc99766ac946d2fe0450c71da9f3d4b6",
+      "mode": "100644",
+      "path": ".github/workflows/workflow-contracts.yml",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "c899847265c1dd44426b5a9ceed753f86df36d05",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "docs/release-evidence/proc-t17-path-source-coverage-2026-11-04.json",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "24fcaf5bc82f6a8478bece6a85d53a15f91dfcca",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "docs/superpowers/plans/2026-11-04-proc-t17-path.md",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "41e3ffe16f88ba6f7a98ccd105bb7a6a1a710041",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "docs/superpowers/specs/2026-11-04-proc-t17-path-design.md",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "c5362d4d6dfa562dc60f1283757c16e2e0476a8d",
+      "beforeBlobSha": "166e0b136eaf4cab36f532aa249521743d2ad973",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/dependencyPolicy.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "df8c7991321e5b187507994f281ab0abefebd388",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/physicalWorkspaceResolver.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "cb4feab8a42c2450746652a0af161dabbd2383c8",
+      "beforeBlobSha": "1fe729fabff18d73284af230a440aefd4bfa15ea",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/test/ruleDocumentExtraction.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "1e11f879bc3016a953086bf0597644a9c0f258e1",
+      "beforeBlobSha": "631a7018bb5cc4db0c1408913b383384a7f64ed7",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/gitDiffCollector.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "c99a4db7239ae26a4a2e27d4ca258ba8279e0b8b",
+      "beforeBlobSha": "6731a90e1d1db5dad39bbda6746b3ba4616c71cb",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/reviewInputValidator.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "30f9dcdae2523b1b10441dcd0782c58e9c9fbc57",
+      "beforeBlobSha": "5c08a40c6a7357d946a3a95ec9174884f8a4f390",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/stableReviewInput.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "d54029a5126236b2bad6e2376aa683a2e6d484db",
+      "beforeBlobSha": "f4525fb4b4826b8038cab0325e2bbd2f794da2d9",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/dependencyPolicy.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "834e34b9040e7c62f54c7235f5456e34217646bd",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/physicalWorkspaceResolver.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "2cfd9d4c3e8695b4d98a1a5edb620e2edd55722e",
+      "beforeBlobSha": "6a67b79ea93d039751c8432da29e6e1405300c88",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/processingBudgetPipelineContract.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "7283c632541bb20fdb77040f247dafbcb095f6cc",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/stableInputPhysicalPath.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "0ea2121fe865847cf62750e2d1823436b0d4c48d",
+      "beforeBlobSha": "0c2fd5d3805764a2e52eeed690d4dcdec5cb13fa",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "13921b5be45afac990aa60b78b13ba665d198e93",
+      "beforeBlobSha": "3e99f4416c1187c85fb5b7d3990320ca6e62d22f",
+      "mode": "100644",
+      "path": "extensions/workflow-register/.vscodeignore",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "a3fd686fe2183f2bb08a4935d26dc4d64a79adcb",
+      "beforeBlobSha": "dea2045aafb19c0fad81d8e0a71bfab65a081dfc",
+      "mode": "100644",
+      "path": "extensions/workflow-register/package.json",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "5f7c2d06799a27607bb133b985e2f2519c34a47e",
+      "beforeBlobSha": "4d84df8e7d7e7de2d8d0cb1038ec6244997654de",
+      "mode": "100644",
+      "path": "extensions/workflow-register/scripts/check-contract-v2-runtime-reachability.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "bf26844f8e7aafa0394690e7513082c6a9a327e6",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/scripts/check-processing-path-boundary.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "9cf15b0ec542e04a9531cdb5182b722c2b3b78a3",
+      "beforeBlobSha": "b12c7ffb12015f3be17bb0b3e63af627741f2a01",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/bobGateLifecycleLegacyCases.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "f9952a99c7be144bb11e5eefb341ab17b7c58549",
+      "beforeBlobSha": "2198f913457debb9ae5683a40d8dbf96ecbe8764",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/dependencyPolicy.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "223879a04a340c35ba8144bc9be1403ef41562ab",
+      "beforeBlobSha": "d5365cf6fb2cf5a3eca2169c3c6eb6bb669a1b93",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/workflowContractV2ProviderInvocationArchitecture.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "e2a30e6a907aa5a979b5d1ecb77d9bcab397caf7",
+      "beforeBlobSha": "a0ab283495fcd0d8e9e74187d9c863067004ba5a",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/README.md",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "118ddb2c0b83f31885b13fa083957f182a842214",
+      "beforeBlobSha": "893b52e182df9d25cf6fd29665d36529150aa596",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/package.json",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "9fb98a99ca4314c184046d3f7ecc89936b951b80",
+      "beforeBlobSha": "eb05f622676b9b741fe4ca9c83c945b015ba8ecc",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/scripts/build-runtime.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "2a444a639c53ce6c7169de2a528b022b31902cd0",
+      "beforeBlobSha": "9aae44ca6d7573adc6840246835842a0f297ed41",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/scripts/copy-extension-runtime.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "696da09ebdf1f242fcfdc3a9e7316a552076e85a",
+      "beforeBlobSha": "d77e51db0163eb44e8861d7ba787f178b4ad4436",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/scripts/runtime-payload.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "d6e279c75b35568efe83c613dc094d83ac71a9e0",
+      "beforeBlobSha": "1181de65604bc38ae73c15678829102c4a9a9e69",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/aggregateIntegrationContract.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "1fa5e6123ac9ac69350860dea14a1e94d52b4bf5",
+      "beforeBlobSha": "c2b7caa25dd48824cf47cfe3ec52f1f6a934dfa4",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/boundedDocumentPackaging.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "ffbc7f300a508f93f500dff3b17a629770336ce1",
+      "beforeBlobSha": "345672edacf51b644101f1bb63b24526cc97f93b",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/extensionIntegrationContract.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "2c4c96eb046a6f31f105d36f844a33efc2600ab2",
+      "beforeBlobSha": "e0cd8a91317c208e1077d4a5d5451c9eb75f1d6d",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/fixtures/bob-bazaar-review-consumer.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "171f92e80a658a356c70c2748614991bb819ffca",
+      "beforeBlobSha": "c731380f6d0b8602fcf7dd2edbd355c2d73163cf",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/fixtures/bob-code-consistency-review-consumer.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "85fab2d001c8b68d17855336b8ae50609a02e3f9",
+      "beforeBlobSha": "c731380f6d0b8602fcf7dd2edbd355c2d73163cf",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/fixtures/workflow-register-consumer.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "b85a11d7b56693162c0f59f42d00c1f3c95c302b",
+      "beforeBlobSha": "8ec7f7d4886ed8cc667a17dcbf75a091ef89fc71",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/helpers.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "1564559efeff56542eeac072cf30445b44a86909",
+      "beforeBlobSha": "fcd8e7d450f77f2ffc44d11754e58eb79d53b6de",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/packageContract.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "e587ad2527c8465de6e6342ecb907e57f07b5fc5",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/pathCopyProfiles.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "bd978e69b1b2c66498b08320cd422a6da69c59e4",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/pathReadIdentity.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "0b4777871dbab0db795117b38517072ba75e37b2",
+      "beforeBlobSha": "3b25d7554aac4e2f5558c8e8e798d72545548e90",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/processingBudgetContracts.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "4567265487c83aa819973ef76603e0c208c78635",
+      "beforeBlobSha": "73090d93f15e8724f54a199c2a6afb9ead653814",
+      "mode": "100644",
+      "path": "scripts/exact-head-ci-contract.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "21526acbdeeaec5a0a57efcc4233919384aeff5c",
+      "beforeBlobSha": "da3798d2d83d4274db02dc7c3dae9bb26251a226",
+      "mode": "100644",
+      "path": "scripts/extension-host-smoke-contract.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "249409ddbe44659bbe3d2927e97a9817535adb2e",
+      "beforeBlobSha": "095ad7c462e30de363de3a14d55b23d20408887d",
+      "mode": "100644",
+      "path": "scripts/processing-runtime-build-workflow.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "6a8c0fc0c87c4a1ad5dce88ef3e8442dd4e2ab2f",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/t17-path-installed-baseline-cases.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "e483011a00d30d673e04cf61608de9a52e8d4e59",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/t17-path-installed-extension-host.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "1f4d7e3179cb04488d72c23b168b56b2ac38f4fa",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/t17-path-installed-smoke.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "3e489fef35f5c0523fcb743b305d0cd3b81d71b9",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/t17-path-installed-smoke.test.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "b63b5e10b353e1e6bf2bd9eb20a70b232a43c17f",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/t17-path-native-unc-fixture.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "949a5057d82de926a0a847eb8251a67233dc73fb",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/t17-path-native-unc-fixture.ps1",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "41d8cb61b9ac4f66b48ccfea772777c8c27182b0",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/t17-path-native-unc-fixture.test.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "0bcb46e966805a68f9929ec0a3ca05607e58565d",
+      "beforeBlobSha": "0f13c1b7f8a52d0f1a21fcda570bfe6ab9e2c47b",
+      "mode": "100644",
+      "path": "scripts/three-extension-ui-contract-workflow.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "cab2bb215d18696bbe59e9ff3e99d1b93aa93eb2",
+      "beforeBlobSha": "64bb1f2b6ce62fb17b130fa615aa2b6f6eedd61e",
+      "mode": "100644",
+      "path": "tools/main-consolidation/gateRMainAdmissionPolicy.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "b17e783b1c156591dfa8b5fcbd1e4f346865a383",
+      "beforeBlobSha": "90c6871befe7904da1345f0db979ab59fcb1f6b6",
+      "mode": "100644",
+      "path": "tools/main-consolidation/processingBudgetAdmissionPolicy.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "dc5f1d4e68821311d0ec40d94efe467d3b64815b",
+      "beforeBlobSha": "22125371ef9c4fff6b79c71e6e07556a34ec42fc",
+      "mode": "100644",
+      "path": "tools/main-consolidation/test/deadlineAdmissionPolicy.test.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "0ad5b037b1fc4aa1791380f27c80e28d945170e4",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "tools/main-consolidation/test/helpers/pathAdmissionFixture.mjs",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "70bc7fe05b17108e46005b1e048683f5092010aa",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "tools/main-consolidation/test/pathAdmissionPolicy.test.mjs",
+      "sourceItemIds": []
+    }
+  ],
+  "domainPaths": {
+    "gate_r_shipping": [
+      ".gitattributes",
+      ".github/workflows/extensions-quality.yml",
+      ".github/workflows/processing-budget-runtime.yml",
+      ".github/workflows/three-extension-ui-contracts.yml",
+      ".github/workflows/workflow-contracts.yml",
+      "docs/release-evidence/proc-t17-path-source-coverage-2026-11-04.json",
+      "docs/superpowers/plans/2026-11-04-proc-t17-path.md",
+      "docs/superpowers/specs/2026-11-04-proc-t17-path-design.md",
+      "extensions/bob-bazaar-review/src/sharedProcessingBudgetRuntime.ts",
+      "extensions/bob-bazaar-review/src/workspace/workspaceResolver.ts",
+      "extensions/bob-bazaar-review/src/workspace/workspaceRoots.ts",
+      "extensions/bob-bazaar-review/test/dependencyPolicy.test.js",
+      "extensions/bob-bazaar-review/test/physicalWorkspaceResolver.test.js",
+      "extensions/bob-bazaar-review/test/ruleDocumentExtraction.test.js",
+      "extensions/bob-code-consistency-review/src/core/fileSystem.ts",
+      "extensions/bob-code-consistency-review/src/core/gitDiffCollector.ts",
+      "extensions/bob-code-consistency-review/src/core/reviewInputBuilder.ts",
+      "extensions/bob-code-consistency-review/src/core/reviewInputValidator.ts",
+      "extensions/bob-code-consistency-review/src/core/stableReviewInput.ts",
+      "extensions/bob-code-consistency-review/src/sharedProcessingBudgetRuntime.ts",
+      "extensions/bob-code-consistency-review/src/workspaceResolver.ts",
+      "extensions/bob-code-consistency-review/src/workspaceRoots.ts",
+      "extensions/bob-code-consistency-review/test/dependencyPolicy.test.js",
+      "extensions/bob-code-consistency-review/test/physicalWorkspaceResolver.test.js",
+      "extensions/bob-code-consistency-review/test/processingBudgetPipelineContract.test.js",
+      "extensions/bob-code-consistency-review/test/reviewInputAuthoringPhysicalPath.test.js",
+      "extensions/bob-code-consistency-review/test/stableInputPhysicalPath.test.js",
+      "extensions/bob-code-consistency-review/test/task17PathSyntax.test.js",
+      "extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js",
+      "extensions/workflow-register/.vscodeignore",
+      "extensions/workflow-register/package.json",
+      "extensions/workflow-register/scripts/build-shared-runtime.js",
+      "extensions/workflow-register/scripts/check-contract-v2-runtime-reachability.js",
+      "extensions/workflow-register/scripts/check-processing-path-boundary.js",
+      "extensions/workflow-register/scripts/check-vsix-policy.js",
+      "extensions/workflow-register/src/core/workspaceRoots.ts",
+      "extensions/workflow-register/src/sharedProcessingBudgetRuntime.ts",
+      "extensions/workflow-register/test/bobGateLifecycleLegacyCases.js",
+      "extensions/workflow-register/test/dependencyPolicy.test.js",
+      "extensions/workflow-register/test/task17SharedPathRuntime.test.js",
+      "extensions/workflow-register/test/workflowContractV2ProviderInvocationArchitecture.test.js",
+      "extensions/workflow-register/test/workspaceRoots.test.js",
+      "extensions/workflow-register/tsconfig.json",
+      "packages/processing-budget-runtime/README.md",
+      "packages/processing-budget-runtime/package.json",
+      "packages/processing-budget-runtime/scripts/build-runtime.js",
+      "packages/processing-budget-runtime/scripts/copy-extension-runtime.js",
+      "packages/processing-budget-runtime/scripts/runtime-payload.js",
+      "packages/processing-budget-runtime/src/boundedDocumentFile.ts",
+      "packages/processing-budget-runtime/src/boundedDocumentRequest.ts",
+      "packages/processing-budget-runtime/src/index.ts",
+      "packages/processing-budget-runtime/src/pathPolicy.ts",
+      "packages/processing-budget-runtime/test/aggregateIntegrationContract.test.js",
+      "packages/processing-budget-runtime/test/boundedDocumentPackaging.test.js",
+      "packages/processing-budget-runtime/test/extensionIntegrationContract.test.js",
+      "packages/processing-budget-runtime/test/fixtures/bob-bazaar-review-consumer.ts",
+      "packages/processing-budget-runtime/test/fixtures/bob-code-consistency-review-consumer.ts",
+      "packages/processing-budget-runtime/test/fixtures/workflow-register-consumer.ts",
+      "packages/processing-budget-runtime/test/helpers.js",
+      "packages/processing-budget-runtime/test/packageContract.test.js",
+      "packages/processing-budget-runtime/test/pathCopyProfiles.test.js",
+      "packages/processing-budget-runtime/test/pathPolicy.test.js",
+      "packages/processing-budget-runtime/test/pathPolicyAbsoluteSegments.test.js",
+      "packages/processing-budget-runtime/test/pathReadIdentity.test.js",
+      "packages/processing-budget-runtime/test/processingBudgetContracts.test.js",
+      "packages/processing-budget-runtime/test/task17IntegrationContract.test.js",
+      "scripts/exact-head-ci-contract.test.js",
+      "scripts/extension-host-smoke-contract.test.js",
+      "scripts/processing-runtime-build-workflow.test.js",
+      "scripts/t17-path-installed-baseline-cases.js",
+      "scripts/t17-path-installed-extension-host.test.js",
+      "scripts/t17-path-installed-smoke.mjs",
+      "scripts/t17-path-installed-smoke.test.mjs",
+      "scripts/t17-path-native-unc-fixture.mjs",
+      "scripts/t17-path-native-unc-fixture.ps1",
+      "scripts/t17-path-native-unc-fixture.test.mjs",
+      "scripts/three-extension-ui-contract-workflow.test.js",
+      "tools/main-consolidation/gateRMainAdmissionPolicy.mjs",
+      "tools/main-consolidation/processingBudgetAdmissionPolicy.mjs",
+      "tools/main-consolidation/test/deadlineAdmissionPolicy.test.mjs",
+      "tools/main-consolidation/test/helpers/pathAdmissionFixture.mjs",
+      "tools/main-consolidation/test/pathAdmissionPolicy.test.mjs"
+    ],
+    "processing_budget": [
+      ".gitattributes",
+      ".github/workflows/extensions-quality.yml",
+      ".github/workflows/processing-budget-runtime.yml",
+      ".github/workflows/three-extension-ui-contracts.yml",
+      ".github/workflows/workflow-contracts.yml",
+      "docs/release-evidence/proc-t17-path-source-coverage-2026-11-04.json",
+      "extensions/bob-bazaar-review/src/sharedProcessingBudgetRuntime.ts",
+      "extensions/bob-bazaar-review/src/workspace/workspaceResolver.ts",
+      "extensions/bob-bazaar-review/src/workspace/workspaceRoots.ts",
+      "extensions/bob-bazaar-review/test/dependencyPolicy.test.js",
+      "extensions/bob-bazaar-review/test/physicalWorkspaceResolver.test.js",
+      "extensions/bob-bazaar-review/test/ruleDocumentExtraction.test.js",
+      "extensions/bob-code-consistency-review/src/core/fileSystem.ts",
+      "extensions/bob-code-consistency-review/src/core/gitDiffCollector.ts",
+      "extensions/bob-code-consistency-review/src/core/reviewInputBuilder.ts",
+      "extensions/bob-code-consistency-review/src/core/reviewInputValidator.ts",
+      "extensions/bob-code-consistency-review/src/core/stableReviewInput.ts",
+      "extensions/bob-code-consistency-review/src/sharedProcessingBudgetRuntime.ts",
+      "extensions/bob-code-consistency-review/src/workspaceResolver.ts",
+      "extensions/bob-code-consistency-review/src/workspaceRoots.ts",
+      "extensions/bob-code-consistency-review/test/dependencyPolicy.test.js",
+      "extensions/bob-code-consistency-review/test/physicalWorkspaceResolver.test.js",
+      "extensions/bob-code-consistency-review/test/processingBudgetPipelineContract.test.js",
+      "extensions/bob-code-consistency-review/test/reviewInputAuthoringPhysicalPath.test.js",
+      "extensions/bob-code-consistency-review/test/stableInputPhysicalPath.test.js",
+      "extensions/bob-code-consistency-review/test/task17PathSyntax.test.js",
+      "extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js",
+      "extensions/workflow-register/.vscodeignore",
+      "extensions/workflow-register/package.json",
+      "extensions/workflow-register/scripts/build-shared-runtime.js",
+      "extensions/workflow-register/scripts/check-contract-v2-runtime-reachability.js",
+      "extensions/workflow-register/scripts/check-processing-path-boundary.js",
+      "extensions/workflow-register/scripts/check-vsix-policy.js",
+      "extensions/workflow-register/src/core/workspaceRoots.ts",
+      "extensions/workflow-register/src/sharedProcessingBudgetRuntime.ts",
+      "extensions/workflow-register/test/bobGateLifecycleLegacyCases.js",
+      "extensions/workflow-register/test/dependencyPolicy.test.js",
+      "extensions/workflow-register/test/task17SharedPathRuntime.test.js",
+      "extensions/workflow-register/test/workflowContractV2ProviderInvocationArchitecture.test.js",
+      "extensions/workflow-register/test/workspaceRoots.test.js",
+      "extensions/workflow-register/tsconfig.json",
+      "packages/processing-budget-runtime/README.md",
+      "packages/processing-budget-runtime/package.json",
+      "packages/processing-budget-runtime/scripts/build-runtime.js",
+      "packages/processing-budget-runtime/scripts/copy-extension-runtime.js",
+      "packages/processing-budget-runtime/scripts/runtime-payload.js",
+      "packages/processing-budget-runtime/src/boundedDocumentFile.ts",
+      "packages/processing-budget-runtime/src/boundedDocumentRequest.ts",
+      "packages/processing-budget-runtime/src/index.ts",
+      "packages/processing-budget-runtime/src/pathPolicy.ts",
+      "packages/processing-budget-runtime/test/aggregateIntegrationContract.test.js",
+      "packages/processing-budget-runtime/test/boundedDocumentPackaging.test.js",
+      "packages/processing-budget-runtime/test/extensionIntegrationContract.test.js",
+      "packages/processing-budget-runtime/test/fixtures/bob-bazaar-review-consumer.ts",
+      "packages/processing-budget-runtime/test/fixtures/bob-code-consistency-review-consumer.ts",
+      "packages/processing-budget-runtime/test/fixtures/workflow-register-consumer.ts",
+      "packages/processing-budget-runtime/test/helpers.js",
+      "packages/processing-budget-runtime/test/packageContract.test.js",
+      "packages/processing-budget-runtime/test/pathCopyProfiles.test.js",
+      "packages/processing-budget-runtime/test/pathPolicy.test.js",
+      "packages/processing-budget-runtime/test/pathPolicyAbsoluteSegments.test.js",
+      "packages/processing-budget-runtime/test/pathReadIdentity.test.js",
+      "packages/processing-budget-runtime/test/processingBudgetContracts.test.js",
+      "packages/processing-budget-runtime/test/task17IntegrationContract.test.js",
+      "scripts/exact-head-ci-contract.test.js",
+      "scripts/extension-host-smoke-contract.test.js",
+      "scripts/processing-runtime-build-workflow.test.js",
+      "scripts/t17-path-installed-baseline-cases.js",
+      "scripts/t17-path-installed-extension-host.test.js",
+      "scripts/t17-path-installed-smoke.mjs",
+      "scripts/t17-path-installed-smoke.test.mjs",
+      "scripts/t17-path-native-unc-fixture.mjs",
+      "scripts/t17-path-native-unc-fixture.ps1",
+      "scripts/t17-path-native-unc-fixture.test.mjs",
+      "scripts/three-extension-ui-contract-workflow.test.js",
+      "tools/main-consolidation/gateRMainAdmissionPolicy.mjs",
+      "tools/main-consolidation/processingBudgetAdmissionPolicy.mjs",
+      "tools/main-consolidation/test/deadlineAdmissionPolicy.test.mjs",
+      "tools/main-consolidation/test/helpers/pathAdmissionFixture.mjs",
+      "tools/main-consolidation/test/pathAdmissionPolicy.test.mjs"
+    ]
+  },
+  "independentControls": [
+    "tools/main-consolidation/path-source-admission.json",
+    "tools/main-consolidation/pathAdmissionPolicy.mjs"
+  ],
+  "schemaVersion": "bob-builtin-analyze/path-source-admission/v1",
+  "sourceCoverageDigest": "f6c5502d59deec05d0bc44709bfad85942639291a3db310d8384b516c5305970",
+  "sourceRows": [
+    {
+      "afterBlobSha": "b8377a5eff786ab6750c0c38b3ae8039d5debb60",
+      "beforeBlobSha": "fe25107e6b934b2ad20a4addf5056688e5d808c9",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/sharedProcessingBudgetRuntime.ts",
+      "sourceItemIds": [
+        "source-de3b9139421e60c0585e67ab"
+      ]
+    },
+    {
+      "afterBlobSha": "500d8ec1083cf1f625486ecc924eff354440f77b",
+      "beforeBlobSha": "b96b14fb4a61d712a40e095687226d98287a7a78",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/workspace/workspaceResolver.ts",
+      "sourceItemIds": [
+        "source-5219013542fc29ba1d534591"
+      ]
+    },
+    {
+      "afterBlobSha": "a9c2698a86e3e48a2cd111722891d2ff02f09c5c",
+      "beforeBlobSha": "bb1920f7ca052f3711b70b921110a5a0419f18d6",
+      "mode": "100644",
+      "path": "extensions/bob-bazaar-review/src/workspace/workspaceRoots.ts",
+      "sourceItemIds": [
+        "source-caf09c280275a6ebe087fe80"
+      ]
+    },
+    {
+      "afterBlobSha": "306dbdd16bf29e99be43d0271d93d30e9148c6e1",
+      "beforeBlobSha": "f06c679d7f5250b98e252a8aa2c565f0fa08dd73",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/fileSystem.ts",
+      "sourceItemIds": [
+        "source-aa62885d24943041e4096545"
+      ]
+    },
+    {
+      "afterBlobSha": "f0ade7df58328c10243898ad162b78f2fa40aa9a",
+      "beforeBlobSha": "867c6ea7af4bf5116a18c77e30e1105b7481720c",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/core/reviewInputBuilder.ts",
+      "sourceItemIds": [
+        "source-04120694790d10c80bb7040c"
+      ]
+    },
+    {
+      "afterBlobSha": "f963bdb3e94bee9c92ae3953088af60b6c71d71d",
+      "beforeBlobSha": "625764235b0f3ed2322ec0c2c174c9f661d5aec2",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/sharedProcessingBudgetRuntime.ts",
+      "sourceItemIds": [
+        "source-b33145fb261ad05c13b57e8d"
+      ]
+    },
+    {
+      "afterBlobSha": "c1a34aab24b721f5e455837fb221622b4399ad93",
+      "beforeBlobSha": "4b211c00facd3bb1a4b1c0754d9c3a0793f09f72",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/workspaceResolver.ts",
+      "sourceItemIds": [
+        "source-3e7af2df20c39b189fbd1629"
+      ]
+    },
+    {
+      "afterBlobSha": "4a6fad0b6434b5cb99b81c150373516d2d1d9518",
+      "beforeBlobSha": "9b0a16abb05c293df9eaae8e67f98caaf25bd031",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/workspaceRoots.ts",
+      "sourceItemIds": [
+        "source-02309bad381271a510d344c9"
+      ]
+    },
+    {
+      "afterBlobSha": "bedfabebb95ea52c1dd5b1b064f85d29a6263bba",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/reviewInputAuthoringPhysicalPath.test.js",
+      "sourceItemIds": [
+        "source-f7857de29e60e9f3caa993eb"
+      ]
+    },
+    {
+      "afterBlobSha": "0f833e52cdd78036a47386bbe31c4514201afa46",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/task17PathSyntax.test.js",
+      "sourceItemIds": [
+        "source-f7857de29e60e9f3caa993eb"
+      ]
+    },
+    {
+      "afterBlobSha": "d7dfd859fcbb592273e9fed9ef93b9eb1384e6ef",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/scripts/build-shared-runtime.js",
+      "sourceItemIds": [
+        "source-d04f52986688fcbd24d8cda7",
+        "source-ef195dcb7064aa411dcd1bb3"
+      ]
+    },
+    {
+      "afterBlobSha": "38c953d8736d7c90c57fe5f48b294893ac34808f",
+      "beforeBlobSha": "50261aa7ac9004340ffd20b949d37f5c34fb5aa7",
+      "mode": "100644",
+      "path": "extensions/workflow-register/scripts/check-vsix-policy.js",
+      "sourceItemIds": [
+        "source-d04f52986688fcbd24d8cda7"
+      ]
+    },
+    {
+      "afterBlobSha": "0adebc272b1bb205ca3756d1c016b29a70f4c03c",
+      "beforeBlobSha": "f863b89676763505b70ca6d3ebbacb0902c1a0ba",
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/core/workspaceRoots.ts",
+      "sourceItemIds": [
+        "source-f81376e6cca60ec0168ede79"
+      ]
+    },
+    {
+      "afterBlobSha": "3eac06866c8b99442f8c3b7d3f838b1e91de884f",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/sharedProcessingBudgetRuntime.ts",
+      "sourceItemIds": [
+        "source-ca4e97785c37f540250cf9fa"
+      ]
+    },
+    {
+      "afterBlobSha": "3f36083b39a049f902383e9d55dc3059f648b176",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/task17SharedPathRuntime.test.js",
+      "sourceItemIds": [
+        "source-6f36d055862923caea3a35e1"
+      ]
+    },
+    {
+      "afterBlobSha": "34735a7a9e4a85b74ca0807364d1ca9c889a2751",
+      "beforeBlobSha": "d6cf731168eafd7de21a62982090a7f8d6638228",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/workspaceRoots.test.js",
+      "sourceItemIds": [
+        "source-62df0f711e5ae203237bb4a1"
+      ]
+    },
+    {
+      "afterBlobSha": "ae30feb65ca24aa8f81f8224b9d8a9dd7d339d99",
+      "beforeBlobSha": "739b3c071d4cc67446fa961d8255c6417b4f675b",
+      "mode": "100644",
+      "path": "extensions/workflow-register/tsconfig.json",
+      "sourceItemIds": [
+        "source-d04f52986688fcbd24d8cda7"
+      ]
+    },
+    {
+      "afterBlobSha": "2eb7292b362c92a73982d8dd503fa2b7ebb7377a",
+      "beforeBlobSha": "a18a4551e262c1de158eeab647ecb98b64791dd2",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/boundedDocumentFile.ts",
+      "sourceItemIds": [
+        "source-434d0ac63b4a746f6d3a9e20"
+      ]
+    },
+    {
+      "afterBlobSha": "2077c29c2b04ef208df3591a74c447dc7f9457ba",
+      "beforeBlobSha": "5e3889b6a7a030cee97e0ed5c39af6741841f9aa",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/boundedDocumentRequest.ts",
+      "sourceItemIds": [
+        "source-434d0ac63b4a746f6d3a9e20"
+      ]
+    },
+    {
+      "afterBlobSha": "c97d013b4b162b70e8d5b15e0ac1f535ff04e5ed",
+      "beforeBlobSha": "cf6f158a6056a2d27f7de561f0548f2913cda8ec",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/index.ts",
+      "sourceItemIds": [
+        "source-ebfc5cdf5f699bf21c7f452d"
+      ]
+    },
+    {
+      "afterBlobSha": "c0c463fe8553194ebccbacccca6db83438c5ba68",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/src/pathPolicy.ts",
+      "sourceItemIds": [
+        "source-3ded212f1168d24021187d9e",
+        "source-3e7af2df20c39b189fbd1629",
+        "source-4f031a975bf8b94eb8d72e84",
+        "source-5219013542fc29ba1d534591",
+        "source-ef195dcb7064aa411dcd1bb3"
+      ]
+    },
+    {
+      "afterBlobSha": "ea4705bfb1188c5ede6049a4811f6a941b0bd2d5",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/pathPolicy.test.js",
+      "sourceItemIds": [
+        "source-1004a4fe0de3bc511f445d9c"
+      ]
+    },
+    {
+      "afterBlobSha": "48fb88cd9b9776148bbd08e17fbed2770e610c1d",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/pathPolicyAbsoluteSegments.test.js",
+      "sourceItemIds": [
+        "source-50e11b6b638f7049f18b0e16"
+      ]
+    },
+    {
+      "afterBlobSha": "9c71b60cb6a7309761e88738e45180279a03fb61",
+      "beforeBlobSha": "31aa837d26843ac53573ae482b2989341d0a83a9",
+      "mode": "100644",
+      "path": "packages/processing-budget-runtime/test/task17IntegrationContract.test.js",
+      "sourceItemIds": [
+        "source-47976894c870049312761832"
+      ]
+    }
+  ]
+}
