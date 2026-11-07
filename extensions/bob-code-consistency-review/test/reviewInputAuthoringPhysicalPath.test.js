@@ -47,3 +47,27 @@ test('artifact_reference_limit_precedes_path_io',async()=>{
   try{const call=()=>require('../out/core/reviewInputValidator').validateReviewInput(input,f.root,'utf8',1048576,{beforeArtifactPaths(){hookCalls++;}});if(count===501){await assert.rejects(call,/artifact references exceed maximum/);assert.equal(artifactIo,0);assert.equal(hookCalls,0);}else{assert.equal((await call()).artifacts.requirements.length,500);assert.ok(artifactIo>=500);assert.equal(hookCalls,1);}}finally{a.mock.restore();b.mock.restore();}
  }
 });
+
+test('authoring_revalidates_before_read_after_build_yields',async()=>{
+ const f=fixture(),outside=fixture(),parent=path.join(f.root,'output'),retained=parent+'.retained';
+ assert.ok(path.resolve(parent).startsWith(path.resolve(f.root)+path.sep));
+ assert.ok(path.resolve(retained).startsWith(path.resolve(f.root)+path.sep));
+ fs.mkdirSync(parent);
+ const output=path.join(parent,'review-input.yaml');
+ fs.writeFileSync(output,'INSIDE');fs.writeFileSync(path.join(outside.root,'review-input.yaml'),'OUTSIDE');
+ const schema=require('../out/core/schemaLoader'),load=schema.loadSchemaValidator,read=fsp.readFile;
+ let changed=false,existingReads=0;
+ const a=mock.method(schema,'loadSchemaValidator',async(...args)=>{
+  const validator=await load(...args);
+  fs.renameSync(parent,retained);
+  fs.symlinkSync(outside.root,parent,process.platform==='win32'?'junction':'dir');
+  changed=true;
+  return validator;
+ });
+ const b=mock.method(fsp,'readFile',async(file,...args)=>{if(file===output)existingReads++;return read(file,...args);});
+ try{
+  const result=await writeReviewInputFromDraft({draft:f.draft,workspaceRoot:f.root,outputPath:output});
+  assert.equal(changed,true);assert.equal(result.status,'error');assert.equal(existingReads,0);
+  assert.equal(fs.readFileSync(path.join(outside.root,'review-input.yaml'),'utf8'),'OUTSIDE');
+ }finally{a.mock.restore();b.mock.restore();}
+});

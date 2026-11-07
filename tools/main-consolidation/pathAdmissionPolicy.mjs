@@ -29,10 +29,10 @@ const equal=(left,right)=>gateRCanonicalJson(left).equals(gateRCanonicalJson(rig
 const compare=(a,b)=>a<b?-1:a>b?1:0;
 
 /* Seals generated from measured source, control and immutable Git subjects. */
-export const PATH_SOURCE_COVERAGE_SHA256="f6c5502d59deec05d0bc44709bfad85942639291a3db310d8384b516c5305970";
-export const PATH_SOURCE_ADMISSION_SHA256="2d126a92a714560867a6126c9ba1bbdb3b6e9277be9d671991def076994e3c3d";
-const PATH_COVERAGE_RAW_SHA256="f6c5502d59deec05d0bc44709bfad85942639291a3db310d8384b516c5305970";
-const PATH_ADMISSION_RAW_SHA256="2d126a92a714560867a6126c9ba1bbdb3b6e9277be9d671991def076994e3c3d";
+export const PATH_SOURCE_COVERAGE_SHA256="b24fe823abefca077af3b79c970226cba8f9fffb4ea9072b5a8ebca9b96e3409";
+export const PATH_SOURCE_ADMISSION_SHA256="eba764a2023116dedb7d08ac2d67508a7b796248527357d1fab718167ea22c13";
+const PATH_COVERAGE_RAW_SHA256="b24fe823abefca077af3b79c970226cba8f9fffb4ea9072b5a8ebca9b96e3409";
+const PATH_ADMISSION_RAW_SHA256="eba764a2023116dedb7d08ac2d67508a7b796248527357d1fab718167ea22c13";
 const PATH_OWNER_TREE="a80e1e77d9020481de3cd26be204a5ec8e556f0c";
 export const PATH_HISTORICAL_BINDINGS=Object.freeze(Object.fromEntries(Object.entries({
  "docs/release-evidence/feature-selection-ledger-2026-08-23.json": {

@@ -37,3 +37,28 @@ test('admitted_reread_rechecks_links_without_charging_original_twice',async()=>{
  fs.linkSync(f.filePath,path.join(f.root,'second.bin'));await assert.rejects(()=>op.verifyAfterExternalRead(admission),e=>e.code==='bounded_document_source_invalid');
  assert.deepEqual(['single_document_bytes','total_document_bytes','total_operation_input_bytes'].map(id=>op.snapshot().categories.find(row=>row.category===id).committed),[7,7,7]);assert.equal(op.snapshot().categories.every(row=>row.reserved===0),true);
 });
+
+test('regular_leaf_or_parent_replacement_before_open_is_never_adopted',async t=>{
+ for(const kind of ['leaf','parent']){
+  await t.test(kind,async()=>{
+   const f=h.fixture(),directory=path.join(f.root,'original'),replacement=path.join(f.root,'replacement');
+   fs.mkdirSync(directory);fs.mkdirSync(replacement);
+   const source=path.join(directory,'source.bin'),newFile=path.join(replacement,'source.bin');
+   fs.renameSync(f.filePath,source);fs.writeFileSync(newFile,'replace');
+   const original=kind==='leaf'?source:directory,next=kind==='leaf'?newFile:replacement,retained=original+'.retained';
+   for(const item of [original,next,retained])assert.ok(path.resolve(item).startsWith(path.resolve(f.root)+path.sep));
+   const open=fsp.open;
+   let swapped=false,consumed=false;
+   const spy=mock.method(fsp,'open',async(file,...args)=>{
+    if(file===source&&!swapped){fs.renameSync(original,retained);fs.renameSync(next,original);swapped=true;}
+    return open(file,...args);
+   });
+   try{
+    await assert.rejects(()=>h.load('boundedDocumentFile').withBoundedDocumentSnapshot({...f.input,filePath:source},async()=>{
+     consumed=true;
+    }),error=>error.code==='bounded_document_source_changed');
+    assert.equal(swapped,true);assert.equal(consumed,false);clean(f);
+   }finally{spy.mock.restore();}
+  });
+ }
+});

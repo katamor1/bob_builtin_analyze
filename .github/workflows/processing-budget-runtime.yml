@@ -110,6 +110,10 @@ jobs:
     name: Processing budget / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    env:
+      EXPECTED_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}
+      DISPATCH_HEAD_SHA: ${{ inputs.expectedHeadSha }}
+      DISPATCH_NONCE: ${{ inputs.dispatchNonce }}
     strategy:
       fail-fast: false
       matrix:
@@ -125,10 +129,6 @@ jobs:
 
       - name: Verify checked-out commit
         working-directory: ${{ github.workspace }}
-        env:
-          EXPECTED_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.expectedHeadSha || github.event.pull_request.head.sha || github.sha }}
-          DISPATCH_HEAD_SHA: ${{ inputs.expectedHeadSha }}
-          DISPATCH_NONCE: ${{ inputs.dispatchNonce }}
         run: node scripts/verify-ci-head.js
 
       - name: Setup Node.js

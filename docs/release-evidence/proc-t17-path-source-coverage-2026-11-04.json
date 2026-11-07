@@ -68,6 +68,18 @@
       "reason": "Current Bazaar path-policy consumer and extraction boundary."
     },
     {
+      "beforeBlobSha": "18c23812d6174bcfd3e5f40bd6323e7b524d4d96",
+      "classification": "additionalCurrentMainPrerequisite",
+      "path": "extensions/bob-code-consistency-review/src/commands/reviewInputCommands.ts",
+      "reason": "Current CCR path-policy call site, budget preservation or contract test."
+    },
+    {
+      "beforeBlobSha": "23b8013f23047c6e8b3349f4d376ee7d10ef165a",
+      "classification": "additionalCurrentMainPrerequisite",
+      "path": "extensions/bob-code-consistency-review/src/commands/workspaceCommands.ts",
+      "reason": "Current CCR path-policy call site, budget preservation or contract test."
+    },
+    {
       "beforeBlobSha": "631a7018bb5cc4db0c1408913b383384a7f64ed7",
       "classification": "additionalCurrentMainPrerequisite",
       "path": "extensions/bob-code-consistency-review/src/core/gitDiffCollector.ts",
@@ -86,9 +98,33 @@
       "reason": "Current CCR path-policy call site, budget preservation or contract test."
     },
     {
+      "beforeBlobSha": "ebc6a13387010ed141ad2f8f1745de78157cf664",
+      "classification": "additionalCurrentMainPrerequisite",
+      "path": "extensions/bob-code-consistency-review/src/extensionCommandOptions.ts",
+      "reason": "Current CCR path-policy call site, budget preservation or contract test."
+    },
+    {
+      "beforeBlobSha": "953dca6f7cf4dfe3a5b258229ac0cf172d519081",
+      "classification": "additionalCurrentMainPrerequisite",
+      "path": "extensions/bob-code-consistency-review/src/reviewExecutionCommands.ts",
+      "reason": "Current CCR path-policy call site, budget preservation or contract test."
+    },
+    {
+      "beforeBlobSha": "9ffd6ba9ea9271d57074205ada471633cee625df",
+      "classification": "additionalCurrentMainPrerequisite",
+      "path": "extensions/bob-code-consistency-review/src/traceabilityCommands.ts",
+      "reason": "Current CCR path-policy call site, budget preservation or contract test."
+    },
+    {
       "beforeBlobSha": "f4525fb4b4826b8038cab0325e2bbd2f794da2d9",
       "classification": "additionalCurrentMainPrerequisite",
       "path": "extensions/bob-code-consistency-review/test/dependencyPolicy.test.js",
+      "reason": "Current CCR path-policy call site, budget preservation or contract test."
+    },
+    {
+      "beforeBlobSha": "06f0c52695aa6a116833ece93e20191dcac87de7",
+      "classification": "additionalCurrentMainPrerequisite",
+      "path": "extensions/bob-code-consistency-review/test/discoveryProcessingLimitsWiring.test.js",
       "reason": "Current CCR path-policy call site, budget preservation or contract test."
     },
     {
@@ -116,9 +152,27 @@
       "reason": "Current CCR path-policy call site, budget preservation or contract test."
     },
     {
+      "beforeBlobSha": "25f337ed8fcf6de8690e6004c7514b80247806fc",
+      "classification": "additionalCurrentMainPrerequisite",
+      "path": "extensions/bob-code-consistency-review/test/traceabilityCommandsConcurrency.test.js",
+      "reason": "Current CCR path-policy call site, budget preservation or contract test."
+    },
+    {
+      "beforeBlobSha": "cdbf0a410710d53b7e5de086303b685b82238dfa",
+      "classification": "additionalCurrentMainPrerequisite",
+      "path": "extensions/bob-code-consistency-review/test/traceabilityPrepWebview.test.js",
+      "reason": "Current CCR path-policy call site, budget preservation or contract test."
+    },
+    {
       "beforeBlobSha": "3e99f4416c1187c85fb5b7d3990320ca6e62d22f",
       "classification": "additionalCurrentMainPrerequisite",
       "path": "extensions/workflow-register/.vscodeignore",
+      "reason": "Narrow Workflow runtime delivery or current physical root consumer coverage."
+    },
+    {
+      "beforeBlobSha": "173cfa18bed0a732d9bbc12850ac17f02a174384",
+      "classification": "additionalCurrentMainPrerequisite",
+      "path": "extensions/workflow-register/README.md",
       "reason": "Narrow Workflow runtime delivery or current physical root consumer coverage."
     },
     {
@@ -140,6 +194,12 @@
       "reason": "Narrow Workflow runtime delivery or current physical root consumer coverage."
     },
     {
+      "beforeBlobSha": "17b0d3f77280873e73b9a3c72fd244d8cb425720",
+      "classification": "additionalCurrentMainPrerequisite",
+      "path": "extensions/workflow-register/src/workflowDiscovery.ts",
+      "reason": "Narrow Workflow runtime delivery or current physical root consumer coverage."
+    },
+    {
       "beforeBlobSha": "b12c7ffb12015f3be17bb0b3e63af627741f2a01",
       "classification": "additionalCurrentMainPrerequisite",
       "path": "extensions/workflow-register/test/bobGateLifecycleLegacyCases.js",
@@ -149,6 +209,12 @@
       "beforeBlobSha": "2198f913457debb9ae5683a40d8dbf96ecbe8764",
       "classification": "additionalCurrentMainPrerequisite",
       "path": "extensions/workflow-register/test/dependencyPolicy.test.js",
+      "reason": "Narrow Workflow runtime delivery or current physical root consumer coverage."
+    },
+    {
+      "beforeBlobSha": "8cc33387cc32a7534db7db324c13678646752273",
+      "classification": "additionalCurrentMainPrerequisite",
+      "path": "extensions/workflow-register/test/workflowCompilerParity.test.js",
       "reason": "Narrow Workflow runtime delivery or current physical root consumer coverage."
     },
     {
@@ -488,7 +554,7 @@
       ],
       "targets": [
         {
-          "blobSha": "f0ade7df58328c10243898ad162b78f2fa40aa9a",
+          "blobSha": "3987ea7bd405fadd1fe09c1966d08d724b2f1f70",
           "mode": "100644",
           "path": "extensions/bob-code-consistency-review/src/core/reviewInputBuilder.ts"
         }
@@ -842,7 +908,7 @@
       ],
       "targets": [
         {
-          "blobSha": "c0c463fe8553194ebccbacccca6db83438c5ba68",
+          "blobSha": "303bea9733c789a8705d03c0b18fd7bb388037d4",
           "mode": "100644",
           "path": "packages/processing-budget-runtime/src/pathPolicy.ts"
         }
@@ -946,7 +1012,7 @@
           "path": "extensions/bob-code-consistency-review/src/workspaceResolver.ts"
         },
         {
-          "blobSha": "c0c463fe8553194ebccbacccca6db83438c5ba68",
+          "blobSha": "303bea9733c789a8705d03c0b18fd7bb388037d4",
           "mode": "100644",
           "path": "packages/processing-budget-runtime/src/pathPolicy.ts"
         }
@@ -1011,7 +1077,7 @@
       ],
       "targets": [
         {
-          "blobSha": "2eb7292b362c92a73982d8dd503fa2b7ebb7377a",
+          "blobSha": "5dfda696d4c55a9ebf80dc5ae8612f2668818b0a",
           "mode": "100644",
           "path": "packages/processing-budget-runtime/src/boundedDocumentFile.ts"
         },
@@ -1407,7 +1473,7 @@
       ],
       "targets": [
         {
-          "blobSha": "c0c463fe8553194ebccbacccca6db83438c5ba68",
+          "blobSha": "303bea9733c789a8705d03c0b18fd7bb388037d4",
           "mode": "100644",
           "path": "packages/processing-budget-runtime/src/pathPolicy.ts"
         }
@@ -1494,7 +1560,7 @@
       ],
       "targets": [
         {
-          "blobSha": "48fb88cd9b9776148bbd08e17fbed2770e610c1d",
+          "blobSha": "934dd0a888e4760775cdbf7e2162e7ab2abcff05",
           "mode": "100644",
           "path": "packages/processing-budget-runtime/test/pathPolicyAbsoluteSegments.test.js"
         }
@@ -1588,7 +1654,7 @@
           "path": "extensions/bob-bazaar-review/src/workspace/workspaceResolver.ts"
         },
         {
-          "blobSha": "c0c463fe8553194ebccbacccca6db83438c5ba68",
+          "blobSha": "303bea9733c789a8705d03c0b18fd7bb388037d4",
           "mode": "100644",
           "path": "packages/processing-budget-runtime/src/pathPolicy.ts"
         }
@@ -2778,7 +2844,7 @@
       ],
       "targets": [
         {
-          "blobSha": "c0c463fe8553194ebccbacccca6db83438c5ba68",
+          "blobSha": "303bea9733c789a8705d03c0b18fd7bb388037d4",
           "mode": "100644",
           "path": "packages/processing-budget-runtime/src/pathPolicy.ts"
         },
@@ -2886,7 +2952,7 @@
           "path": "extensions/bob-code-consistency-review/test/task17PathSyntax.test.js"
         },
         {
-          "blobSha": "bedfabebb95ea52c1dd5b1b064f85d29a6263bba",
+          "blobSha": "fb371745ad331ff015874059e0e05853dc30585b",
           "mode": "100644",
           "path": "extensions/bob-code-consistency-review/test/reviewInputAuthoringPhysicalPath.test.js"
         }

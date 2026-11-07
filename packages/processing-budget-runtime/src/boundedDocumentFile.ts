@@ -25,7 +25,7 @@ function sameStat(before: BigIntStats, after: BigIntStats): void {
 function expectedMatches(expected: BoundedDocumentFingerprint, actual: BoundedDocumentFingerprint): void {
   for (const key of ["byteSize", "mtimeNs", "device", "inode", "sha256"] as const) if (expected[key] !== actual[key]) changed()
 }
-async function sourcePath(input: BoundedDocumentReadInput, rootIdentity: BigIntStats | undefined, check: () => void): Promise<{ root: string, stat: BigIntStats }> {
+async function sourcePath(input: BoundedDocumentReadInput, rootIdentity: BigIntStats | undefined, check: () => void): Promise<{ root: string, stat: BigIntStats, named: BigIntStats }> {
   check()
   const resolved = await fileOperation(async () => resolvePhysicalContainedPathSync({ rootPath: input.rootPath, candidatePath: input.filePath, expectedType: "file" }), "bounded_document_source_invalid")
   check()
@@ -37,7 +37,7 @@ async function sourcePath(input: BoundedDocumentReadInput, rootIdentity: BigIntS
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) throw new BoundedDocumentError("bounded_document_source_invalid")
   if (rootIdentity && (rootIdentity.dev !== rootStat.dev || rootIdentity.ino !== rootStat.ino)) changed()
   const root = resolved.root_path
-  return { root, stat: rootStat }
+  return { root, stat: rootStat, named }
 }
 async function readExactly(file: fs.FileHandle, buffer: Buffer, check: () => void, position = 0): Promise<void> {
   let offset = 0
@@ -123,6 +123,7 @@ async function withSnapshot<T>(value: BoundedDocumentReadInput, consume: (snapsh
     const before = await fileOperation(() => file!.stat({ bigint: true }))
     check()
     if (!before.isFile() || before.nlink !== 1n || before.size < 0n || before.size > BigInt(input.maximumFileBytes)) throw new BoundedDocumentError("bounded_document_source_invalid", { phase: "read", limit: input.maximumFileBytes })
+    sameStat(root.named, before)
     sameStat(before, await fileOperation(() => fs.lstat(input.filePath, { bigint: true })))
     const openedRoot = await fileOperation(() => sourcePath(input, root.stat, check), "bounded_document_source_invalid")
     if (openedRoot.root !== root.root) changed()

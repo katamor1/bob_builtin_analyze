@@ -128,6 +128,8 @@ function parse(value: unknown, label: string): Parsed {
   } else if (normalized.startsWith("/")) {
     // A single backslash is a Windows root-relative path, not a POSIX absolute.
     if (raw.startsWith("\\")) fail("path_policy_absolute", label)
+    // The portable relative result cannot represent a literal POSIX backslash.
+    if (raw.includes("\\")) fail("path_policy_invalid", label)
     kind = "posix"
     remainder = normalized.slice(1)
   }

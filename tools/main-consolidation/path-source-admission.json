@@ -21,7 +21,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "e24764fc887dada665dde8d9c68c93b9db90c90c",
+      "afterBlobSha": "209a30aa6cc3b5c0530ab6a1273de053da4727df",
       "beforeBlobSha": "8e0584f4e7ad460627a27614e68211d6b5a60117",
       "mode": "100644",
       "path": ".github/workflows/processing-budget-runtime.yml",
@@ -42,7 +42,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "c899847265c1dd44426b5a9ceed753f86df36d05",
+      "afterBlobSha": "915f8fe6ed34c608adfb0a0a30ef1380521e019f",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "docs/release-evidence/proc-t17-path-source-coverage-2026-11-04.json",
@@ -84,6 +84,20 @@
       "sourceItemIds": []
     },
     {
+      "afterBlobSha": "100ed2d97d15ba59bd1530d2ed3a32a7f86492eb",
+      "beforeBlobSha": "18c23812d6174bcfd3e5f40bd6323e7b524d4d96",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/commands/reviewInputCommands.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "31d5e6710ea5c98caf20b78da7fde1c78fc2accc",
+      "beforeBlobSha": "23b8013f23047c6e8b3349f4d376ee7d10ef165a",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/commands/workspaceCommands.ts",
+      "sourceItemIds": []
+    },
+    {
       "afterBlobSha": "1e11f879bc3016a953086bf0597644a9c0f258e1",
       "beforeBlobSha": "631a7018bb5cc4db0c1408913b383384a7f64ed7",
       "mode": "100644",
@@ -105,10 +119,38 @@
       "sourceItemIds": []
     },
     {
+      "afterBlobSha": "ee27a0984a7dd78ec56b0147167c4902cf43916b",
+      "beforeBlobSha": "ebc6a13387010ed141ad2f8f1745de78157cf664",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/extensionCommandOptions.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "1cfc84f1d2d928c5c657d059b2d9555b6324e652",
+      "beforeBlobSha": "953dca6f7cf4dfe3a5b258229ac0cf172d519081",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/reviewExecutionCommands.ts",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "183fdad494fc1a1e8bb3f3112c8da669029ee383",
+      "beforeBlobSha": "9ffd6ba9ea9271d57074205ada471633cee625df",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/src/traceabilityCommands.ts",
+      "sourceItemIds": []
+    },
+    {
       "afterBlobSha": "d54029a5126236b2bad6e2376aa683a2e6d484db",
       "beforeBlobSha": "f4525fb4b4826b8038cab0325e2bbd2f794da2d9",
       "mode": "100644",
       "path": "extensions/bob-code-consistency-review/test/dependencyPolicy.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "6e6f9b0d6f8bd57f1088b79b11621c49c9c3ae0f",
+      "beforeBlobSha": "06f0c52695aa6a116833ece93e20191dcac87de7",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/discoveryProcessingLimitsWiring.test.js",
       "sourceItemIds": []
     },
     {
@@ -140,10 +182,31 @@
       "sourceItemIds": []
     },
     {
+      "afterBlobSha": "042663f16a811408560248def104b4ae4a6e3637",
+      "beforeBlobSha": "25f337ed8fcf6de8690e6004c7514b80247806fc",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/traceabilityCommandsConcurrency.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "7109e5065389f11565ebcc8016946b03ca43b148",
+      "beforeBlobSha": "cdbf0a410710d53b7e5de086303b685b82238dfa",
+      "mode": "100644",
+      "path": "extensions/bob-code-consistency-review/test/traceabilityPrepWebview.test.js",
+      "sourceItemIds": []
+    },
+    {
       "afterBlobSha": "13921b5be45afac990aa60b78b13ba665d198e93",
       "beforeBlobSha": "3e99f4416c1187c85fb5b7d3990320ca6e62d22f",
       "mode": "100644",
       "path": "extensions/workflow-register/.vscodeignore",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "6070a79a915b8a6fc6acb7c9ea836a601193abd7",
+      "beforeBlobSha": "173cfa18bed0a732d9bbc12850ac17f02a174384",
+      "mode": "100644",
+      "path": "extensions/workflow-register/README.md",
       "sourceItemIds": []
     },
     {
@@ -168,6 +231,13 @@
       "sourceItemIds": []
     },
     {
+      "afterBlobSha": "716b97365bf00082490c69b1bf784ec777c1d2ec",
+      "beforeBlobSha": "17b0d3f77280873e73b9a3c72fd244d8cb425720",
+      "mode": "100644",
+      "path": "extensions/workflow-register/src/workflowDiscovery.ts",
+      "sourceItemIds": []
+    },
+    {
       "afterBlobSha": "9cf15b0ec542e04a9531cdb5182b722c2b3b78a3",
       "beforeBlobSha": "b12c7ffb12015f3be17bb0b3e63af627741f2a01",
       "mode": "100644",
@@ -182,6 +252,13 @@
       "sourceItemIds": []
     },
     {
+      "afterBlobSha": "c5e52cf330c5fc1162675b130edf10f566588722",
+      "beforeBlobSha": "8cc33387cc32a7534db7db324c13678646752273",
+      "mode": "100644",
+      "path": "extensions/workflow-register/test/workflowCompilerParity.test.js",
+      "sourceItemIds": []
+    },
+    {
       "afterBlobSha": "223879a04a340c35ba8144bc9be1403ef41562ab",
       "beforeBlobSha": "d5365cf6fb2cf5a3eca2169c3c6eb6bb669a1b93",
       "mode": "100644",
@@ -189,7 +266,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "e2a30e6a907aa5a979b5d1ecb77d9bcab397caf7",
+      "afterBlobSha": "1ede79d1d7cfa6adfaa3a3aea21180cfe73ff2d1",
       "beforeBlobSha": "a0ab283495fcd0d8e9e74187d9c863067004ba5a",
       "mode": "100644",
       "path": "packages/processing-budget-runtime/README.md",
@@ -287,7 +364,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "bd978e69b1b2c66498b08320cd422a6da69c59e4",
+      "afterBlobSha": "69a690e4c00e9ed72c3124042c51c23bfe1d4bc5",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "packages/processing-budget-runtime/test/pathReadIdentity.test.js",
@@ -301,7 +378,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "4567265487c83aa819973ef76603e0c208c78635",
+      "afterBlobSha": "4bbc061bc4cd519cdb6d2807998da9cb1cf80134",
       "beforeBlobSha": "73090d93f15e8724f54a199c2a6afb9ead653814",
       "mode": "100644",
       "path": "scripts/exact-head-ci-contract.test.js",
@@ -429,22 +506,31 @@
       "extensions/bob-bazaar-review/test/dependencyPolicy.test.js",
       "extensions/bob-bazaar-review/test/physicalWorkspaceResolver.test.js",
       "extensions/bob-bazaar-review/test/ruleDocumentExtraction.test.js",
+      "extensions/bob-code-consistency-review/src/commands/reviewInputCommands.ts",
+      "extensions/bob-code-consistency-review/src/commands/workspaceCommands.ts",
       "extensions/bob-code-consistency-review/src/core/fileSystem.ts",
       "extensions/bob-code-consistency-review/src/core/gitDiffCollector.ts",
       "extensions/bob-code-consistency-review/src/core/reviewInputBuilder.ts",
       "extensions/bob-code-consistency-review/src/core/reviewInputValidator.ts",
       "extensions/bob-code-consistency-review/src/core/stableReviewInput.ts",
+      "extensions/bob-code-consistency-review/src/extensionCommandOptions.ts",
+      "extensions/bob-code-consistency-review/src/reviewExecutionCommands.ts",
       "extensions/bob-code-consistency-review/src/sharedProcessingBudgetRuntime.ts",
+      "extensions/bob-code-consistency-review/src/traceabilityCommands.ts",
       "extensions/bob-code-consistency-review/src/workspaceResolver.ts",
       "extensions/bob-code-consistency-review/src/workspaceRoots.ts",
       "extensions/bob-code-consistency-review/test/dependencyPolicy.test.js",
+      "extensions/bob-code-consistency-review/test/discoveryProcessingLimitsWiring.test.js",
       "extensions/bob-code-consistency-review/test/physicalWorkspaceResolver.test.js",
       "extensions/bob-code-consistency-review/test/processingBudgetPipelineContract.test.js",
       "extensions/bob-code-consistency-review/test/reviewInputAuthoringPhysicalPath.test.js",
       "extensions/bob-code-consistency-review/test/stableInputPhysicalPath.test.js",
       "extensions/bob-code-consistency-review/test/task17PathSyntax.test.js",
       "extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js",
+      "extensions/bob-code-consistency-review/test/traceabilityCommandsConcurrency.test.js",
+      "extensions/bob-code-consistency-review/test/traceabilityPrepWebview.test.js",
       "extensions/workflow-register/.vscodeignore",
+      "extensions/workflow-register/README.md",
       "extensions/workflow-register/package.json",
       "extensions/workflow-register/scripts/build-shared-runtime.js",
       "extensions/workflow-register/scripts/check-contract-v2-runtime-reachability.js",
@@ -452,9 +538,11 @@
       "extensions/workflow-register/scripts/check-vsix-policy.js",
       "extensions/workflow-register/src/core/workspaceRoots.ts",
       "extensions/workflow-register/src/sharedProcessingBudgetRuntime.ts",
+      "extensions/workflow-register/src/workflowDiscovery.ts",
       "extensions/workflow-register/test/bobGateLifecycleLegacyCases.js",
       "extensions/workflow-register/test/dependencyPolicy.test.js",
       "extensions/workflow-register/test/task17SharedPathRuntime.test.js",
+      "extensions/workflow-register/test/workflowCompilerParity.test.js",
       "extensions/workflow-register/test/workflowContractV2ProviderInvocationArchitecture.test.js",
       "extensions/workflow-register/test/workspaceRoots.test.js",
       "extensions/workflow-register/tsconfig.json",
@@ -511,22 +599,31 @@
       "extensions/bob-bazaar-review/test/dependencyPolicy.test.js",
       "extensions/bob-bazaar-review/test/physicalWorkspaceResolver.test.js",
       "extensions/bob-bazaar-review/test/ruleDocumentExtraction.test.js",
+      "extensions/bob-code-consistency-review/src/commands/reviewInputCommands.ts",
+      "extensions/bob-code-consistency-review/src/commands/workspaceCommands.ts",
       "extensions/bob-code-consistency-review/src/core/fileSystem.ts",
       "extensions/bob-code-consistency-review/src/core/gitDiffCollector.ts",
       "extensions/bob-code-consistency-review/src/core/reviewInputBuilder.ts",
       "extensions/bob-code-consistency-review/src/core/reviewInputValidator.ts",
       "extensions/bob-code-consistency-review/src/core/stableReviewInput.ts",
+      "extensions/bob-code-consistency-review/src/extensionCommandOptions.ts",
+      "extensions/bob-code-consistency-review/src/reviewExecutionCommands.ts",
       "extensions/bob-code-consistency-review/src/sharedProcessingBudgetRuntime.ts",
+      "extensions/bob-code-consistency-review/src/traceabilityCommands.ts",
       "extensions/bob-code-consistency-review/src/workspaceResolver.ts",
       "extensions/bob-code-consistency-review/src/workspaceRoots.ts",
       "extensions/bob-code-consistency-review/test/dependencyPolicy.test.js",
+      "extensions/bob-code-consistency-review/test/discoveryProcessingLimitsWiring.test.js",
       "extensions/bob-code-consistency-review/test/physicalWorkspaceResolver.test.js",
       "extensions/bob-code-consistency-review/test/processingBudgetPipelineContract.test.js",
       "extensions/bob-code-consistency-review/test/reviewInputAuthoringPhysicalPath.test.js",
       "extensions/bob-code-consistency-review/test/stableInputPhysicalPath.test.js",
       "extensions/bob-code-consistency-review/test/task17PathSyntax.test.js",
       "extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js",
+      "extensions/bob-code-consistency-review/test/traceabilityCommandsConcurrency.test.js",
+      "extensions/bob-code-consistency-review/test/traceabilityPrepWebview.test.js",
       "extensions/workflow-register/.vscodeignore",
+      "extensions/workflow-register/README.md",
       "extensions/workflow-register/package.json",
       "extensions/workflow-register/scripts/build-shared-runtime.js",
       "extensions/workflow-register/scripts/check-contract-v2-runtime-reachability.js",
@@ -534,9 +631,11 @@
       "extensions/workflow-register/scripts/check-vsix-policy.js",
       "extensions/workflow-register/src/core/workspaceRoots.ts",
       "extensions/workflow-register/src/sharedProcessingBudgetRuntime.ts",
+      "extensions/workflow-register/src/workflowDiscovery.ts",
       "extensions/workflow-register/test/bobGateLifecycleLegacyCases.js",
       "extensions/workflow-register/test/dependencyPolicy.test.js",
       "extensions/workflow-register/test/task17SharedPathRuntime.test.js",
+      "extensions/workflow-register/test/workflowCompilerParity.test.js",
       "extensions/workflow-register/test/workflowContractV2ProviderInvocationArchitecture.test.js",
       "extensions/workflow-register/test/workspaceRoots.test.js",
       "extensions/workflow-register/tsconfig.json",
@@ -586,7 +685,7 @@
     "tools/main-consolidation/pathAdmissionPolicy.mjs"
   ],
   "schemaVersion": "bob-builtin-analyze/path-source-admission/v1",
-  "sourceCoverageDigest": "f6c5502d59deec05d0bc44709bfad85942639291a3db310d8384b516c5305970",
+  "sourceCoverageDigest": "b24fe823abefca077af3b79c970226cba8f9fffb4ea9072b5a8ebca9b96e3409",
   "sourceRows": [
     {
       "afterBlobSha": "b8377a5eff786ab6750c0c38b3ae8039d5debb60",
@@ -625,7 +724,7 @@
       ]
     },
     {
-      "afterBlobSha": "f0ade7df58328c10243898ad162b78f2fa40aa9a",
+      "afterBlobSha": "3987ea7bd405fadd1fe09c1966d08d724b2f1f70",
       "beforeBlobSha": "867c6ea7af4bf5116a18c77e30e1105b7481720c",
       "mode": "100644",
       "path": "extensions/bob-code-consistency-review/src/core/reviewInputBuilder.ts",
@@ -661,7 +760,7 @@
       ]
     },
     {
-      "afterBlobSha": "bedfabebb95ea52c1dd5b1b064f85d29a6263bba",
+      "afterBlobSha": "fb371745ad331ff015874059e0e05853dc30585b",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "extensions/bob-code-consistency-review/test/reviewInputAuthoringPhysicalPath.test.js",
@@ -743,7 +842,7 @@
       ]
     },
     {
-      "afterBlobSha": "2eb7292b362c92a73982d8dd503fa2b7ebb7377a",
+      "afterBlobSha": "5dfda696d4c55a9ebf80dc5ae8612f2668818b0a",
       "beforeBlobSha": "a18a4551e262c1de158eeab647ecb98b64791dd2",
       "mode": "100644",
       "path": "packages/processing-budget-runtime/src/boundedDocumentFile.ts",
@@ -770,7 +869,7 @@
       ]
     },
     {
-      "afterBlobSha": "c0c463fe8553194ebccbacccca6db83438c5ba68",
+      "afterBlobSha": "303bea9733c789a8705d03c0b18fd7bb388037d4",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "packages/processing-budget-runtime/src/pathPolicy.ts",
@@ -792,7 +891,7 @@
       ]
     },
     {
-      "afterBlobSha": "48fb88cd9b9776148bbd08e17fbed2770e610c1d",
+      "afterBlobSha": "934dd0a888e4760775cdbf7e2162e7ab2abcff05",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "packages/processing-budget-runtime/test/pathPolicyAbsoluteSegments.test.js",

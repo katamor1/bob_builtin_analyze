@@ -122,8 +122,7 @@ export async function writeReviewInputFromDraft(input: {
   backupExisting?: boolean
   strictPaths?: boolean
 }): Promise<ReviewInputWriteResult> {
-  let output: string
-  try { output = authoringOutputPath(input.workspaceRoot, input.outputPath) }
+  try { authoringOutputPath(input.workspaceRoot, input.outputPath) }
   catch (error) {
     if (!(error instanceof PathPolicyError)) throw error
     return { status: "error", outputPath: input.outputPath, errors: [error.message], warnings: [] }
@@ -132,7 +131,7 @@ export async function writeReviewInputFromDraft(input: {
   if (build.status === "error") return { status: "error", outputPath: input.outputPath, errors: build.errors, warnings: build.warnings }
 
   try {
-    const existing = await readIfExists(output)
+    const existing = await readIfExists(authoringOutputPath(input.workspaceRoot, input.outputPath))
     authoringOutputPath(input.workspaceRoot, input.outputPath)
     if (existing !== undefined && input.overwrite === false) {
       return { status: "error", outputPath: input.outputPath, errors: [`review-input.yaml already exists: ${input.outputPath}`], warnings: build.warnings }

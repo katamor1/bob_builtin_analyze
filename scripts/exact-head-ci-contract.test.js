@@ -38,9 +38,12 @@ for (const [workflowName, jobIds] of Object.entries(workflows)) {
       const checkoutStep = job.slice(checkout, guard)
       assert.ok(checkoutStep.includes(`          ref: ${headExpression}`))
       const guardStep = job.slice(guard, setup)
-      assert.ok(guardStep.includes(`          EXPECTED_HEAD_SHA: ${headExpression}`))
-      assert.ok(guardStep.includes("          DISPATCH_HEAD_SHA: ${{ inputs.expectedHeadSha }}"))
-      assert.ok(guardStep.includes("          DISPATCH_NONCE: ${{ inputs.dispatchNonce }}"))
+      const jobScoped = workflowName === "processing-budget-runtime"
+      const environment = jobScoped ? job.slice(0, job.indexOf("\n    steps:")) : guardStep
+      const indent = jobScoped ? "      " : "          "
+      assert.ok(environment.includes(`${indent}EXPECTED_HEAD_SHA: ${headExpression}`))
+      assert.ok(environment.includes(indent + "DISPATCH_HEAD_SHA: ${{ inputs.expectedHeadSha }}"))
+      assert.ok(environment.includes(indent + "DISPATCH_NONCE: ${{ inputs.dispatchNonce }}"))
       assert.ok(guardStep.includes("        working-directory: ${{ github.workspace }}"))
       assert.ok(guardStep.includes("        run: node scripts/verify-ci-head.js"))
       assert.doesNotMatch(guardStep, /continue-on-error|\|\|\s*true|^\s+if:/m)
@@ -101,3 +104,12 @@ test("T14 installed host proof retains the existing eighteen exact-head job rows
 test('T15 aggregate proof keeps exact eighteen jobs and checked head',()=>{const source=fs.readFileSync(path.join(root,'.github/workflows/processing-budget-runtime.yml'),'utf8'),contract=JSON.parse(fs.readFileSync(path.join(root,'tools/main-consolidation/exact-head-ci-contract.json')));assert.equal(contract.workflows.length,5);assert.equal(contract.workflows.flatMap(row=>row.jobs).length,18);assert.ok(source.indexOf('run: node scripts/verify-ci-head.js')<source.indexOf('Install standalone package'));assert.match(source,/t15-aggregate-installed-smoke/);assert.doesNotMatch(source,/continue-on-error/);});
 
 test('T16 keeps eighteen exact head rows and both bound receipt uploads',()=>{const source=fs.readFileSync(path.join(root,'.github/workflows/processing-budget-runtime.yml'),'utf8'),contract=JSON.parse(fs.readFileSync(path.join(root,'tools/main-consolidation/exact-head-ci-contract.json')));assert.equal(contract.workflows.length,5);assert.equal(contract.workflows.flatMap(row=>row.jobs).length,18);assert.ok(source.indexOf('run: node scripts/verify-ci-head.js')<source.indexOf('createArtifactManifest'));assert.match(source,/t16-input-process-installed-smoke/);assert.match(source,/evidence_root.*logs/);assert.doesNotMatch(source,/continue-on-error/);});
+
+test("PATH downstream runner checks inherit the exact head and dispatch inputs", () => {
+  const source = fs.readFileSync(path.join(root, ".github/workflows/processing-budget-runtime.yml"), "utf8").replaceAll("\r\n", "\n")
+  const header = source.slice(source.indexOf("\n  test:"), source.indexOf("\n    steps:"))
+  assert.match(header, /\n    env:\n/)
+  assert.ok(header.includes("      EXPECTED_HEAD_SHA: " + headExpression))
+  assert.ok(header.includes("      DISPATCH_HEAD_SHA: ${{ inputs.expectedHeadSha }}"))
+  assert.ok(header.includes("      DISPATCH_NONCE: ${{ inputs.dispatchNonce }}"))
+})

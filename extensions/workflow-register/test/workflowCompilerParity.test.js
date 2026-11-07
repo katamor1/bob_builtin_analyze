@@ -823,3 +823,26 @@ test('malformed V2 structural entries reserve their slot without a searchable wo
     assert.equal(g.acquired(), 0)
   }
 })
+
+test('workspace discovery rejects aliased entries and retains valid sibling workflows',async()=>{
+ const root=await fsp.mkdtemp(path.join(os.tmpdir(),'path-workflow-discovery-'));
+ const good=await writeWorkflow(root,'valid-workflow',validWorkflow);
+ const collection=path.dirname(path.dirname(good)),target=path.join(root,'link-target'),alias=path.join(collection,'alias');
+ fs.mkdirSync(target);
+ fs.writeFileSync(path.join(target,'WORKFLOW.md'),validWorkflow);
+ const type=process.platform==='win32'?'junction':'dir';
+ fs.symlinkSync(target,alias,type);
+ const dangling=path.join(collection,'dangling'),missing=path.join(root,'missing');
+ fs.symlinkSync(missing,dangling,type);
+ resetRuntime(root,[path.join(alias,'WORKFLOW.md'),path.join(dangling,'current.json'),good]);
+ const read=fsp.readdir;
+ let aliasReads=0;
+ fsp.readdir=async(file,...args)=>{if(file===alias||file===dangling)aliasReads++;return read(file,...args);};
+ try{
+  const {loadWorkspaceWorkflows}=requireWithVscode('workflowDefinitionLoader.js');
+  const result=await loadWorkspaceWorkflows('workflow-register');
+  assert.deepEqual(result.coreWorkflows.map(row=>row.workflowFile),[good]);
+  assert.ok(result.diagnostics.some(line=>line.includes('WF2_PACKAGE_LAYOUT_INVALID')));
+  assert.equal(aliasReads,0);
+ }finally{fsp.readdir=read;}
+});

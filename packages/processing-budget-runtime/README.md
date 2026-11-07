@@ -20,9 +20,9 @@ The thirteen-category ledger remains pure and in memory. The root additionally e
 
 Run `npm ci`, `npm test` and `npm pack`. Tests exercise a real tarball installed offline into a fresh consumer and check three declaration consumers without executing their negative type fixtures. Test evidence uses `PROCESSING_BUDGET_ARTIFACT_ROOT` when set, otherwise an owned temporary directory. Normal packing compiles through `prepack`; internal pack tests disable lifecycle scripts to avoid recursion.
 
-Development preparation: run `npm ci` in this package and each companion extension. Each extension uses its local `node scripts/build-shared-runtime.js` wrapper for `npm run compile`: the fixed package compiler builds a staged, hash-verified fourteen-module runtime, the extension compiles, then the canonical copier publishes the same 42 compiled files plus a manifest into its owned `out/shared-processing-budget-runtime`. Missing tooling or a stale payload fails with a build-required error; no install or source runtime fallback occurs. Build/copy operations share an exclusive lock. Unknown output files and aliases are rejected; replaced owned outputs are retained under `node_modules/.cache/bob-processing-runtime`.
+Development preparation: run `npm ci` in this package and each extension. Each extension builds and copies the checked runtime into its owned `out/shared-processing-budget-runtime`. Bazaar and CCR copy 48 compiled files and ship 16 JavaScript modules plus a manifest. Workflow copies the three compiled path-policy files and ships one JavaScript module plus its path-only manifest. Build and copy operations share an exclusive lock. Unknown output files and aliases are rejected.
 
-The package has exactly 46 paths and no production dependencies. Only root and `./validated-ooxml` exports are public. VSIX packaging keeps the fourteen runtime JS files and manifest; existing exclusions remove declaration files and maps. Runtime validation verifies the shipped JS hashes without requiring excluded development files.
+The package has 52 packed paths and zero production dependencies. The public entries are the root, `./validated-ooxml`, and `./path-policy`. VSIX packaging excludes declarations and maps. Runtime validation checks the shipped JavaScript against its manifest.
 
 
 ## Operation document admission
@@ -30,9 +30,6 @@ The package has exactly 46 paths and no production dependencies. Only root and `
 Create a fresh `createDocumentOperation({selectedDocumentCount,profile,signal})` per extraction. The complete count commits before selections are resolved. `fingerprintSelection(index,request)` returns an opaque, single-use admission. `withValidatedOoxml(admission,options,parse)` repeats every physical/ZIP check while charging each selection's source bytes once. XLSX requires `xlsxBudget:{headerRows:0|1}`; its callback includes immutable full-span inspection for parser materialization checks. `readSelection` directly admits bounded Markdown-style input; `verifyAfterExternalRead` verifies PDF/legacy stability.
 
 Committed count/raw/workbook usage remains after a later failure. Only a pending workbook reservation group rolls back. Normal T14 bounded/callback APIs retain their original release-on-failure accounting. Workbook data helpers do not validate a caller's filesystem or confer parser-input trust. Cancellation preserves an Error reason in operation APIs. No deep imports, caller-provided parser buffers, or skip-validation flags are public.
-
-The tarball contains 14 modules (46 paths); extensions copy 42 compiled development files and ship 14 JS modules plus their manifest. Parser versions, production dependencies (zero), and source/expanded structural caps are unchanged.
-
 
 ## Processing operation
 

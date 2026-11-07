@@ -20,3 +20,22 @@ test('physical_resolution_rejects_foreign_absolute_syntax',()=>{
  assert.throws(()=>r.resolvePhysicalContainedPathSync({rootPath:root,candidatePath:foreign,mustExist:false}),e=>e.code==='path_policy_absolute');
  assert.equal(r.isPortablePathContained('C:\\Root','c:\\root\\child','linux'),true);
 });
+
+test('posix_absolute_paths_do_not_reclassify_literal_backslash_names',()=>{
+ const r=api();
+ assert.equal(r.isPortablePathContained('/root','/root/a\\b.md','linux'),false);
+ assert.equal(r.isPortablePathContained('/root','/root/a/b.md','linux'),true);
+ assert.equal(r.normalizeWorkspaceRelativePath('a\\b.md'),'a/b.md');
+});
+
+test('native_posix_absolute_path_preserves_document_identity_on_round_trip',{skip:process.platform==='win32'},()=>{
+ const r=api(),root=fs.realpathSync(freshArtifactRoot('path-backslash'));
+ const literal=path.join(root,'a\\b.md'),nested=path.join(root,'a','b.md');
+ fs.mkdirSync(path.dirname(nested));
+ fs.writeFileSync(literal,'literal');
+ fs.writeFileSync(nested,'nested');
+ assert.throws(()=>r.resolvePhysicalContainedPathSync({rootPath:root,candidatePath:literal}),error=>error.code==='path_policy_invalid');
+ const admitted=r.resolvePhysicalContainedPathSync({rootPath:root,candidatePath:nested});
+ assert.equal(admitted.relative_path,'a/b.md');
+ assert.equal(r.resolvePhysicalContainedPathSync({rootPath:root,candidatePath:admitted.relative_path}).path,nested);
+});

@@ -1,5 +1,5 @@
 import * as vscode from "vscode"
-import { notifyInfo, requireBobWorkspaceRoot, stringOption } from "../extensionCommandOptions"
+import { notifyInfo, requireBobWorkspaceRoot, pathOption } from "../extensionCommandOptions"
 import { initializeCodeConsistencyWorkspace } from "../workspaceInitializer"
 import { optionRecord } from "../workflowProviderRegistration"
 
@@ -16,7 +16,7 @@ export async function runInitializeWorkspace(context: vscode.ExtensionContext, o
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const reviewInputPath = stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml")
+  const reviewInputPath = pathOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml")
   const result = await initializeCodeConsistencyWorkspace({ context, workspaceRoot, reviewInputPath })
   const suffix = result.backupPath ? `\n既存 workflow ファイルのバックアップ: ${result.backupPath}` : ""
   notifyInfo(`${result.message}${suffix}`)
