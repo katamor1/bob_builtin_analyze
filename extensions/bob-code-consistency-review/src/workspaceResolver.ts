@@ -1,5 +1,6 @@
 import * as path from "node:path"
 import * as vscode from "vscode"
+import { canonicalizePhysicalPathSync, selectDeepestPhysicalRoot } from "./sharedProcessingBudgetRuntime"
 import { findMarkerRoots, MarkerRootCandidate, rootHasMarker } from "./workspaceRoots"
 
 interface ResolveBobWorkspaceOptions {
@@ -10,15 +11,16 @@ interface ResolveBobWorkspaceOptions {
 }
 
 export async function resolveBobWorkspaceRoot(options: ResolveBobWorkspaceOptions = {}): Promise<string | undefined> {
-  if (options.explicitRoot) return path.resolve(options.explicitRoot)
-  if (options.workflowRoot && await rootHasMarker(options.workflowRoot, ".bob")) return path.resolve(options.workflowRoot)
+  if (options.explicitRoot !== undefined) return physicalRoot(options.explicitRoot)
+  const workflowRoot = options.workflowRoot && physicalRoot(options.workflowRoot)
+  if (workflowRoot && await rootHasMarker(options.workflowRoot!, ".bob")) return workflowRoot
 
-  const folders = vscode.workspace.workspaceFolders ?? []
+  const folders = physicalFolders(vscode.workspace.workspaceFolders ?? [])
   if (folders.length === 0) return undefined
 
   const candidates = await findMarkerRoots(folders, ".bob")
   const activeUri = vscode.window.activeTextEditor?.document.uri
-  const activeCandidate = activeUri?.scheme === "file" ? candidateForFile(candidates, activeUri.fsPath) : undefined
+  const activeCandidate = activeUri?.scheme === "file" ? await candidateForFile(candidates, activeUri.fsPath) : undefined
   if (activeCandidate) return activeCandidate.root
   if (candidates.length === 1) return candidates[0].root
   if (candidates.length > 1 && options.allowPick !== false) return pickCandidate(candidates, options.title ?? "Select Bob workspace")
@@ -32,11 +34,9 @@ export async function resolveBobWorkspaceRoot(options: ResolveBobWorkspaceOption
   return picked?.root
 }
 
-function candidateForFile(candidates: MarkerRootCandidate[], filePath: string): MarkerRootCandidate | undefined {
-  const resolved = path.resolve(filePath)
-  return candidates
-    .filter((candidate) => isInside(candidate.root, resolved))
-    .sort((a, b) => b.root.length - a.root.length)[0]
+async function candidateForFile(candidates: MarkerRootCandidate[], filePath: string): Promise<MarkerRootCandidate | undefined> {
+  const root = await selectDeepestPhysicalRoot(candidates.map(candidate => candidate.root), filePath)
+  return candidates.find(candidate => candidate.root === root)
 }
 
 async function pickCandidate(candidates: MarkerRootCandidate[], title: string): Promise<string | undefined> {
@@ -52,7 +52,18 @@ async function pickCandidate(candidates: MarkerRootCandidate[], title: string): 
   return picked?.candidate.root
 }
 
-function isInside(root: string, filePath: string): boolean {
-  const relative = path.relative(path.resolve(root), path.resolve(filePath))
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
+function physicalRoot(value: string): string | undefined {
+  try { return canonicalizePhysicalPathSync(value, { expectedType: "directory" }).path } catch { return undefined }
+}
+function physicalFolders(folders: readonly vscode.WorkspaceFolder[]): vscode.WorkspaceFolder[] {
+  const seen = new Set<string>(), result: vscode.WorkspaceFolder[] = []
+  for (const folder of folders) {
+    const root = physicalRoot(folder.uri.fsPath)
+    if (!root) continue
+    const key = path.sep === "\\" ? root.toLowerCase() : root
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push({ ...folder, uri: vscode.Uri.file(root) })
+  }
+  return result
 }

@@ -1,7 +1,7 @@
-import * as fsSync from "node:fs"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { decodeTextBuffer } from "./textEncoding"
+import { PathPolicyError, isPortablePathContained, normalizeWorkspaceRelativePath, resolvePhysicalContainedPathSync } from "../sharedProcessingBudgetRuntime"
 
 export type WorkspacePathKind =
   | "review-package-output"
@@ -114,12 +114,13 @@ export function resolveWorkspacePath(workspaceRoot: string, value: string): stri
 }
 
 export function resolveWorkspacePathStrict(workspaceRoot: string, value: string, label = "path"): string {
-  const root = path.resolve(workspaceRoot)
-  const resolved = path.resolve(path.isAbsolute(value) ? value : path.join(root, value))
-  // 絶対パスも入力として許すが、最終的な解決先は workspaceRoot 配下に限定する。
-  if (!isInsidePath(root, resolved)) throw new Error(`${label} escapes workspace: ${value}`)
-  assertRealPathInsideWorkspace(root, resolved, label, value)
-  return resolved
+  try { return resolvePhysicalContainedPathSync({ rootPath: workspaceRoot, candidatePath: value, mustExist: false }).path }
+  catch (error) {
+    if (!(error instanceof PathPolicyError)) throw error
+    if (error.code === "path_policy_escape") throw new Error(`${label} escapes workspace: ${value}`)
+    if (error.code === "path_policy_symlink") throw new Error(`${label} resolves outside workspace or through an alias: ${value}`)
+    throw new Error(`${label}: ${error.message}`)
+  }
 }
 
 export function normalizeChangedFilePathStrict(value: string, label = "changed file path"): string {
@@ -145,12 +146,11 @@ export function normalizeChangedFilePathStrict(value: string, label = "changed f
   if (normalized === "." || normalized.startsWith("../") || normalized === "..") {
     throw new Error(`${label} escapes workspace: ${value}`)
   }
-  return normalized
+  return normalizeWorkspaceRelativePath(value, label)
 }
 
 export function resolveWorkspacePathForKind(workspaceRoot: string, value: string, kind: WorkspacePathKind): string {
   const policy = WORKSPACE_PATH_POLICIES[kind]
-  const root = path.resolve(workspaceRoot)
   if (!value.trim()) throw new Error(`${policy.label} is empty`)
   if (/[\0-\x1F\x7F]/u.test(value)) throw new Error(`${policy.label} contains control characters: ${value}`)
   if (value.trim() !== value) throw new Error(`${policy.label} contains outer whitespace: ${value}`)
@@ -173,17 +173,13 @@ export function resolveWorkspacePathForKind(workspaceRoot: string, value: string
     throw new Error(`${policy.label} contains segment whitespace: ${value}`)
   }
 
-  const resolved = path.resolve(root, ...segments)
-  if (!isInsidePath(root, resolved)) throw new Error(`${policy.label} escapes workspace: ${value}`)
-  const relativePath = toPosixPath(path.relative(root, resolved))
+  const relativePath = normalizeWorkspaceRelativePath(value, policy.label)
   if (!policy.allow(segments, relativePath)) throw new Error(`${policy.label} must be under ${policy.description}: ${value}`)
-  assertRealPathInsideWorkspace(root, resolved, policy.label, value)
-  return resolved
+  return resolveWorkspacePathStrict(workspaceRoot, relativePath, policy.label)
 }
 
 export function isInsidePath(root: string, target: string): boolean {
-  const relative = path.relative(path.resolve(root), path.resolve(target))
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
+  return isPortablePathContained(root, target)
 }
 
 export function toPosixPath(value: string): string {
@@ -204,35 +200,4 @@ function segmentEquals(left: string | undefined, right: string): boolean {
 
 function customPath(segments: string[]): boolean {
   return segmentEquals(segments[0], ".custom") && segments.length >= 2
-}
-
-function assertRealPathInsideWorkspace(root: string, target: string, label: string, originalValue: string): void {
-  const rootRealPath = realpathIfPossible(root) ?? root
-  const targetRealBase = realpathIfPossible(target) ?? realpathNearestExistingAncestor(target)
-  if (targetRealBase && !isInsidePath(rootRealPath, targetRealBase)) {
-    throw new Error(`${label} resolves outside workspace: ${originalValue}`)
-  }
-}
-
-function realpathNearestExistingAncestor(filePath: string): string | undefined {
-  let current = filePath
-  while (true) {
-    const real = realpathIfPossible(current)
-    if (real) return real
-    const parent = path.dirname(current)
-    if (parent === current) return undefined
-    current = parent
-  }
-}
-
-function realpathIfPossible(filePath: string): string | undefined {
-  try {
-    return fsSync.realpathSync.native(filePath)
-  } catch {
-    try {
-      return fsSync.realpathSync(filePath)
-    } catch {
-      return undefined
-    }
-  }
 }

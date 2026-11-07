@@ -146,3 +146,8 @@ docs/release-evidence/proc-t16-input-process-completion-2026-10-31.json text eol
 tools/main-consolidation/deadline-source-admission.json text eol=lf
 docs/release-evidence/proc-t17-deadline-source-coverage-2026-11-02.json text eol=lf
 docs/release-evidence/proc-t17-deadline-completion-2026-11-02.json text eol=lf
+
+# PROC-T17-PATH literal source evidence and separate completion.
+tools/main-consolidation/path-source-admission.json text eol=lf
+docs/release-evidence/proc-t17-path-source-coverage-2026-11-04.json text eol=lf
+docs/release-evidence/proc-t17-path-completion-2026-11-04.json text eol=lf

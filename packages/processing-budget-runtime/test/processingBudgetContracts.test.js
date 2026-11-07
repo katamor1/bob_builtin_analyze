@@ -68,11 +68,12 @@ test('runtime_graph_has_no_effectful_imports',()=>{
 test('t14_io_graph_is_closed_and_has_no_product_or_dynamic_runtime_imports',()=>{
  const ts=require('typescript');
  const dependencies={
-  index:['./generatedProcessingBudgetDefinition','./processingBudgetError','./processingBudgetProfile','./processingBudgetLedger','./boundedDocumentIo','./boundedDocumentError','./documentBudget','./workbookBudget','./deadlineCancellation'],
+  index:['./generatedProcessingBudgetDefinition','./processingBudgetError','./processingBudgetProfile','./processingBudgetLedger','./boundedDocumentIo','./boundedDocumentError','./documentBudget','./workbookBudget','./deadlineCancellation','./pathPolicy'],
   deadlineCancellation:['node:perf_hooks','node:events'],
+  pathPolicy:['node:fs','node:path'],
   boundedDocumentError:[],
-  boundedDocumentRequest:['node:path','./boundedDocumentError','./processingBudgetLedger','./processingBudgetProfile','./deadlineCancellation'],
-  boundedDocumentFile:['./deadlineCancellation','node:crypto','node:fs','node:fs/promises','node:path','./boundedDocumentError','./boundedDocumentRequest','./processingBudgetLedger','./processingBudgetError'],
+  boundedDocumentRequest:['./pathPolicy','node:path','./boundedDocumentError','./processingBudgetLedger','./processingBudgetProfile','./deadlineCancellation'],
+  boundedDocumentFile:['./pathPolicy','./deadlineCancellation','node:crypto','node:fs','node:fs/promises','./boundedDocumentError','./boundedDocumentRequest','./processingBudgetLedger','./processingBudgetError'],
   boundedDocumentIo:['./boundedDocumentFile','./boundedDocumentRequest'],
   ooxmlPreflight:['./boundedDocumentError','./boundedDocumentRequest'],
   ooxmlParserInput:['node:zlib','./boundedDocumentError','./boundedDocumentFile','./boundedDocumentRequest','./ooxmlPreflight','./workbookBudget','./processingBudgetError'],
@@ -90,7 +91,20 @@ test('t14_io_graph_is_closed_and_has_no_product_or_dynamic_runtime_imports',()=>
     if(ts.isExportDeclaration(node))assert.ok(node.exportClause,'no wildcard export');
    }
    if(ts.isCallExpression(node)&&((ts.isIdentifier(node.expression)&&node.expression.text==='require')||node.expression.kind===ts.SyntaxKind.ImportKeyword))assert.fail('dynamic runtime import');
-   if(ts.isIdentifier(node)&&['process','fetch','eval','Function','globalThis','setTimeout'].includes(node.text)&&!(name==='deadlineCancellation'&&node.text==='setTimeout'))assert.fail('unknown runtime capability');
+   if(ts.isIdentifier(node)&&['process','fetch','eval','Function','globalThis','setTimeout'].includes(node.text)){
+    let allowed=name==='deadlineCancellation'&&node.text==='setTimeout';
+    if(name==='pathPolicy'&&node.text==='process'&&ts.isPropertyAccessExpression(node.parent)&&node.parent.expression===node){
+     const access=node.parent,parent=access.parent;
+     if(access.name.text==='cwd')allowed=ts.isCallExpression(parent)&&parent.expression===access&&parent.arguments.length===0;
+     if(access.name.text==='platform'){
+      let use=access;while(use.parent&&(ts.isParenthesizedExpression(use.parent)||ts.isAsExpression(use.parent)||ts.isTypeAssertionExpression(use.parent)||ts.isNonNullExpression(use.parent)))use=use.parent;
+      const context=use.parent,write=ts.isBinaryExpression(context)&&context.left===use&&context.operatorToken.kind>=ts.SyntaxKind.FirstAssignment&&context.operatorToken.kind<=ts.SyntaxKind.LastAssignment;
+      const update=(ts.isPrefixUnaryExpression(context)||ts.isPostfixUnaryExpression(context))&&[ts.SyntaxKind.PlusPlusToken,ts.SyntaxKind.MinusMinusToken].includes(context.operator);
+      allowed=!write&&!update&&!ts.isDeleteExpression(context)&&!((ts.isForOfStatement(context)||ts.isForInStatement(context))&&context.initializer===use);
+     }
+    }
+    if(!allowed)assert.fail('unknown runtime capability');
+   }
    ts.forEachChild(node,visit);
   }visit(tree);
  }
@@ -107,6 +121,9 @@ test('t14_io_graph_is_closed_and_has_no_product_or_dynamic_runtime_imports',()=>
  assert.throws(()=>inspect('deadlineCancellation','import {spawn} from "node:child_process";'),/unknown or product/);
  assert.throws(()=>inspect('boundedDocumentIo','import {addAbortListener} from "node:events";'),/unknown or product/);
  for(const text of ['import {EventEmitter} from "node:events";','import * as events from "node:events";','export {addAbortListener} from "node:events";'])assert.throws(()=>inspect('deadlineCancellation',text),/only abort subscription/);
+ // A path policy may observe the host, but must not gain process mutation or dispatch.
+ assert.doesNotThrow(()=>inspect('pathPolicy','const host = process.platform; const cwd = process.cwd();'));
+ for(const source of ['process.env.SECRET;','process.exit(1);','process.cwd = () => "/";','process.platform = "win32";','const leaked = process;'])assert.throws(()=>inspect('pathPolicy',source),/unknown runtime/);
 });
 
 

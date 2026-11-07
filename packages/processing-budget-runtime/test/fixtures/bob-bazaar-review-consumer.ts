@@ -88,3 +88,7 @@ const scope = createCancellationScope({ deadline })
 scope.remainingMilliseconds(); scope.throwIfCancelled(); scope.dispose()
 // @ts-expect-error deadline timestamps must be numbers
 createCancellationScope({ deadline: { expires_at_monotonic_ms: "later" } })
+
+import { normalizeWorkspaceRelativePath, type PhysicalContainedPath } from "@bob/processing-budget-runtime/path-policy"
+const pathName: string = normalizeWorkspaceRelativePath("docs/仕様.md"); void pathName
+const physicalObservation: PhysicalContainedPath = {root_path:"/root",path:"/root/file",relative_path:"file",exists:true}; void physicalObservation

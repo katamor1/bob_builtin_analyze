@@ -39,6 +39,11 @@
       "types": "./out/validatedOoxml.d.ts",
       "require": "./out/validatedOoxml.js",
       "default": "./out/validatedOoxml.js"
+    },
+    "./path-policy": {
+      "types": "./out/pathPolicy.d.ts",
+      "require": "./out/pathPolicy.js",
+      "default": "./out/pathPolicy.js"
     }
   }
 }

@@ -26,3 +26,30 @@ test('all_four_entry_paths_forward_effective_source_limit',async t=>{
   assert.deepEqual(calls.map(x=>x.caller),['reviewInputCommands.js','reviewInputAiDraftProvider.js','traceabilityAiDraftProvider.js','consistencyReviewWizard.js']);assert.ok(namespaces.every(x=>x==='bobCodeConsistency'));
  }finally{Module._load=original;}
 });
+
+test('authoring_commands_keep_raw_root_and_output_path_until_policy',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'bob-raw-options-'));
+ fs.writeFileSync(path.join(root,'review-input.yaml'),'ORIGINAL');
+ const original=Module._load;
+ const vscode={workspace:{getConfiguration:()=>({get:(_key,fallback)=>fallback})}};
+ let discoveries=0;
+ Module._load=function(request,parent,isMain){
+  if(request==='vscode')return vscode;
+  if(request.endsWith('reviewInputDiscovery'))return{discoverReviewInputCandidates:async()=>{discoveries++;return{documents:[],warnings:[]};}};
+  if(request.endsWith('reviewInputWizard'))return{collectReviewInputDraft:async()=>undefined};
+  return original.call(this,request,parent,isMain);
+ };
+ try{
+  const commandPath=require.resolve('../out/commands/reviewInputCommands');
+  delete require.cache[commandPath];
+  const {runCreateReviewInput}=require(commandPath);
+  await t.test('explicit root',async()=>{
+   await assert.rejects(()=>runCreateReviewInput({bobRoot:root+' '}),/ワークスペース/);
+  });
+  await t.test('explicit output',async()=>{
+   await assert.rejects(()=>runCreateReviewInput({bobRoot:root,reviewInputPath:'review-input.yaml '}),/path/i);
+  });
+  assert.equal(discoveries,0);
+  assert.equal(fs.readFileSync(path.join(root,'review-input.yaml'),'utf8'),'ORIGINAL');
+ }finally{Module._load=original;}
+});

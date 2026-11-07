@@ -2,6 +2,7 @@ import { constants, type BigIntStats } from "node:fs"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import {
+  resolvePhysicalContainedPathSync,
   assertDocumentNotCancelled,
   assertProcessingOperation,
   BoundedDocumentError, remainingDeadlineMilliseconds, type SharedAbsoluteDeadline,
@@ -12,6 +13,7 @@ import { decodeTextBuffer } from "./textEncoding"
 
 export interface StableReviewTextInput {
   readonly filePath: string
+  readonly rootPath?: string
   readonly maximumBytes: number
   readonly textEncoding: string
   readonly signal?: AbortSignal
@@ -34,6 +36,7 @@ function sameIdentity(left: BigIntStats, right: BigIntStats): boolean {
 async function readStableText(input: StableReviewTextInput, kind: "review-input" | "diff-fixture", operation?: ProcessingOperation): Promise<string> {
   if (operation !== undefined) assertProcessingOperation(operation)
   if (!input || typeof input.filePath !== "string" || !path.isAbsolute(input.filePath)
+    || (input.rootPath !== undefined && (typeof input.rootPath !== "string" || !path.isAbsolute(input.rootPath)))
     || !Number.isSafeInteger(input.maximumBytes) || input.maximumBytes < 0 || typeof input.textEncoding !== "string"
     || (input.signal && operation?.signal && input.signal !== operation.signal)) {
     throw new BoundedDocumentError("bounded_document_input_invalid", { phase: "input" })
@@ -44,8 +47,26 @@ async function readStableText(input: StableReviewTextInput, kind: "review-input"
   }
   const signal = operation?.signal ?? input.signal
   const check = (): void => assertDocumentNotCancelled(signal)
+  let rootIdentity: { path: string; dev: bigint; ino: bigint } | undefined
+  const verifyPath = async (): Promise<void> => {
+    check()
+    if (input.rootPath === undefined) return
+    try {
+      const resolved = resolvePhysicalContainedPathSync({ rootPath: input.rootPath, candidatePath: input.filePath, expectedType: "file" })
+      const root = await fs.lstat(input.rootPath, { bigint: true })
+      if (!root.isDirectory() || root.isSymbolicLink()) throw new BoundedDocumentError("bounded_document_source_invalid")
+      if (rootIdentity && (rootIdentity.path !== resolved.root_path || rootIdentity.dev !== root.dev || rootIdentity.ino !== root.ino)) {
+        throw new BoundedDocumentError("bounded_document_source_changed", { phase: "verify" })
+      }
+      rootIdentity ??= { path: resolved.root_path, dev: root.dev, ino: root.ino }
+    } catch (error) {
+      if (error instanceof BoundedDocumentError) throw error
+      throw new BoundedDocumentError("bounded_document_source_invalid")
+    }
+    check()
+  }
   const verifyStat = (stat: BigIntStats): number => {
-    if (!stat.isFile() || stat.size < 0n) throw new BoundedDocumentError("bounded_document_source_invalid", { phase: "open" })
+    if (!stat.isFile() || stat.size < 0n || (input.rootPath !== undefined && stat.nlink !== 1n)) throw new BoundedDocumentError("bounded_document_source_invalid", { phase: "open" })
     if (stat.size > BigInt(input.maximumBytes)) {
       const label = kind === "review-input" ? "review-input.yaml exceeded maxDocumentBytes" : "diff fixture exceeded maxBytes"
       throw new Error(`${label} (${stat.size} > ${input.maximumBytes})`)
@@ -59,6 +80,7 @@ async function readStableText(input: StableReviewTextInput, kind: "review-input"
   let bytes: Buffer | undefined
   let failed = false, failure: unknown
   try {
+    await verifyPath()
     const namedBefore = await fs.lstat(input.filePath, { bigint: true })
     check()
     verifyStat(namedBefore)
@@ -68,6 +90,7 @@ async function readStableText(input: StableReviewTextInput, kind: "review-input"
     check()
     const size = verifyStat(before)
     if (!sameIdentity(namedBefore, before)) throw new BoundedDocumentError("bounded_document_source_changed", { phase: "verify" })
+    await verifyPath()
     reservation = kind === "review-input" ? operation?.reserve("total_operation_input_bytes", size) : undefined
     bytes = Buffer.alloc(size)
     let offset = 0
@@ -84,9 +107,11 @@ async function readStableText(input: StableReviewTextInput, kind: "review-input"
     check()
     const namedAfter = await fs.lstat(input.filePath, { bigint: true })
     check()
-    if (!after.isFile() || !namedAfter.isFile() || !sameIdentity(before, after) || !sameIdentity(before, namedAfter)) {
+    if (!after.isFile() || !namedAfter.isFile() || !sameIdentity(before, after) || !sameIdentity(before, namedAfter)
+      || (input.rootPath !== undefined && (before.nlink !== after.nlink || before.nlink !== namedAfter.nlink))) {
       throw new BoundedDocumentError("bounded_document_source_changed", { phase: "verify" })
     }
+    await verifyPath()
   } catch (error) { failed = true; failure = error }
   if (handle) {
     try { await handle.close() } catch (error) { if (!failed) { failed = true; failure = error } }

@@ -20,6 +20,7 @@ import {
   notifyInfo,
   notifyInfoWithReport,
   optionalAbsolute,
+  pathOption,
   requireBobWorkspaceRoot,
   resolveTrustedBzrPath,
   reviewFocusOption,
@@ -52,9 +53,9 @@ export async function runPrepareAiTraceabilityDraft(options?: unknown): Promise<
     maxBobInputBytes: numberOption(record, "maxBobInputBytes")
   })
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const catalogPath = stringOption(record, "traceabilityCatalogPath") ??
+  const catalogPath = pathOption(record, "traceabilityCatalogPath") ??
     config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH)
-  const outputDir = stringOption(record, "aiTraceabilityDraftPromptPath") ?? ".bob-trace/ai-traceability-draft"
+  const outputDir = pathOption(record, "aiTraceabilityDraftPromptPath") ?? ".bob-trace/ai-traceability-draft"
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
   const base = await stringOrPrompt(record, "base", "traceability AI draft 用の base revision", "HEAD~1")
   if (!base) return { status: "cancelled" }
@@ -74,7 +75,7 @@ export async function runPrepareAiTraceabilityDraft(options?: unknown): Promise<
       vcs,
       vcsRoot: stringOption(record, "vcsRoot") ?? stringOption(record, "vcs_root"),
       bzrPath: resolveTrustedBzrPath(record, config.get<string>("bzrPath", "bzr")),
-      diffFixturePath: optionalAbsolute(workspaceRoot, stringOption(record, "diffFixturePath")),
+      diffFixturePath: optionalAbsolute(workspaceRoot, pathOption(record, "diffFixturePath")),
       textEncoding,
       limits
     })
@@ -112,9 +113,9 @@ export async function runApplyAiTraceabilityDraft(textOrOptions?: unknown): Prom
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(textOrOptions)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const catalogPath = stringOption(record, "traceabilityCatalogPath") ??
+  const catalogPath = pathOption(record, "traceabilityCatalogPath") ??
     config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH)
-  const reportPath = stringOption(record, "traceabilityGateReportPath") ??
+  const reportPath = pathOption(record, "traceabilityGateReportPath") ??
     config.get<string>("traceabilityGateReportPath", DEFAULT_TRACEABILITY_GATE_REPORT_PATH)
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
   const rawText = firstString(textOrOptions) ?? stringOption(record, "text") ?? await vscode.env.clipboard.readText()
@@ -142,9 +143,9 @@ export async function runValidateTraceabilityCatalog(options?: unknown): Promise
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const catalogPath = stringOption(record, "traceabilityCatalogPath") ??
+  const catalogPath = pathOption(record, "traceabilityCatalogPath") ??
     config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH)
-  const reportPath = stringOption(record, "traceabilityGateReportPath") ??
+  const reportPath = pathOption(record, "traceabilityGateReportPath") ??
     config.get<string>("traceabilityGateReportPath", DEFAULT_TRACEABILITY_GATE_REPORT_PATH)
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
   const result = await validateAndWriteTraceabilityGateReport({ workspaceRoot, catalogPath, reportPath, textEncoding })
@@ -162,9 +163,9 @@ export async function runCreateReviewInputFromTraceability(options?: unknown): P
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const catalogPath = stringOption(record, "traceabilityCatalogPath") ??
+  const catalogPath = pathOption(record, "traceabilityCatalogPath") ??
     config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH)
-  const reviewInputPath = absolute(workspaceRoot, stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
+  const reviewInputPath = absolute(workspaceRoot, pathOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
   const read = await readTraceabilityCatalog({ workspaceRoot, catalogPath, textEncoding })
   if (read.status === "error") {
@@ -193,7 +194,7 @@ export async function runCreateReviewInputFromTraceability(options?: unknown): P
     review_focus: reviewFocusOption(record) ?? ["requirement-code-consistency", "design-code-consistency", "test-gap"]
   })
   if (build.status === "error") {
-    const reportPath = stringOption(record, "traceabilityGateReportPath") ??
+    const reportPath = pathOption(record, "traceabilityGateReportPath") ??
       config.get<string>("traceabilityGateReportPath", DEFAULT_TRACEABILITY_GATE_REPORT_PATH)
     await validateAndWriteTraceabilityGateReport({
       workspaceRoot,
@@ -229,9 +230,9 @@ export async function runOpenTraceabilityPrep(context: vscode.ExtensionContext, 
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const catalogPath = stringOption(record, "traceabilityCatalogPath") ??
+  const catalogPath = pathOption(record, "traceabilityCatalogPath") ??
     config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH)
-  const reportPath = stringOption(record, "traceabilityGateReportPath") ??
+  const reportPath = pathOption(record, "traceabilityGateReportPath") ??
     config.get<string>("traceabilityGateReportPath", DEFAULT_TRACEABILITY_GATE_REPORT_PATH)
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
   const result = await openConsistencyReviewWizard(context, {

@@ -1,11 +1,11 @@
 import * as fs from "fs/promises"
-import * as path from "path"
+import * as path from "node:path"
+import { canonicalizePhysicalPathSync, normalizeWorkspaceRelativePath, resolvePhysicalContainedPathSync } from "../sharedProcessingBudgetRuntime"
 
 export interface WorkspaceFolderLike {
   name: string
   uri: { fsPath: string }
 }
-
 export interface MarkerRootCandidate {
   root: string
   name: string
@@ -15,80 +15,92 @@ export interface MarkerRootCandidate {
   workspaceFolderRoot: string
 }
 
+export async function findMarkerRoots(folders: readonly WorkspaceFolderLike[], marker: string): Promise<MarkerRootCandidate[]> {
+  if (!validMarker(marker)) return []
+  const safeFolders = physicalFolders(folders)
+  const direct: MarkerRootCandidate[] = []
+  for (const folder of safeFolders) {
+    const root = folder.uri.fsPath
+    if (await rootHasMarker(root, marker)) direct.push(candidate(root, folder.name, marker, "direct", folder))
+  }
+  if (direct.length > 0) return sortCandidates(direct)
+  const children: MarkerRootCandidate[] = []
+  for (const folder of safeFolders) {
+    const root = folder.uri.fsPath
+    for (const entry of await safeReadDir(root)) {
+      if (!entry.isDirectory()) continue
+      const childRoot = root + (root.endsWith(path.sep) ? "" : path.sep) + entry.name
+      if (await rootHasMarker(childRoot, marker)) {
+        const physical = physicalDirectory(childRoot)
+        if (physical) children.push(candidate(physical, entry.name, marker, "child", folder))
+      }
+    }
+  }
+  return sortCandidates(children)
+}
+
+export async function rootHasMarker(root: string, marker: string): Promise<boolean> {
+  if (!validMarker(marker)) return false
+  try {
+    resolvePhysicalContainedPathSync({ rootPath: root, candidatePath: marker, allowAbsolute: false, expectedType: "directory" })
+    return true
+  } catch { return false }
+}
+
+function validMarker(marker: string): boolean {
+  try { return !/[\\/]/u.test(marker) && normalizeWorkspaceRelativePath(marker) === marker } catch { return false }
+}
+function physicalDirectory(value: string): string | undefined {
+  try { return canonicalizePhysicalPathSync(value, { expectedType: "directory" }).path } catch { return undefined }
+}
+function physicalKey(value: string): string { return path.sep === "\\" ? value.toLowerCase() : value }
+function physicalFolders(folders: readonly WorkspaceFolderLike[]): WorkspaceFolderLike[] {
+  const seen = new Set<string>(), result: WorkspaceFolderLike[] = []
+  for (const folder of folders) {
+    const root = physicalDirectory(folder.uri.fsPath)
+    if (!root || seen.has(physicalKey(root))) continue
+    seen.add(physicalKey(root))
+    result.push({ name: folder.name, uri: { fsPath: root } })
+  }
+  return result
+}
+function candidate(root: string, name: string, marker: string, depth: "direct" | "child", folder: WorkspaceFolderLike): MarkerRootCandidate {
+  return { root, name, marker, depth, workspaceFolderName: folder.name, workspaceFolderRoot: folder.uri.fsPath }
+}
+async function safeReadDir(root: string): Promise<Array<{ name: string; isDirectory: () => boolean }>> {
+  try { return await fs.readdir(root, { withFileTypes: true }) } catch { return [] }
+}
+function sortCandidates(candidates: MarkerRootCandidate[]): MarkerRootCandidate[] {
+  const seen = new Set<string>()
+  return [...candidates].sort((a, b) => a.root.localeCompare(b.root)).filter(row => {
+    const key = physicalKey(row.root)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 export async function findWorkflowRootCandidates(folders: readonly WorkspaceFolderLike[]): Promise<MarkerRootCandidate[]> {
   return findMarkerRoots(folders, ".bob")
 }
 
-export async function findMarkerRoots(folders: readonly WorkspaceFolderLike[], marker: string): Promise<MarkerRootCandidate[]> {
-  // 同一 workspace root と子ディレクトリ root の両方を扱うため、直下 marker を優先し、なければ一段下だけを候補にする。
-  const direct: MarkerRootCandidate[] = []
-  for (const folder of folders) {
-    const root = path.resolve(folder.uri.fsPath)
-    if (await rootHasMarker(root, marker)) {
-      direct.push(candidate(root, folder.name, marker, "direct", folder))
-    }
-  }
-  if (direct.length > 0) return sortCandidates(direct)
-
-  const child: MarkerRootCandidate[] = []
-  for (const folder of folders) {
-    const root = path.resolve(folder.uri.fsPath)
-    for (const entry of await safeReadDir(root)) {
-      if (!entry.isDirectory()) continue
-      const childRoot = path.join(root, entry.name)
-      if (await rootHasMarker(childRoot, marker)) {
-        child.push(candidate(childRoot, entry.name, marker, "child", folder))
-      }
-    }
-  }
-  return sortCandidates(child)
-}
-
-export async function rootHasMarker(root: string, marker: string): Promise<boolean> {
-  try {
-    const stat = await fs.stat(path.join(root, marker))
-    return stat.isDirectory()
-  } catch {
-    return false
-  }
-}
-
 export function workspaceRootFromFile(filePath: string, marker: string): string | undefined {
-  const resolved = path.resolve(filePath)
-  const parts = resolved.split(path.sep)
-  const markerIndex = parts.lastIndexOf(marker)
-  if (markerIndex <= 0) return undefined
-  const root = parts.slice(0, markerIndex).join(path.sep)
-  return root || path.parse(resolved).root
+  if (!validMarker(marker) || !path.isAbsolute(filePath)) return undefined
+  try {
+    const observed = canonicalizePhysicalPathSync(filePath, { mustExist: false, expectedType: "file" })
+    const parts = observed.path.split(path.sep), index = parts.lastIndexOf(marker)
+    if (index <= 0) return undefined
+    const root = path.dirname(parts.slice(0, index + 1).join(path.sep))
+    resolvePhysicalContainedPathSync({ rootPath: root, candidatePath: marker, allowAbsolute: false, expectedType: "directory" })
+    return resolvePhysicalContainedPathSync({ rootPath: root, candidatePath: filePath, mustExist: false, expectedType: "file" }).root_path
+  } catch { return undefined }
 }
 
 export function relativePathFromRoot(root: string, filePath: string): string {
-  return path.relative(root, filePath).replace(/\\/g, "/")
+  const observed = resolvePhysicalContainedPathSync({ rootPath: root, candidatePath: filePath, mustExist: false })
+  return observed.relative_path === "." ? "" : observed.relative_path
 }
 
 export function fallbackWorkspaceRootCandidates(folders: readonly WorkspaceFolderLike[]): MarkerRootCandidate[] {
-  return sortCandidates(folders.map((folder) => candidate(path.resolve(folder.uri.fsPath), folder.name, ".bob", "direct", folder)))
-}
-
-function candidate(root: string, name: string, marker: string, depth: "direct" | "child", folder: WorkspaceFolderLike): MarkerRootCandidate {
-  return {
-    root,
-    name,
-    marker,
-    depth,
-    workspaceFolderName: folder.name,
-    workspaceFolderRoot: path.resolve(folder.uri.fsPath)
-  }
-}
-
-async function safeReadDir(root: string): Promise<Array<{ name: string; isDirectory: () => boolean }>> {
-  try {
-    return await fs.readdir(root, { withFileTypes: true })
-  } catch {
-    return []
-  }
-}
-
-function sortCandidates(candidates: MarkerRootCandidate[]): MarkerRootCandidate[] {
-  return [...candidates].sort((a, b) => a.root.localeCompare(b.root))
+  return sortCandidates(physicalFolders(folders).map(folder => candidate(folder.uri.fsPath, folder.name, ".bob", "direct", folder)))
 }

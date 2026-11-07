@@ -5,10 +5,10 @@ import type * as Runtime from "../../../packages/processing-budget-runtime/out"
 import type * as Ooxml from "../../../packages/processing-budget-runtime/out/validatedOoxml"
 import { DEFAULT_RULE_AUTHORING_LIMITS, type RuleAuthoringLimits } from "./ruleAuthoring/ruleAuthoringLimits"
 
-const modules = ["generatedProcessingBudgetDefinition", "processingBudgetError", "processingBudgetProfile", "processingBudgetLedger", "index", "boundedDocumentError", "boundedDocumentRequest", "boundedDocumentFile", "boundedDocumentIo", "ooxmlPreflight", "ooxmlParserInput", "validatedOoxml", "documentBudget", "workbookBudget", "deadlineCancellation"] as const
+const modules = ["generatedProcessingBudgetDefinition", "processingBudgetError", "processingBudgetProfile", "processingBudgetLedger", "index", "boundedDocumentError", "boundedDocumentRequest", "boundedDocumentFile", "boundedDocumentIo", "ooxmlPreflight", "ooxmlParserInput", "validatedOoxml", "documentBudget", "workbookBudget", "deadlineCancellation", "pathPolicy"] as const
 const compiledNames = modules.flatMap(name => [name + ".js", name + ".d.ts", name + ".js.map"]).sort()
 const runtimeNames = modules.map(name => name + ".js")
-const requiredApis = ["ProcessingBudgetLedger", "BoundedDocumentError", "readBoundedDocumentFile", "fingerprintBoundedDocumentFile", "ProcessingBudgetError", "normalizeProcessingBudgetProfile", "createDocumentOperation", "assertDocumentNotCancelled", "commitWorkbookBudget", "commitXlsxWorkbookBudget", "assertParsedXlsxWorkbookWithinBudget", "createProcessingOperation", "assertProcessingOperation", "ProcessingCancellationError", "monotonicNowMilliseconds", "createAbsoluteDeadline", "constrainAbsoluteDeadline", "remainingDeadlineMilliseconds", "createCancellationScope", "cancellationKindFromSignal", "cancellationOriginalReason"] as const
+const requiredApis = ["ProcessingBudgetLedger", "BoundedDocumentError", "readBoundedDocumentFile", "fingerprintBoundedDocumentFile", "ProcessingBudgetError", "normalizeProcessingBudgetProfile", "createDocumentOperation", "assertDocumentNotCancelled", "commitWorkbookBudget", "commitXlsxWorkbookBudget", "assertParsedXlsxWorkbookWithinBudget", "createProcessingOperation", "assertProcessingOperation", "ProcessingCancellationError", "monotonicNowMilliseconds", "createAbsoluteDeadline", "constrainAbsoluteDeadline", "remainingDeadlineMilliseconds", "createCancellationScope", "cancellationKindFromSignal", "cancellationOriginalReason", "PathPolicyError", "normalizeWorkspaceRelativePath", "isPortablePathContained", "canonicalizePhysicalPathSync", "resolvePhysicalContainedPathSync", "resolvePhysicalContainedPath", "selectDeepestPhysicalRoot"] as const
 function buildRequired(): never { throw new Error("Processing runtime build required; run npm ci in the shared package and this extension, then npm run compile.") }
 function noAlias(file: string): void {
   const absolute = path.resolve(file), root = path.parse(absolute).root
@@ -43,7 +43,7 @@ function loadCopiedRuntime(): { root: typeof Runtime; ooxml: typeof Ooxml } {
     }
     const root = require("./shared-processing-budget-runtime") as typeof Runtime
     const ooxml = require("./shared-processing-budget-runtime/validatedOoxml") as typeof Ooxml
-    if (requiredApis.some(name => typeof root[name] !== "function") || !root.DEFAULT_PROCESSING_BUDGET_PROFILE || typeof ooxml.withValidatedOoxmlParserInput !== "function") buildRequired()
+    if (requiredApis.some(name => typeof root[name] !== "function") || root.MAX_PUBLIC_PATH_UTF8_BYTES !== 4096 || !root.DEFAULT_PROCESSING_BUDGET_PROFILE || typeof ooxml.withValidatedOoxmlParserInput !== "function") buildRequired()
     return { root, ooxml }
   } catch { return buildRequired() }
 }
@@ -152,3 +152,19 @@ export const assertProcessingOperation: typeof Runtime.assertProcessingOperation
 export type ProcessingOperation = Runtime.ProcessingOperation
 export type ProcessingOperationInput = Runtime.ProcessingOperationInput
 export type ProcessingBudgetProfile = Runtime.ProcessingBudgetProfile
+
+export const MAX_PUBLIC_PATH_UTF8_BYTES = copied.root.MAX_PUBLIC_PATH_UTF8_BYTES
+export const PathPolicyError = copied.root.PathPolicyError
+export const normalizeWorkspaceRelativePath = copied.root.normalizeWorkspaceRelativePath
+export const isPortablePathContained = copied.root.isPortablePathContained
+export const canonicalizePhysicalPathSync = copied.root.canonicalizePhysicalPathSync
+export const resolvePhysicalContainedPathSync = copied.root.resolvePhysicalContainedPathSync
+export const resolvePhysicalContainedPath = copied.root.resolvePhysicalContainedPath
+export const selectDeepestPhysicalRoot = copied.root.selectDeepestPhysicalRoot
+export type SharedPhysicalContainedPath = Runtime.PhysicalContainedPath
+export type SharedCanonicalPhysicalPath = Runtime.CanonicalPhysicalPath
+export type SharedCanonicalizePhysicalPathOptions = Runtime.CanonicalizePhysicalPathOptions
+export type SharedResolvePhysicalContainedPathInput = Runtime.ResolvePhysicalContainedPathInput
+export type SharedPhysicalPathExpectedType = Runtime.PhysicalPathExpectedType
+export type SharedPortablePathPlatform = Runtime.PortablePathPlatform
+export type SharedPathPolicyError = Runtime.SharedPathPolicyError

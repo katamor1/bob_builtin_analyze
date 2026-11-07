@@ -47,6 +47,7 @@ function loadOpenTraceabilityCommand(outcome, notifications) {
     if (request === "./extensionCommandOptions") {
       return {
         requireBobWorkspaceRoot: async () => "/workspace",
+        pathOption: () => undefined,
         stringOption: () => undefined,
         notifyInfo: (message) => notifications.push({ type: "info", message }),
         notifyError: (message) => notifications.push({ type: "error", message })

@@ -227,9 +227,9 @@ test("bob-bazaar-review README documents generated artifacts, package budget, de
 })
 
 
-test("deadline facade keeps literal fifteen-module copied ownership",()=>{
+test("path facade keeps literal sixteen-module copied ownership",()=>{
  const source=fs.readFileSync(path.join(extensionRoot,"src/sharedProcessingBudgetRuntime.ts"),"utf8"),modules=JSON.parse(source.match(/const modules = (\[[^\n]+\]) as const/)[1]);
- assert.deepEqual(modules,["generatedProcessingBudgetDefinition","processingBudgetError","processingBudgetProfile","processingBudgetLedger","index","boundedDocumentError","boundedDocumentRequest","boundedDocumentFile","boundedDocumentIo","ooxmlPreflight","ooxmlParserInput","validatedOoxml","documentBudget","workbookBudget","deadlineCancellation"]);
+ assert.deepEqual(modules,["generatedProcessingBudgetDefinition","processingBudgetError","processingBudgetProfile","processingBudgetLedger","index","boundedDocumentError","boundedDocumentRequest","boundedDocumentFile","boundedDocumentIo","ooxmlPreflight","ooxmlParserInput","validatedOoxml","documentBudget","workbookBudget","deadlineCancellation","pathPolicy"]);
  for(const name of ["createDocumentOperation","assertDocumentNotCancelled","assertParsedXlsxWorkbookWithinBudget"])assert.match(source,new RegExp('"'+name+'"'));
  assert.match(source,/export function createRuleDocumentOperation\(/);assert.doesNotMatch(source,/require\(["']\.\.\/.*processing-budget-runtime/);
 });

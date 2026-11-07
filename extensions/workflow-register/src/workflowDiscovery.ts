@@ -56,25 +56,36 @@ export async function discoverWorkspaceWorkflowFiles(): Promise<WorkflowDiscover
       `- workspace: ${root.workspaceFolderName}; Contract v2 package slots: ${currentPointers.length}`
     )
     for (const file of files) {
+      const relativePath = observedWorkflowPath(root.root, file.fsPath, diagnostics)
+      if (relativePath === undefined) continue
       candidates.push({
         root,
         file,
-        relativePath: relativePathFromRoot(root.root, file.fsPath),
+        relativePath,
         folderName: path.basename(path.dirname(file.fsPath))
       })
     }
-    const pointers = new Map(currentPointers.filter(uri => /^\.bob\/workflows\/[^/]+\/current\.json$/.test(relativePathFromRoot(root.root, uri.fsPath))).map(uri => [path.dirname(uri.fsPath), uri]))
+    const pointers = new Map<string, vscode.Uri>()
+    for (const pointer of currentPointers) {
+      const relative = observedWorkflowPath(root.root, pointer.fsPath, diagnostics)
+      if (relative && /^\.bob\/workflows\/[^/]+\/current\.json$/.test(relative)) {
+        pointers.set(path.dirname(pointer.fsPath), pointer)
+      }
+    }
     for (const file of generationFiles) {
-      if (!/^\.bob\/workflows\/[^/]+\/versions\/[^/]+\/workflow\.yaml$/.test(relativePathFromRoot(root.root, file.fsPath))) continue
+      const relative = observedWorkflowPath(root.root, file.fsPath, diagnostics)
+      if (!relative || !/^\.bob\/workflows\/[^/]+\/versions\/[^/]+\/workflow\.yaml$/.test(relative)) continue
       const slotRoot = path.dirname(path.dirname(path.dirname(file.fsPath)))
       if (!pointers.has(slotRoot)) pointers.set(slotRoot, vscode.Uri.file(path.join(slotRoot, "current.json")))
     }
     // Structural ownership survives file exclusions and incomplete or wrong-type entries.
     const collection = path.join(root.root, ".bob/workflows")
     try {
+      relativePathFromRoot(root.root, collection)
       for (const entry of await fs.readdir(collection, { withFileTypes: true })) {
         if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
         const slotRoot = path.join(collection, entry.name)
+        if (observedWorkflowPath(root.root, slotRoot, diagnostics) === undefined) continue
         let reserved = false
         try {
           const names = await fs.readdir(slotRoot)
@@ -92,12 +103,14 @@ export async function discoverWorkspaceWorkflowFiles(): Promise<WorkflowDiscover
       }
     }
     for (const currentPointer of pointers.values()) {
+      const relativePath = observedWorkflowPath(root.root, currentPointer.fsPath, diagnostics)
+      if (relativePath === undefined) continue
       const slotRoot = path.dirname(currentPointer.fsPath)
       const collectionRoot = path.dirname(slotRoot)
       packages.push({
         root,
         currentPointer,
-        relativePath: relativePathFromRoot(root.root, currentPointer.fsPath),
+        relativePath,
         folderName: path.basename(slotRoot),
         collectionId: workflowContractV2CollectionId(collectionRoot),
         collectionRoot,
@@ -108,6 +121,15 @@ export async function discoverWorkspaceWorkflowFiles(): Promise<WorkflowDiscover
   candidates.sort((left, right) => left.relativePath.localeCompare(right.relativePath))
   packages.sort((left, right) => left.relativePath.localeCompare(right.relativePath))
   return { files: candidates, packages, diagnostics }
+}
+
+function observedWorkflowPath(root: string, file: string, diagnostics: string[]): string | undefined {
+  try {
+    return relativePathFromRoot(root, file)
+  } catch {
+    diagnostics.push("- WF2_PACKAGE_LAYOUT_INVALID: workflow candidate path was rejected.")
+    return undefined
+  }
 }
 
 export function workflowContractV2CollectionId(collectionRoot: string): string {

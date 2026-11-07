@@ -104,3 +104,27 @@ function loadWorkspaceRootPicker({ workspaceFolders, showQuickPick }) {
     Module._load = originalLoad
   }
 }
+
+const pathPolicyFs=require('node:fs');
+function pathPolicyFixture(){const base=pathPolicyFs.mkdtempSync(path.join(os.tmpdir(),'t17path-wroots-')),root=path.join(base,'日本語 space');pathPolicyFs.mkdirSync(root);return{base,root};}
+function pathPolicyAlias(target,name){pathPolicyFs.symlinkSync(target,name,process.platform==='win32'?'junction':'dir');}
+test('physical_marker_roots_reject_linked_root_marker_and_child',async()=>{
+ const f=pathPolicyFixture();pathPolicyFs.mkdirSync(path.join(f.root,'.bob'));const linked=path.join(f.base,'linked');pathPolicyAlias(f.root,linked);assert.deepEqual(await findMarkerRoots([folder('linked',linked)],'.bob'),[]);
+ const other=path.join(f.base,'other');pathPolicyFs.mkdirSync(other);pathPolicyAlias(path.join(f.root,'.bob'),path.join(other,'.bob'));assert.deepEqual(await findMarkerRoots([folder('other',other)],'.bob'),[]);
+ const container=path.join(f.base,'container');pathPolicyFs.mkdirSync(container);pathPolicyAlias(f.root,path.join(container,'child'));assert.deepEqual(await findMarkerRoots([folder('container',container)],'.bob'),[]);
+ assert.deepEqual(await findMarkerRoots([folder('raw',f.root+path.sep+'.')],'.bob'),[]);
+ assert.deepEqual((await findMarkerRoots([folder('first',f.root),folder('duplicate',f.root)],'.bob')).map(row=>row.root),[f.root]);
+});
+test('fallbacks_are_physical_and_deduplicated',()=>{
+ const f=pathPolicyFixture(),linked=path.join(f.base,'linked');pathPolicyAlias(f.root,linked);
+ assert.deepEqual(fallbackWorkspaceRootCandidates([folder('linked',linked),folder('first',f.root),folder('duplicate',f.root),folder('missing',path.join(f.base,'missing'))]).map(row=>row.root),[f.root]);
+});
+test('workflow_file_marker_is_exact_and_validated',()=>{
+ const f=pathPolicyFixture(),marker=path.join(f.root,'.bob');pathPolicyFs.mkdirSync(marker);const file=path.join(marker,'workflows','missing','WORKFLOW.md');
+ assert.equal(workspaceRootFromFile(file,'.bob'),f.root);assert.equal(workspaceRootFromFile(f.root+path.sep+'.'+path.sep+'.bob'+path.sep+'file.md','.bob'),undefined);
+ assert.equal(workspaceRootFromFile(path.join(f.root,'.bob-extra','file.md'),'.bob'),undefined);
+ assert.equal(workspaceRootFromFile(file,'.'+path.sep+'.bob'),undefined);
+ const other=path.join(f.base,'other');pathPolicyFs.mkdirSync(other);pathPolicyAlias(marker,path.join(other,'.bob'));assert.equal(workspaceRootFromFile(path.join(other,'.bob','file.md'),'.bob'),undefined);
+ const nonDirectory=path.join(f.base,'non-directory');pathPolicyFs.mkdirSync(nonDirectory);pathPolicyFs.writeFileSync(path.join(nonDirectory,'.bob'),'marker is a file');assert.equal(workspaceRootFromFile(path.join(nonDirectory,'.bob','file.md'),'.bob'),undefined);
+ const {relativePathFromRoot}=require('../out/core/workspaceRoots.js');assert.equal(relativePathFromRoot(f.root,file),'.bob/workflows/missing/WORKFLOW.md');assert.equal(relativePathFromRoot(f.root,f.root),'');assert.throws(()=>relativePathFromRoot(f.root,path.join(f.base,'outside.md')));
+});
