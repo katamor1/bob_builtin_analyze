@@ -22,7 +22,7 @@ function contained(root,value){const relative=path.relative(root,value);return r
 // This bootstrap owns only fresh nonce directories under RUNNER_TEMP. It has no
 // dependency on product output or a prebuilt package during root contract tests.
 function physical(value,{missing=false,directory=false}={}){
- text(value,'path');if(!path.isAbsolute(value)||process.platform==='win32'&&!/^[A-Za-z]:[\\/]/u.test(value)||process.platform!=='win32'&&path.win32.isAbsolute(value))fail('absolute local path required');
+ text(value,'path');if(!path.isAbsolute(value)||process.platform==='win32'&&!/^[A-Za-z]:[\\/]/u.test(value))fail('absolute local path required');
  const parsed=path.parse(value),parts=value.slice(parsed.root.length).split(/[\\/]/u);if(parts.length===1&&parts[0]==='')parts.pop();
  if(parts.some(part=>!part||part==='.'||part==='..'||part.trim()!==part))fail('raw path rejected');
  let current=parsed.root,prior;

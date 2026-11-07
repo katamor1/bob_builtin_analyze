@@ -1,4 +1,5 @@
-import {test} from 'node:test';
+import {test,beforeEach,afterEach} from 'node:test';
+import cp from 'node:child_process';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -146,4 +147,19 @@ test('path_artifact_rejects_native_unc_from_another_source',async()=>{
   runnerPrincipal:null,runnerSid:null,share:null,bindings:null};
  manifest.nativeUncFixture=emit(root,'foreign-unc.json',foreign);
  await assert.rejects(()=>runtime.validateArtifactManifest(manifest),/native UNC fixture subject/);
+});
+
+// Synthetic manifest subjects are local contract fixtures, including on a real
+// CI runner. The native CLI remains in the separately guarded workflow step.
+const contextKeys=['GITHUB_ACTIONS','RUNNER_OS','GITHUB_EVENT_NAME','EXPECTED_HEAD_SHA','CI_VERIFIED_HEAD_SHA'];
+let savedContext;
+beforeEach(()=>{savedContext=Object.fromEntries(contextKeys.map(key=>[key,process.env[key]]));delete process.env.GITHUB_ACTIONS;});
+afterEach(()=>{for(const [key,value]of Object.entries(savedContext))if(value===undefined)delete process.env[key];else process.env[key]=value;});
+test('synthetic_path_subject_cannot_be_promoted_to_guarded_CI_evidence',async()=>{
+ const runtime=await api(),fixture=artifactFixture(runtime);
+ const head=cp.execFileSync('git',['rev-parse','HEAD'],{cwd:repository,encoding:'utf8'}).trim();
+ Object.assign(process.env,{GITHUB_ACTIONS:'true',RUNNER_OS:process.platform==='win32'?'Windows':'Linux',GITHUB_EVENT_NAME:'pull_request',EXPECTED_HEAD_SHA:head,CI_VERIFIED_HEAD_SHA:head});
+ const host=path.join(fixture.root,'forged-ci-host');
+ await assert.rejects(()=>runtime.prepareInstalledArtifacts(fixture.manifest,host),/CI source guard mismatch/);
+ assert.equal(fs.existsSync(host),false);
 });

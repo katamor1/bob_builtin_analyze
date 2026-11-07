@@ -14,14 +14,14 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "0ff4aa078dab43784f678411e3dfdab528e54b75",
+      "afterBlobSha": "af161599dbdb7408ab5986313ca95d16de5fbcb9",
       "beforeBlobSha": "e16073582491b4bae4ffffecc58cb80768f9ce81",
       "mode": "100644",
       "path": ".github/workflows/extensions-quality.yml",
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "209a30aa6cc3b5c0530ab6a1273de053da4727df",
+      "afterBlobSha": "e6d52e1e123d3fc4bc309332d8fa77248ff415a1",
       "beforeBlobSha": "8e0584f4e7ad460627a27614e68211d6b5a60117",
       "mode": "100644",
       "path": ".github/workflows/processing-budget-runtime.yml",
@@ -42,7 +42,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "915f8fe6ed34c608adfb0a0a30ef1380521e019f",
+      "afterBlobSha": "4c30736a54d52be8aab60af12f826d4cc0ae6f7e",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "docs/release-evidence/proc-t17-path-source-coverage-2026-11-04.json",
@@ -378,7 +378,14 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "4bbc061bc4cd519cdb6d2807998da9cb1cf80134",
+      "afterBlobSha": "85ef52f349d9a7f3bce74d7b8d3170bfe5967a19",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/ci-physical-temp.test.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "7b0315d9888017de656a322679c3b11eb7935323",
       "beforeBlobSha": "73090d93f15e8724f54a199c2a6afb9ead653814",
       "mode": "100644",
       "path": "scripts/exact-head-ci-contract.test.js",
@@ -392,7 +399,14 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "249409ddbe44659bbe3d2927e97a9817535adb2e",
+      "afterBlobSha": "68ad32bad057f825f9cb35ae4fe2c4f03fd207f4",
+      "beforeBlobSha": null,
+      "mode": "100644",
+      "path": "scripts/prepare-ci-physical-temp.js",
+      "sourceItemIds": []
+    },
+    {
+      "afterBlobSha": "1e3ae8f0a7a9f5bc1e9791b7dafd91499bb26053",
       "beforeBlobSha": "095ad7c462e30de363de3a14d55b23d20408887d",
       "mode": "100644",
       "path": "scripts/processing-runtime-build-workflow.test.js",
@@ -420,14 +434,14 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "3e489fef35f5c0523fcb743b305d0cd3b81d71b9",
+      "afterBlobSha": "fc43605fe764feb003bfbaaba22e28e308782bee",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "scripts/t17-path-installed-smoke.test.mjs",
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "b63b5e10b353e1e6bf2bd9eb20a70b232a43c17f",
+      "afterBlobSha": "002dd6e4e4256f35d1799b8e9831f88910e741cc",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "scripts/t17-path-native-unc-fixture.mjs",
@@ -441,7 +455,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "41d8cb61b9ac4f66b48ccfea772777c8c27182b0",
+      "afterBlobSha": "5beb8ee076c1601b46a9ad2cadc2b5206ee3221b",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "scripts/t17-path-native-unc-fixture.test.mjs",
@@ -569,8 +583,10 @@
       "packages/processing-budget-runtime/test/pathReadIdentity.test.js",
       "packages/processing-budget-runtime/test/processingBudgetContracts.test.js",
       "packages/processing-budget-runtime/test/task17IntegrationContract.test.js",
+      "scripts/ci-physical-temp.test.js",
       "scripts/exact-head-ci-contract.test.js",
       "scripts/extension-host-smoke-contract.test.js",
+      "scripts/prepare-ci-physical-temp.js",
       "scripts/processing-runtime-build-workflow.test.js",
       "scripts/t17-path-installed-baseline-cases.js",
       "scripts/t17-path-installed-extension-host.test.js",
@@ -662,8 +678,10 @@
       "packages/processing-budget-runtime/test/pathReadIdentity.test.js",
       "packages/processing-budget-runtime/test/processingBudgetContracts.test.js",
       "packages/processing-budget-runtime/test/task17IntegrationContract.test.js",
+      "scripts/ci-physical-temp.test.js",
       "scripts/exact-head-ci-contract.test.js",
       "scripts/extension-host-smoke-contract.test.js",
+      "scripts/prepare-ci-physical-temp.js",
       "scripts/processing-runtime-build-workflow.test.js",
       "scripts/t17-path-installed-baseline-cases.js",
       "scripts/t17-path-installed-extension-host.test.js",
@@ -685,7 +703,7 @@
     "tools/main-consolidation/pathAdmissionPolicy.mjs"
   ],
   "schemaVersion": "bob-builtin-analyze/path-source-admission/v1",
-  "sourceCoverageDigest": "b24fe823abefca077af3b79c970226cba8f9fffb4ea9072b5a8ebca9b96e3409",
+  "sourceCoverageDigest": "58ddf6a4210bb5beb3a2e9a7466bdeae6b2c7ae60d5b04d1269f6e340ecc978c",
   "sourceRows": [
     {
       "afterBlobSha": "b8377a5eff786ab6750c0c38b3ae8039d5debb60",

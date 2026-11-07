@@ -494,6 +494,10 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/${{ matrix.extension }}/package-lock.json
 
+      - name: Prepare physical CI test directory
+        working-directory: ${{ github.workspace }}
+        run: node scripts/prepare-ci-physical-temp.js
+
       - name: Fetch immutable deadline admission subjects
         if: matrix.extension == 'workflow-register'
         working-directory: ${{ github.workspace }}

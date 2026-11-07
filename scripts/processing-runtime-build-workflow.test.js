@@ -131,3 +131,17 @@ test('workflow_contracts_prepares_processing_owner_after_guard_and_before_compil
  const compile=block.indexOf('run: npm run compile --silent');
  assert.ok(guard>=0&&guard<install&&install<compile);
 });
+
+test('PATH CI prepares physical test roots before tests on both Windows entry points',()=>{
+ for(const [name,id]of [['extensions-quality','windows-smoke'],['processing-budget-runtime','test']]){
+  const block=job(workflow(name),id),guard=block.indexOf('run: node scripts/verify-ci-head.js'),prepare=block.indexOf('scripts/prepare-ci-physical-temp.js');
+  const tests=block.indexOf(name==='extensions-quality'?'- name: Unit tests':'- name: Test standalone package');
+  assert.ok(guard>=0&&guard<prepare&&prepare<tests,name+' guard / physical fixture preparation / tests');
+  assert.match(block,/working-directory: \$\{\{ github\.workspace \}\}\n\s+run: node scripts\/prepare-ci-physical-temp\.js/);
+ }
+});
+test('PATH failure uploads retain absolute evidence paths before document step outputs exist',()=>{
+ const block=job(workflow('processing-budget-runtime'),'test'),start=block.indexOf('- name: Upload installed document runtime proof'),end=block.indexOf('- name: Verify literal admission',start),upload=block.slice(start,end);
+ assert.doesNotMatch(upload,/steps\.document-artifacts\.outputs/);
+ for(const suffix of ['/installed-host-*/receipt.json','/installed-host-*/logs','/installed-host-*/user-data/logs'])assert.ok(upload.includes('env.PROCESSING_BUDGET_ARTIFACT_ROOT }}'+suffix),suffix);
+});

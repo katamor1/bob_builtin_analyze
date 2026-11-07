@@ -12,6 +12,8 @@ on:
       - "scripts/t16-input-process-installed*"
       - "scripts/t17-deadline-installed*"
       - "extensions/workflow-register/**"
+      - "scripts/prepare-ci-physical-temp.js"
+      - "scripts/ci-physical-temp.test.js"
       - "scripts/t17-path-installed*"
       - "scripts/t17-path-native-unc-fixture.*"
       - "tools/main-consolidation/pathAdmissionPolicy.mjs"
@@ -55,6 +57,8 @@ on:
       - "scripts/t16-input-process-installed*"
       - "scripts/t17-deadline-installed*"
       - "extensions/workflow-register/**"
+      - "scripts/prepare-ci-physical-temp.js"
+      - "scripts/ci-physical-temp.test.js"
       - "scripts/t17-path-installed*"
       - "scripts/t17-path-native-unc-fixture.*"
       - "tools/main-consolidation/pathAdmissionPolicy.mjs"
@@ -136,6 +140,10 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Prepare physical CI test directory
+        working-directory: ${{ github.workspace }}
+        run: node scripts/prepare-ci-physical-temp.js
+
       - name: Fetch immutable admission subjects
         run: |
           git fetch --no-tags --depth=1 --no-write-fetch-head origin a826dc20c0e71f472401adf644ca8cc777b74c58
@@ -200,7 +208,7 @@ jobs:
           NODE
 
       - name: Verify document build and artifact contracts
-        run: node --test scripts/processing-runtime-build-workflow.test.js scripts/t14-bounded-document-installed-smoke.test.mjs scripts/t15-aggregate-installed-smoke.test.mjs scripts/t16-input-process-installed-smoke.test.mjs scripts/t17-deadline-installed-smoke.test.mjs scripts/t17-path-installed-smoke.test.mjs scripts/t17-path-native-unc-fixture.test.mjs scripts/extension-host-smoke-contract.test.js scripts/three-extension-ui-contract-workflow.test.js
+        run: node --test scripts/ci-physical-temp.test.js scripts/processing-runtime-build-workflow.test.js scripts/t14-bounded-document-installed-smoke.test.mjs scripts/t15-aggregate-installed-smoke.test.mjs scripts/t16-input-process-installed-smoke.test.mjs scripts/t17-deadline-installed-smoke.test.mjs scripts/t17-path-installed-smoke.test.mjs scripts/t17-path-native-unc-fixture.test.mjs scripts/extension-host-smoke-contract.test.js scripts/three-extension-ui-contract-workflow.test.js
 
       - name: Prepare owned native UNC fixture
         if: runner.os == 'Windows'
@@ -318,9 +326,9 @@ jobs:
             ${{ env.PROCESSING_BUDGET_ARTIFACT_ROOT }}/t17path-unc-*
             ${{ env.PROCESSING_BUDGET_ARTIFACT_ROOT }}/policy-vsix.json
             ${{ env.PROCESSING_BUDGET_ARTIFACT_ROOT }}/run-subject.json
-            ${{ steps.document-artifacts.outputs.evidence_root }}/receipt.json
-            ${{ steps.document-artifacts.outputs.evidence_root }}/logs
-            ${{ steps.document-artifacts.outputs.evidence_root }}/user-data/logs
+            ${{ env.PROCESSING_BUDGET_ARTIFACT_ROOT }}/installed-host-*/receipt.json
+            ${{ env.PROCESSING_BUDGET_ARTIFACT_ROOT }}/installed-host-*/logs
+            ${{ env.PROCESSING_BUDGET_ARTIFACT_ROOT }}/installed-host-*/user-data/logs
           if-no-files-found: error
 
       - name: Verify literal admission and current product limits

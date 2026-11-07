@@ -320,6 +320,12 @@
       "reason": "Native owner boundary, immutable runtime copy, document identity or public package proof."
     },
     {
+      "beforeBlobSha": null,
+      "classification": "additionalCurrentMainPrerequisite",
+      "path": "scripts/ci-physical-temp.test.js",
+      "reason": "Current admission observer, immutable history replay or exact byte/CI contract."
+    },
+    {
       "beforeBlobSha": "73090d93f15e8724f54a199c2a6afb9ead653814",
       "classification": "additionalCurrentMainPrerequisite",
       "path": "scripts/exact-head-ci-contract.test.js",
@@ -329,6 +335,12 @@
       "beforeBlobSha": "da3798d2d83d4274db02dc7c3dae9bb26251a226",
       "classification": "additionalCurrentMainPrerequisite",
       "path": "scripts/extension-host-smoke-contract.test.js",
+      "reason": "Current admission observer, immutable history replay or exact byte/CI contract."
+    },
+    {
+      "beforeBlobSha": null,
+      "classification": "additionalCurrentMainPrerequisite",
+      "path": "scripts/prepare-ci-physical-temp.js",
       "reason": "Current admission observer, immutable history replay or exact byte/CI contract."
     },
     {

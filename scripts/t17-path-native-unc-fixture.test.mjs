@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 const here=path.dirname(fileURLToPath(import.meta.url)),moduleFile=path.join(here,'t17-path-native-unc-fixture.mjs');
 async function api(){assert.ok(fs.existsSync(moduleFile),'runner-only native UNC fixture driver must exist');return import('./t17-path-native-unc-fixture.mjs');}
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex'),copy=value=>structuredClone(value);
-function fixture(){const runnerTemp=fs.mkdtempSync(path.join(os.tmpdir(),'t17unc-')),nonce=randomBytes(16).toString('hex');return{runnerTemp,nonce,fixtureRoot:path.join(runnerTemp,'fixture-'+nonce),evidenceRoot:path.join(runnerTemp,'evidence-'+nonce)};}
+function fixture(){const runnerTemp=fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()),'t17unc-')),nonce=randomBytes(16).toString('hex');return{runnerTemp,nonce,fixtureRoot:path.join(runnerTemp,'fixture-'+nonce),evidenceRoot:path.join(runnerTemp,'evidence-'+nonce)};}
 function model(input,fault){
  const state={calls:[],removals:0,foreignRemovals:0,share:null,fault,context:{platform:'win32',githubActions:'true',runnerOS:'Windows',runnerTemp:input.runnerTemp,headSha:'1'.repeat(40),treeSha:'2'.repeat(40),verifiedHeadSha:'1'.repeat(40),event:'push',dispatchNonce:null}};
  const identity={principal:'CONTROLLED\\runner',sid:'S-1-5-21-123-456-789-1001'};
@@ -41,7 +41,7 @@ function model(input,fault){
 test('native_unc_import_is_inert_and_default_prepare_is_runner_only',async t=>{
  let calls=0;for(const name of ['spawn','spawnSync','execFile','execFileSync'])t.mock.method(cp,name,()=>{calls++;throw Error('must stay inert');});
  const r=await api();for(const name of ['prepareNativeUncFixture','disposeNativeUncFixture','createNativeUncFixtureDriverForTest'])assert.equal(typeof r[name],'function');assert.equal(calls,0);
- const f=fixture();if(process.env.GITHUB_ACTIONS!=='true')await assert.rejects(()=>r.prepareNativeUncFixture({fixtureRoot:f.fixtureRoot,evidenceRoot:f.evidenceRoot,nonce:f.nonce}),/runner|CI/i);assert.equal(calls,0);assert.equal(fs.existsSync(f.fixtureRoot),false);
+ const prior=process.env.GITHUB_ACTIONS;process.env.GITHUB_ACTIONS='false';t.after(()=>{if(prior===undefined)delete process.env.GITHUB_ACTIONS;else process.env.GITHUB_ACTIONS=prior;});const f=fixture();await assert.rejects(()=>r.prepareNativeUncFixture({fixtureRoot:f.fixtureRoot,evidenceRoot:f.evidenceRoot,nonce:f.nonce}),/runner|CI/i);assert.equal(calls,0);assert.equal(fs.existsSync(f.fixtureRoot),false);
 });
 
 // Break: a controlled adapter is indistinguishable from real runner/native evidence or skips query/read.
