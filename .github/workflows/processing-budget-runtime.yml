@@ -329,6 +329,7 @@ jobs:
             ${{ env.PROCESSING_BUDGET_ARTIFACT_ROOT }}/installed-host-*/receipt.json
             ${{ env.PROCESSING_BUDGET_ARTIFACT_ROOT }}/installed-host-*/logs
             ${{ env.PROCESSING_BUDGET_ARTIFACT_ROOT }}/installed-host-*/user-data/logs
+            ${{ env.PROCESSING_BUDGET_ARTIFACT_ROOT }}/installed-host-*/user-data/User/settings.json
           if-no-files-found: error
 
       - name: Verify literal admission and current product limits

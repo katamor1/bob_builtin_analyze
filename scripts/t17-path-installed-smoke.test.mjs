@@ -163,3 +163,21 @@ test('synthetic_path_subject_cannot_be_promoted_to_guarded_CI_evidence',async()=
  await assert.rejects(()=>runtime.prepareInstalledArtifacts(fixture.manifest,host),/CI source guard mismatch/);
  assert.equal(fs.existsSync(host),false);
 });
+
+test('owned_UNC_host_prepares_only_loopback_in_isolated_user_data',async()=>{
+ const runtime=await api(),fixture=artifactFixture(runtime);
+ assert.equal(typeof runtime.prepareNativeUncHostPolicy,'function');
+ const prepared=await runtime.prepareInstalledArtifacts(fixture.manifest,path.join(fixture.root,'policy-host'));
+ const user=path.join(prepared.root,'user-data','User'),nonce='a'.repeat(32);
+ assert.equal(runtime.prepareNativeUncHostPolicy(prepared.root,null),null);assert.equal(fs.existsSync(user),false);
+ const native={executionMode:'native_windows_runner',nonce,uncRoot:'\\\\127.0.0.1\\bob-t17path-'+nonce,sourceHeadSha:fixture.manifest.sourceHeadSha,sourceTreeSha:fixture.manifest.sourceTreeSha};
+ assert.throws(()=>runtime.prepareNativeUncHostPolicy(prepared.root,{...native,uncRoot:'\\\\foreign\\share'}),/UNC|host/);assert.equal(fs.existsSync(user),false);
+ const result=runtime.prepareNativeUncHostPolicy(prepared.root,native),record=JSON.parse(fs.readFileSync(result.path));
+ const settings=path.join(user,'settings.json'),bytes=fs.readFileSync(settings);
+ assert.deepEqual(JSON.parse(bytes),{'security.allowedUNCHosts':['127.0.0.1']});
+ assert.equal(record.schemaVersion,'bob-builtin-analyze/t17-path-unc-host-policy/v1');assert.equal(record.scope,'isolated_host_user_data');
+ assert.deepEqual(record.allowedHosts,['127.0.0.1']);assert.equal(record.fixtureNonce,nonce);assert.equal(record.settings.path,settings);
+ assert.deepEqual([record.settings.bytes,record.settings.sha256],[bytes.length,sha(bytes)]);
+ assert.throws(()=>runtime.prepareNativeUncHostPolicy(prepared.root,native));
+ assert.throws(()=>runtime.prepareNativeUncHostPolicy(fixture.root,native),/owned|host/);
+});

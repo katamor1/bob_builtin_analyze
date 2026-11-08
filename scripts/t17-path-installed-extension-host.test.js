@@ -242,6 +242,7 @@ async function runPathCases({config,receipt,vscode,B,C,loadB,loadC,workspace,lim
  }else{
   await check('path_unc_native_containment','native_unc',()=>{
    const fixture=config.nativeUncFixture,unc=fixture.uncRoot;
+   assert.deepEqual(vscode.workspace.getConfiguration('security').get('allowedUNCHosts'),['127.0.0.1']);
    const result=resolve(unc,'日本語 space.txt',{expectedType:'file'});
    assert.equal(result.exists,true);
    assert.equal(sha(fs.readFileSync(result.path)),fixture.bindings.probeFile.sha256);

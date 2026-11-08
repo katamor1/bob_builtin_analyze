@@ -21,7 +21,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "e6d52e1e123d3fc4bc309332d8fa77248ff415a1",
+      "afterBlobSha": "92b4267002f1d2bebbfc49924c498469b4fd50cd",
       "beforeBlobSha": "8e0584f4e7ad460627a27614e68211d6b5a60117",
       "mode": "100644",
       "path": ".github/workflows/processing-budget-runtime.yml",
@@ -406,7 +406,7 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "1e3ae8f0a7a9f5bc1e9791b7dafd91499bb26053",
+      "afterBlobSha": "e1b1e4e4ca9208a23139dc33fcd494ca513e532f",
       "beforeBlobSha": "095ad7c462e30de363de3a14d55b23d20408887d",
       "mode": "100644",
       "path": "scripts/processing-runtime-build-workflow.test.js",
@@ -420,21 +420,21 @@
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "e483011a00d30d673e04cf61608de9a52e8d4e59",
+      "afterBlobSha": "07ea0d1a1a3d2b9d88ae14c1f949ddb3c34c3d63",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "scripts/t17-path-installed-extension-host.test.js",
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "1f4d7e3179cb04488d72c23b168b56b2ac38f4fa",
+      "afterBlobSha": "6db90f8f5c6b9b9a7be5ef735147e0cecce76591",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "scripts/t17-path-installed-smoke.mjs",
       "sourceItemIds": []
     },
     {
-      "afterBlobSha": "fc43605fe764feb003bfbaaba22e28e308782bee",
+      "afterBlobSha": "935fdf64b5e192a945eda773e1cc5f8f748f610e",
       "beforeBlobSha": null,
       "mode": "100644",
       "path": "scripts/t17-path-installed-smoke.test.mjs",

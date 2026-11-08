@@ -30,9 +30,9 @@ const compare=(a,b)=>a<b?-1:a>b?1:0;
 
 /* Seals generated from measured source, control and immutable Git subjects. */
 export const PATH_SOURCE_COVERAGE_SHA256="58ddf6a4210bb5beb3a2e9a7466bdeae6b2c7ae60d5b04d1269f6e340ecc978c";
-export const PATH_SOURCE_ADMISSION_SHA256="82bb7f1d6173d896cd76c6f2a650075c8292bb295f4cca50afc098890c662acd";
+export const PATH_SOURCE_ADMISSION_SHA256="5eb7c5ee96b358cb9439c2ff771ffd0d3cbacd4eb7da13cff30564e1e255d922";
 const PATH_COVERAGE_RAW_SHA256="58ddf6a4210bb5beb3a2e9a7466bdeae6b2c7ae60d5b04d1269f6e340ecc978c";
-const PATH_ADMISSION_RAW_SHA256="82bb7f1d6173d896cd76c6f2a650075c8292bb295f4cca50afc098890c662acd";
+const PATH_ADMISSION_RAW_SHA256="5eb7c5ee96b358cb9439c2ff771ffd0d3cbacd4eb7da13cff30564e1e255d922";
 const PATH_OWNER_TREE="a80e1e77d9020481de3cd26be204a5ec8e556f0c";
 export const PATH_HISTORICAL_BINDINGS=Object.freeze(Object.fromEntries(Object.entries({
  "docs/release-evidence/feature-selection-ledger-2026-08-23.json": {

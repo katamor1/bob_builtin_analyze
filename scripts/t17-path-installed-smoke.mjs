@@ -373,6 +373,29 @@ async function cleanupUnc(manifest,fixture) {
  return bound;
 }
 
+// The real UNC fixture uses only loopback in this fresh, owned host profile.
+// This changes neither product policy nor the user's VS Code settings.
+export function prepareNativeUncHostPolicy(ownedRoot,fixture) {
+ if (fixture===null) return null;
+ if (!fixture || fixture.executionMode!=='native_windows_runner'
+   || !/^[a-f0-9]{32}$/.test(fixture.nonce)
+   || fixture.uncRoot!=='\\\\127.0.0.1\\bob-t17path-'+fixture.nonce
+   || !/^[a-f0-9]{40}$/.test(fixture.sourceHeadSha)
+   || !/^[a-f0-9]{40}$/.test(fixture.sourceTreeSha)) fail('UNC host fixture identity');
+ const root=noAlias(ownedRoot),owner=JSON.parse(fs.readFileSync(path.join(root,'owned.json'),'utf8'));
+ exactObject(owner,['schemaVersion','pid']);
+ if (owner.schemaVersion!=='bob-builtin-analyze/t17-path-owned-root/v1' || owner.pid!==process.pid) fail('UNC host root must be owned by this process');
+ noAlias(path.join(root,'user-data'));noAlias(path.join(root,'logs'));
+ const user=path.join(root,'user-data','User');fs.mkdirSync(user);
+ const settings=path.join(user,'settings.json'),allowedHosts=['127.0.0.1'];
+ fs.writeFileSync(settings,JSON.stringify({'security.allowedUNCHosts':allowedHosts},null,2)+'\n',{flag:'wx'});
+ const receipt=path.join(root,'logs','unc-host-policy.json');
+ fs.writeFileSync(receipt,JSON.stringify({schemaVersion:'bob-builtin-analyze/t17-path-unc-host-policy/v1',
+  scope:'isolated_host_user_data',state:'prepared',sourceHeadSha:fixture.sourceHeadSha,sourceTreeSha:fixture.sourceTreeSha,
+  fixtureNonce:fixture.nonce,allowedHosts,settings:binding(settings)},null,2)+'\n',{flag:'wx'});
+ return binding(receipt);
+}
+
 export async function runInstalledSmoke(manifestPath,evidenceRoot) {
  const manifest=JSON.parse(fs.readFileSync(noAlias(manifestPath),'utf8'));
  const context=executionContext(manifest);
@@ -388,6 +411,7 @@ export async function runInstalledSmoke(manifestPath,evidenceRoot) {
  };
  let failure;
  try {
+  prepareNativeUncHostPolicy(root,config.nativeUncFixture);
   const {runTests}=pinnedHostRuntime();
   receipt.hostExit=await runTests({
    version:'1.106.1',cachePath:path.join(root,'vscode-cache'),

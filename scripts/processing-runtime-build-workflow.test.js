@@ -145,3 +145,10 @@ test('PATH failure uploads retain absolute evidence paths before document step o
  assert.doesNotMatch(upload,/steps\.document-artifacts\.outputs/);
  for(const suffix of ['/installed-host-*/receipt.json','/installed-host-*/logs','/installed-host-*/user-data/logs'])assert.ok(upload.includes('env.PROCESSING_BUDGET_ARTIFACT_ROOT }}'+suffix),suffix);
 });
+
+test('owned_UNC_host_settings_are_captured_with_the_same_host_proof',()=>{
+ const source=workflow('processing-budget-runtime'),block=job(source,'test'),start=block.indexOf('- name: Upload installed document runtime proof'),upload=block.slice(start,block.indexOf('- name: Verify literal admission',start));
+ assert.ok(upload.includes('env.PROCESSING_BUDGET_ARTIFACT_ROOT }}/installed-host-*/user-data/User/settings.json'));
+ const probe=fs.readFileSync(path.join(root,'scripts/t17-path-installed-extension-host.test.js'),'utf8');
+ assert.match(probe,/getConfiguration\('security'\)\.get\('allowedUNCHosts'\)/);
+});
