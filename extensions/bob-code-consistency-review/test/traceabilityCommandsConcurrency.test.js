@@ -47,7 +47,8 @@ function loadTraceabilityCommands(harness) {
       notifyInfoWithReport: () => undefined,
       requireBobWorkspaceRoot: async () => path.resolve("workspace"),
       reviewFocusOption: () => undefined,
-      stringOption: () => undefined
+      pathOption: () => undefined,
+        stringOption: () => undefined
     },
     "./reviewInputWizard": {
       collectReviewMetadata: async () => ({

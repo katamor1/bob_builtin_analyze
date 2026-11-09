@@ -59,3 +59,8 @@ scripts/check-vsix-policy.js
 scripts/check-import-cycles.js
 scripts/check-export-star-policy.js
 scripts/check-contract-v2-runtime-reachability.js
+
+# Verified path-only runtime development files and build tools.
+out/**/*.d.ts
+scripts/build-shared-runtime.js
+scripts/check-processing-path-boundary.js

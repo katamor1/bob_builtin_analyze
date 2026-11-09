@@ -779,7 +779,7 @@ test("full Bob wrapper shares physical root identity with Operation Hub through 
   const firstReview = await waitForRunStatus(runStore, "reviewing")
 
   try {
-    await acceptLiveReviewAndRunNext(aliasRoot, firstReview.runId, gateRegistry, async () => {
+    await acceptLiveReviewAndRunNext(physicalRoot, firstReview.runId, gateRegistry, async () => {
       runNextStepCalls += 1
       return undefined
     })
@@ -800,7 +800,7 @@ test("full Bob wrapper shares physical root identity with Operation Hub through 
       executionMode: "full"
     })
 
-    await acceptLiveReviewAndRunNext(aliasRoot, firstReview.runId, gateRegistry, async () => {
+    await acceptLiveReviewAndRunNext(physicalRoot, firstReview.runId, gateRegistry, async () => {
       runNextStepCalls += 1
       return undefined
     })

@@ -1,5 +1,6 @@
 import { cancellationKindFromSignal, cancellationOriginalReason } from "./deadlineCancellation"
 import * as path from "node:path"
+import { isPortablePathContained } from "./pathPolicy"
 import { BoundedDocumentError } from "./boundedDocumentError"
 import { ProcessingBudgetLedger } from "./processingBudgetLedger"
 import { DEFAULT_PROCESSING_BUDGET_PROFILE } from "./processingBudgetProfile"
@@ -113,9 +114,11 @@ export function normalizeReadInput(value: unknown): BoundedDocumentReadInput {
   const data = ownData(value, ["filePath", "rootPath", "maximumFileBytes", "target", "ledger"], ["expectedFingerprint", "signal"])
   const filePath = boundedString(data.filePath, 4096)
   const rootPath = boundedString(data.rootPath, 4096)
-  if (!path.isAbsolute(filePath) || !path.isAbsolute(rootPath)) invalidInput()
+  if (!path.isAbsolute(filePath) || !path.isAbsolute(rootPath)
+    || !isPortablePathContained(filePath, filePath) || !isPortablePathContained(rootPath, rootPath)
+    || (path.sep === "/" && (filePath.startsWith("//") || rootPath.startsWith("//")))) invalidInput()
   const ledger = validateLedger(data.ledger)
-  return Object.freeze({ filePath: path.resolve(filePath), rootPath: path.resolve(rootPath), maximumFileBytes: fileMaximum(data.maximumFileBytes), target: boundedString(data.target, 256), ledger,
+  return Object.freeze({ filePath, rootPath, maximumFileBytes: fileMaximum(data.maximumFileBytes), target: boundedString(data.target, 256), ledger,
     ...(data.expectedFingerprint === undefined ? {} : { expectedFingerprint: fingerprint(data.expectedFingerprint) }),
     ...(data.signal === undefined ? {} : { signal: validateSignal(data.signal) }) })
 }

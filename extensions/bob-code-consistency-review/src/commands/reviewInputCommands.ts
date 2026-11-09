@@ -12,6 +12,7 @@ import {
   numberOption,
   notifyInfo,
   optionalAbsolute,
+  pathOption,
   requireBobWorkspaceRoot,
   resolveTrustedBzrPath,
   stringOption,
@@ -41,7 +42,7 @@ export async function runCreateReviewInput(options?: unknown): Promise<unknown> 
     maxBobInputBytes: numberOption(record, "maxBobInputBytes")
   })
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const reviewInputPath = absolute(workspaceRoot, stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
+  const reviewInputPath = absolute(workspaceRoot, pathOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
 
   const discovery = await discoverReviewInputCandidates(workspaceRoot, { textEncoding, limits })
@@ -88,8 +89,8 @@ export async function runPrepareAiReviewInputDraft(options?: unknown): Promise<u
     maxBobInputBytes: numberOption(record, "maxBobInputBytes")
   })
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const reviewInputPath = absolute(workspaceRoot, stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
-  const outputDir = absolute(workspaceRoot, stringOption(record, "aiDraftPromptPath") ?? ".bob-review/review-input-draft")
+  const reviewInputPath = absolute(workspaceRoot, pathOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
+  const outputDir = absolute(workspaceRoot, pathOption(record, "aiDraftPromptPath") ?? ".bob-review/review-input-draft")
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
   const base = await stringOrPrompt(record, "base", "AI draft 用の base revision", "HEAD~1")
   if (!base) return { status: "cancelled" }
@@ -108,7 +109,7 @@ export async function runPrepareAiReviewInputDraft(options?: unknown): Promise<u
       vcs,
       vcsRoot: stringOption(record, "vcsRoot") ?? stringOption(record, "vcs_root"),
       bzrPath: resolveTrustedBzrPath(record, config.get<string>("bzrPath", "bzr")),
-      diffFixturePath: optionalAbsolute(workspaceRoot, stringOption(record, "diffFixturePath")),
+      diffFixturePath: optionalAbsolute(workspaceRoot, pathOption(record, "diffFixturePath")),
       textEncoding,
       limits
     })
@@ -133,7 +134,7 @@ export async function runApplyAiReviewInputDraft(textOrOptions?: unknown): Promi
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(textOrOptions)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const reviewInputPath = absolute(workspaceRoot, stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
+  const reviewInputPath = absolute(workspaceRoot, pathOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
   const text = firstString(textOrOptions) ?? stringOption(record, "text") ?? await vscode.env.clipboard.readText()
   const result = await applyAiReviewInputDraft({
     workspaceRoot,
@@ -165,7 +166,7 @@ export async function runRepairReviewInput(options?: unknown): Promise<unknown> 
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const inputPath = absolute(workspaceRoot, stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
+  const inputPath = absolute(workspaceRoot, pathOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
   const result = await repairLegacyReviewInput({ inputPath, workspaceRoot, textEncoding })
   if (result.status === "error") notifyError(result.message)
@@ -185,7 +186,7 @@ export async function runExplainReviewInputDiagnostics(options?: unknown): Promi
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const inputPath = absolute(workspaceRoot, stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
+  const inputPath = absolute(workspaceRoot, pathOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
   const result = await explainReviewInputDiagnostics({ inputPath, workspaceRoot, textEncoding })
   if (result.status === "ok") notifyInfo(result.message)

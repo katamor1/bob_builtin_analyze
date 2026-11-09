@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const cp = require('node:child_process');
 const packageRoot = path.resolve(__dirname, '..');
 function loadRuntime(moduleName = 'index') {
-  if (!['generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','index'].includes(moduleName)) throw new Error('unknown runtime module');
+  if (!['generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','index','pathPolicy'].includes(moduleName)) throw new Error('unknown runtime module');
   const entry = path.join(packageRoot,'out',moduleName+'.js');
   if (!fs.existsSync(entry)) throw new Error('processing budget build required');
   return require(entry);
@@ -48,13 +48,13 @@ const consumerNames = ['workflow-register','bob-bazaar-review','bob-code-consist
 const runtimeResult = {state:'passed',entry:'out/index.js',checks:['constructor','reserve_commit','release','snapshot','bounded_read','validated_ooxml','deep_import_rejected','aggregate_operation','workbook_budget']};
 function expectedPayload() {
   const files=['package.json','README.md','contracts/processing-budget-definition.v1.json','schema/processing-budget-profile.v1.schema.json'];
-  for(const name of ['index','generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','boundedDocumentError','boundedDocumentRequest','boundedDocumentFile','boundedDocumentIo','ooxmlPreflight','ooxmlParserInput','validatedOoxml','documentBudget','workbookBudget','deadlineCancellation']) {
+  for(const name of ['index','generatedProcessingBudgetDefinition','processingBudgetError','processingBudgetProfile','processingBudgetLedger','boundedDocumentError','boundedDocumentRequest','boundedDocumentFile','boundedDocumentIo','ooxmlPreflight','ooxmlParserInput','validatedOoxml','documentBudget','workbookBudget','deadlineCancellation','pathPolicy']) {
     for(const suffix of ['js','d.ts','js.map']) files.push('out/'+name+'.'+suffix);
   }
   return files.sort();
 }
 
-function packAndInstall(root, outputRoot) {
+function packAndInstall(root, outputRoot, {pathPolicy=false} = {}) {
   root=fs.realpathSync(root);outputRoot=fs.realpathSync(outputRoot);
   const config=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
   if(config.name!=='@bob/processing-budget-runtime'||Object.keys(config.dependencies||{}).length) throw new Error('unexpected package dependencies');
@@ -71,7 +71,8 @@ function packAndInstall(root, outputRoot) {
   for(const consumer of consumerNames){
     const name=consumer+'-consumer.ts';
     const original=fs.readFileSync(path.join(packageRoot,'test/fixtures',name),'utf8');
-    if(!original.includes('from "../.."'))throw new Error('consumer import unavailable');
+    const marker=consumer==='workflow-register'?'from "@bob/processing-budget-runtime/path-policy"':'from "../.."';
+    if(!original.includes(marker)||(consumer==='workflow-register'&&original.includes('from "../.."')))throw new Error('consumer import unavailable');
     fs.writeFileSync(path.join(consumerRoot,name),original.replaceAll('from "../.."','from "@bob/processing-budget-runtime"').replaceAll('from "../../out/validatedOoxml"','from "@bob/processing-budget-runtime/validated-ooxml"'),{flag:'wx'});
     const configPath=path.join(consumerRoot,consumer+'.tsconfig.json');
     const tsconfig=JSON.parse(fs.readFileSync(path.join(packageRoot,'test/fixtures/tsconfig.json'),'utf8'));
@@ -107,10 +108,20 @@ function packAndInstall(root, outputRoot) {
     assert.equal(operation.snapshot().categories.find(x=>x.category==='total_document_bytes').committed,fs.statSync(filePath).size);
     const book=runtime.commitWorkbookBudget({ledger:new ProcessingBudgetLedger(),workbookTarget:'packed-book',sheets:[{name:'S',rowCount:2}]});assert.deepEqual([book.sheetCount,book.totalRows],[1,2]);
     assert.equal(runtime.createXlsxInspectionObserver,undefined);
+    if (${pathPolicy}) {
+      const policy=require('@bob/processing-budget-runtime/path-policy');
+      const policyFile=fs.realpathSync(require.resolve('@bob/processing-budget-runtime/path-policy'));
+      assert.equal(policyFile,path.join(installed,'out','pathPolicy.js'));
+      assert.equal(runtime.resolvePhysicalContainedPathSync,policy.resolvePhysicalContainedPathSync);
+      assert.equal(policy.normalizeWorkspaceRelativePath('日本語 space/file.txt'),'日本語 space/file.txt');
+      const resolved=policy.resolvePhysicalContainedPathSync({rootPath,candidatePath:'source.docx',expectedType:'file'});
+      assert.equal(resolved.path,fs.realpathSync(filePath));
+      assert.throws(()=>policy.normalizeWorkspaceRelativePath('a/../b'));
+    }
     process.stdout.write(JSON.stringify({entry}));})().catch(e=>{console.error(e);process.exitCode=1;});`;
   const installedResolvedPath=JSON.parse(runNode(['-e',probe],consumerRoot)).entry;
   const receiptPath=path.join(outputRoot,'pack-proof.json');
-  fs.writeFileSync(receiptPath,JSON.stringify({schemaVersion:'bob-builtin-analyze/processing-budget-pack-proof/v1',node:process.version,tarball,manifest,consumerResults,runtimeResult,installedResolvedPath},null,2)+'\n',{flag:'wx'});
+  fs.writeFileSync(receiptPath,JSON.stringify({schemaVersion:'bob-builtin-analyze/processing-budget-pack-proof/v1',node:process.version,tarball,manifest,consumerResults,runtimeResult:pathPolicy?{...runtimeResult,checks:[...runtimeResult.checks,'path_policy_root','path_policy_subpath','physical_path']}:runtimeResult,installedResolvedPath},null,2)+'\n',{flag:'wx'});
   return {tarball,manifest,consumerRoot,receipt:byteBinding(receiptPath)};
 }
 

@@ -1,4 +1,5 @@
-import {applyDeadlineSourceAdmission,validateDeadlineRepository} from './deadlineAdmissionPolicy.mjs';
+import {applyDeadlineSourceAdmission} from './deadlineAdmissionPolicy.mjs';
+import {applyPathSourceAdmission,validatePathRepository} from './pathAdmissionPolicy.mjs';
 import {applyInputProcessSourceAdmission} from './inputProcessAdmissionPolicy.mjs';
 import {applyAggregateDocumentSourceAdmission} from './aggregateDocumentAdmissionPolicy.mjs';
 import {applyBoundedDocumentSourceAdmission} from './boundedDocumentAdmissionPolicy.mjs';
@@ -196,7 +197,7 @@ export function validateProcessingBudgetRepository(root=ROOT){
  root=path.resolve(root);if(!fs.lstatSync(root).isDirectory()||fs.lstatSync(root).isSymbolicLink())fail('repository root');
  for(const [relative,expected] of Object.entries(baselines))if(gateRDigest(fs.readFileSync(safeFile(root,relative)))!==expected)fail('unchanged Owner/Discovery baseline');
  validateProcessingBudgetSourceAdmission(read(root,ADMISSION));validateProcessingBudgetCoverage(read(root,COVERAGE));
- validateDeadlineRepository(root);
+ validatePathRepository(root);
  const git=(args,input)=>execFileSync('git',args,{cwd:root,input,encoding:'utf8',maxBuffer:16*1024*1024,stdio:['pipe','pipe','pipe']}).trim();
  const expected=processingBudgetCurrentSourceFiles(),controls=[ADMISSION,'tools/main-consolidation/processingBudgetAdmissionPolicy.mjs'];
  const required=[...new Set([...expected.map(row=>row.path),...controls])].sort();
@@ -225,4 +226,5 @@ export function validateProcessingBudgetRepository(root=ROOT){
 }
 
 export function processingBudgetT17DeadlineSourceFiles(){return applyDeadlineSourceAdmission(fs.readFileSync(path.join(ROOT,'tools/main-consolidation/deadline-source-admission.json')),{domain:'processing_budget',baseFiles:processingBudgetT16SourceFiles()});}
-export function processingBudgetCurrentSourceFiles(){return processingBudgetT17DeadlineSourceFiles();}
+export function processingBudgetT17PathSourceFiles(){return applyPathSourceAdmission(fs.readFileSync(path.join(ROOT,'tools/main-consolidation/path-source-admission.json')),{domain:'processing_budget',baseFiles:processingBudgetT17DeadlineSourceFiles()});}
+export function processingBudgetCurrentSourceFiles(){return processingBudgetT17PathSourceFiles();}

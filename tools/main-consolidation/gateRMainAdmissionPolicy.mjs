@@ -1,4 +1,5 @@
-import {applyDeadlineSourceAdmission,validateDeadlineRepository} from './deadlineAdmissionPolicy.mjs';
+import {applyDeadlineSourceAdmission} from './deadlineAdmissionPolicy.mjs';
+import {applyPathSourceAdmission,validatePathRepository} from './pathAdmissionPolicy.mjs';
 import {applyInputProcessSourceAdmission} from './inputProcessAdmissionPolicy.mjs';
 import {applyAggregateDocumentSourceAdmission} from './aggregateDocumentAdmissionPolicy.mjs';
 import {applyBoundedDocumentSourceAdmission} from './boundedDocumentAdmissionPolicy.mjs';
@@ -306,7 +307,7 @@ export function validateGateRMainRepositoryFiles(input) {
 const blobHash = bytes => createHash('sha1').update(Buffer.from('blob '+bytes.length+'\0')).update(bytes).digest('hex');
 function measuredBlob(bytes,expected){if(blobHash(bytes)===expected)return expected;if(!bytes.subarray(0,8000).includes(0)&&blobHash(Buffer.from(bytes.toString('utf8').replaceAll('\r\n','\n')))===expected)return expected;fail('source blob identity drift');}
 export function validateGateRMainRepository() {
- validateDeadlineRepository(root);
+ validatePathRepository(root);
  const expected=gateRCurrentMainFiles(),known=new Set(expected.map(f=>f.path)),snapshot=[];
  for(const f of expected)snapshot.push({path:f.path,mode:f.mode,blobSha:measuredBlob(readGateRContainedFile(root,f.path),f.blobSha)});
  function scan(p,top=false){for(const entry of readdirSync(resolve(root,p),{withFileTypes:true})){
@@ -322,4 +323,5 @@ export function validateGateRMainRepository() {
 }
 
 export function gateRDeadlineMainFiles(){return applyDeadlineSourceAdmission(readGateRContainedFile(root,'tools/main-consolidation/deadline-source-admission.json'),{domain:'gate_r_shipping',baseFiles:gateRInputProcessMainFiles()});}
-export function gateRCurrentMainFiles(){return gateRDeadlineMainFiles();}
+export function gateRPathMainFiles(){return applyPathSourceAdmission(readGateRContainedFile(root,'tools/main-consolidation/path-source-admission.json'),{domain:'gate_r_shipping',baseFiles:gateRDeadlineMainFiles()});}
+export function gateRCurrentMainFiles(){return gateRPathMainFiles();}

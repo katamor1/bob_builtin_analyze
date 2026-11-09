@@ -32,8 +32,8 @@ export function notifyError(message: string): void {
 
 export async function requireBobWorkspaceRoot(record: Record<string, unknown>): Promise<string> {
   const root = await resolveBobWorkspaceRoot({
-    explicitRoot: stringOption(record, "bobRoot") ?? stringOption(record, "workspaceRoot"),
-    workflowRoot: stringOption(record, "workflowRoot"),
+    explicitRoot: pathOption(record, "bobRoot") ?? pathOption(record, "workspaceRoot"),
+    workflowRoot: pathOption(record, "workflowRoot"),
     allowPick: true,
     title: "Bob ワークスペースを選択"
   })
@@ -91,7 +91,7 @@ export function absolute(root: string, value: string): string {
 }
 
 export function optionalAbsolute(root: string, value: string | undefined): string | undefined {
-  return value ? absolute(root, value) : undefined
+  return value === undefined ? undefined : absolute(root, value)
 }
 
 export function resolveTrustedBzrPath(record: Record<string, unknown>, configuredPath: string | undefined): string {
@@ -99,6 +99,11 @@ export function resolveTrustedBzrPath(record: Record<string, unknown>, configure
     throw new Error("bzrPath cannot be overridden by workflow args. Configure bobCodeConsistency.bzrPath in user or global settings.")
   }
   return configuredPath?.trim() || "bzr"
+}
+
+export function pathOption(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key]
+  return typeof value === "string" ? value : undefined
 }
 
 export function stringOption(record: Record<string, unknown>, key: string): string | undefined {

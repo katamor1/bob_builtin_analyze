@@ -1,4 +1,4 @@
-import { assertDocumentNotCancelled, assertProcessingOperation, BoundedDocumentError, remainingDeadlineMilliseconds, type SharedAbsoluteDeadline, type ProcessingOperation } from "../sharedProcessingBudgetRuntime"
+import { resolvePhysicalContainedPathSync, assertDocumentNotCancelled, assertProcessingOperation, BoundedDocumentError, remainingDeadlineMilliseconds, type SharedAbsoluteDeadline, type ProcessingOperation } from "../sharedProcessingBudgetRuntime"
 import * as path from "node:path"
 import YAML from "yaml"
 import { pathExists, resolveWorkspacePathStrict } from "./fileSystem"
@@ -30,7 +30,7 @@ export async function validateReviewInput(
   }
   operation.throwIfCancelled()
   const resolvedInputPath = resolveWorkspacePathStrict(workspaceRoot, inputPath, "reviewInputPath")
-  const raw = await readStableReviewInputText({ filePath: resolvedInputPath, textEncoding, maximumBytes: inputByteLimit, operation, signal, deadline: operation.deadline })
+  const raw = await readStableReviewInputText({ rootPath: workspaceRoot, filePath: resolvedInputPath, textEncoding, maximumBytes: inputByteLimit, operation, signal, deadline: operation.deadline })
   assertDocumentNotCancelled(signal)
   const parsed = YAML.parse(raw) as unknown
 
@@ -82,7 +82,7 @@ async function validateArtifactPaths(reviewInput: ReviewInput, workspaceRoot: st
       assertDocumentNotCancelled(signal)
       let resolved: string
       try {
-        resolved = resolveWorkspacePathStrict(workspaceRoot, item.path, "artifact path")
+        resolved = resolvePhysicalContainedPathSync({ rootPath: workspaceRoot, candidatePath: item.path, mustExist: false, expectedType: "file" }).path
       } catch {
         escaped.push(path.normalize(item.path))
         continue

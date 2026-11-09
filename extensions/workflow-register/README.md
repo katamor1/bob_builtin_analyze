@@ -307,7 +307,10 @@ Command ID、provider ID、sink type、artifact schema、`run.json` contractは�
 
 ## ビルドと検証
 
+Workflow拡張のディレクトリで実行します。共通pathPolicyのコンパイルに使う依存を先に準備します。
+
 ```bash
+npm ci --prefix ../../packages/processing-budget-runtime
 npm ci
 npm run compile
 npm run dependency:policy

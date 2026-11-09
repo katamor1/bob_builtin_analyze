@@ -5,6 +5,13 @@ on:
   pull_request:
     paths:
       - "packages/processing-budget-runtime/**"
+      - "scripts/t17-path-installed*"
+      - "scripts/t17-path-native-unc-fixture.*"
+      - "tools/main-consolidation/pathAdmissionPolicy.mjs"
+      - "tools/main-consolidation/path-source-admission.json"
+      - "tools/main-consolidation/test/pathAdmissionPolicy.test.mjs"
+      - "tools/main-consolidation/test/helpers/pathAdmissionFixture.mjs"
+      - "docs/release-evidence/proc-t17-path-source-coverage-2026-11-04.json"
       - "tools/workflow-evidence/**"
       - "extensions/*/contracts/workflow-discovery-claims.json"
       - "extensions/*/contracts/workflow-contributions.json"
@@ -28,6 +35,13 @@ on:
       - main
     paths:
       - "packages/processing-budget-runtime/**"
+      - "scripts/t17-path-installed*"
+      - "scripts/t17-path-native-unc-fixture.*"
+      - "tools/main-consolidation/pathAdmissionPolicy.mjs"
+      - "tools/main-consolidation/path-source-admission.json"
+      - "tools/main-consolidation/test/pathAdmissionPolicy.test.mjs"
+      - "tools/main-consolidation/test/helpers/pathAdmissionFixture.mjs"
+      - "docs/release-evidence/proc-t17-path-source-coverage-2026-11-04.json"
       - "tools/workflow-evidence/**"
       - "extensions/*/contracts/workflow-discovery-claims.json"
       - "extensions/*/contracts/workflow-contributions.json"
@@ -100,6 +114,8 @@ jobs:
           git cat-file -e 6ce384313c1072e34ced342260304c9c7dd07e9e^{commit}
           git fetch --no-tags --depth=1 --no-write-fetch-head origin 7ea786afd5715d841526000a402c831d6c2a203c
           git cat-file -e 7ea786afd5715d841526000a402c831d6c2a203c^{commit}
+          git fetch --no-tags --depth=1 --no-write-fetch-head origin cf96788dbdd6836b449b7a31ecd3bae4ee4302a4
+          git cat-file -e cf96788dbdd6836b449b7a31ecd3bae4ee4302a4^{commit}
 
 
       - name: Prepare shared processing runtime
@@ -478,6 +494,10 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/${{ matrix.extension }}/package-lock.json
 
+      - name: Prepare physical CI test directory
+        working-directory: ${{ github.workspace }}
+        run: node scripts/prepare-ci-physical-temp.js
+
       - name: Fetch immutable deadline admission subjects
         if: matrix.extension == 'workflow-register'
         working-directory: ${{ github.workspace }}
@@ -488,6 +508,8 @@ jobs:
           git cat-file -e 6ce384313c1072e34ced342260304c9c7dd07e9e^{commit}
           git fetch --no-tags --depth=1 --no-write-fetch-head origin 7ea786afd5715d841526000a402c831d6c2a203c
           git cat-file -e 7ea786afd5715d841526000a402c831d6c2a203c^{commit}
+          git fetch --no-tags --depth=1 --no-write-fetch-head origin cf96788dbdd6836b449b7a31ecd3bae4ee4302a4
+          git cat-file -e cf96788dbdd6836b449b7a31ecd3bae4ee4302a4^{commit}
 
 
       - name: Prepare shared processing runtime
@@ -691,6 +713,14 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Prepare shared processing runtime
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund --prefix packages/processing-budget-runtime
+          npm run compile --prefix packages/processing-budget-runtime
+
       - name: Install compiler dependencies
         run: npm ci --prefix extensions/workflow-register
 
@@ -743,6 +773,14 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Prepare shared processing runtime
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund --prefix packages/processing-budget-runtime
+          npm run compile --prefix packages/processing-budget-runtime
+
       - name: Install compiler dependencies
         run: npm ci --prefix extensions/workflow-register
 
@@ -792,6 +830,14 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
+
+      - name: Prepare shared processing runtime
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund --prefix packages/processing-budget-runtime
+          npm run compile --prefix packages/processing-budget-runtime
 
       - name: Install compiler dependencies
         run: npm ci --prefix extensions/workflow-register

@@ -94,3 +94,8 @@ test("workflow-register source does not use global Object title augmentation", (
 
   assert.deepEqual(offenders, [], "global Object augmentation must be replaced with precise local types")
 })
+
+test("workflow path runtime dependency boundary stays isolated", () => {
+  assertLocalScript(readJson("package.json"), "compile", "node scripts/build-shared-runtime.js")
+  assert.doesNotThrow(() => require("../scripts/check-processing-path-boundary.js").checkProcessingPathBoundary(extensionRoot))
+})
