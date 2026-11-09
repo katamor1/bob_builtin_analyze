@@ -23,7 +23,8 @@ const COMPLETION_REGISTRY = Object.freeze([
   Object.freeze({sha256:'380ced2e392014619b0b71499e0247291505867d94955e04e0d47f9ab2316209',evidenceSha256:'598c83bf747d40dfce706569424811b5ab1380a59e5428f0f2013cc53f965257',reference:Object.freeze({boundaryId:'PROC-T14-BOUNDED-DOC',sha256:'380ced2e392014619b0b71499e0247291505867d94955e04e0d47f9ab2316209',state:'VERIFIED',acceptedMainSha:'46a923a3f09e83a60a45cca887f612d7187e38c3'})}),
   Object.freeze({sha256:'c6221da7bd4604daa607de8b26ac0dfc311af52ac09ffb5b08602f75bb39353e',evidenceSha256:'f646c86e9d75efe65f379c1f7b6e8559aec3ad062fa33e2f5ca63d2381e9993c',reference:Object.freeze({boundaryId:'PROC-T15-AGGREGATE',sha256:'c6221da7bd4604daa607de8b26ac0dfc311af52ac09ffb5b08602f75bb39353e',state:'VERIFIED',acceptedMainSha:'479a39d6627daa019fcec95bbb5c1ee334671723'})}),
   Object.freeze({sha256:'8ca9f920100889e3ca4a94a0794df16d91bc9f12571a0a84dd681fc390908658',evidenceSha256:'77b4199fa78285a945d0299ee3954042f48537d8e0997b7dfa15c66582c4ea1d',reference:Object.freeze({boundaryId:'PROC-T16-INPUT-PROCESS',sha256:'8ca9f920100889e3ca4a94a0794df16d91bc9f12571a0a84dd681fc390908658',state:'VERIFIED',acceptedMainSha:'2a961f624a7254d1af21e53a780efa6ccf9ee58b'})}),
-  Object.freeze({sha256:'57aedc28d0617cf3260ef642883ea3c271da82508d5c551b374b9df31e5f3c69',evidenceSha256:'2d0b85f2fab06ff8cb715aaa9fc496f076ce1f12b1d8d91458c9539641ce4beb',reference:Object.freeze({boundaryId:'PROC-T17-DEADLINE',sha256:'57aedc28d0617cf3260ef642883ea3c271da82508d5c551b374b9df31e5f3c69',state:'VERIFIED',acceptedMainSha:'13d6bc08205f2185f2156b838aef65b87a64ece8'})})
+  Object.freeze({sha256:'57aedc28d0617cf3260ef642883ea3c271da82508d5c551b374b9df31e5f3c69',evidenceSha256:'2d0b85f2fab06ff8cb715aaa9fc496f076ce1f12b1d8d91458c9539641ce4beb',reference:Object.freeze({boundaryId:'PROC-T17-DEADLINE',sha256:'57aedc28d0617cf3260ef642883ea3c271da82508d5c551b374b9df31e5f3c69',state:'VERIFIED',acceptedMainSha:'13d6bc08205f2185f2156b838aef65b87a64ece8'})}),
+  Object.freeze({sha256:'d68db5877d0cb6267a8dbdc08c8ff392eb497988706fd01043d67802ee2bf9b3',evidenceSha256:'0668abfdfe917babc2a778df92bafa146b02e74f1586c43affe4e2ad63525b9d',reference:Object.freeze({boundaryId:'PROC-T17-PATH',sha256:'d68db5877d0cb6267a8dbdc08c8ff392eb497988706fd01043d67802ee2bf9b3',state:'VERIFIED',acceptedMainSha:'06dee79ad90c1dc45682243660bf730a87b6e77f'})})
 ])
 const GATE_R_COMPLETION_SCOPES = Object.freeze(['GATE-R-ARCHIVE-INVENTORY','GATE-R-ACTIVE-MANIFEST','GATE-R-VALIDATOR','GATE-R-RUNNER'])
 const hashes = record => Object.fromEntries(record.externalEvidence.map(row=>[row.id,{bytes:row.bytes,sha256:row.sha256}]))
@@ -479,6 +480,83 @@ export function validateT17DeadlineCompletion(record) {
  if(digest(record)!==T17_DEADLINE_COMPLETION_SHA256)fail('byte-fixed accepted source observation')
 }
 
+// Pinned historical observations only: replay never opens a reported host path.
+const T17_PATH_SOURCE_HEAD='442e5132528f7ae581396282d060fd24df8ab95e'
+const T17_PATH_ACCEPTED_MAIN='06dee79ad90c1dc45682243660bf730a87b6e77f'
+const T17_PATH_ACCEPTED_TREE='e1e8a11d1e0d25e4037f12080b074a1f5f8f5e29'
+const T17_PATH_COMPLETION_SHA256='d68db5877d0cb6267a8dbdc08c8ff392eb497988706fd01043d67802ee2bf9b3'
+export function validateT17PathCompletion(record) {
+ const fail=reason=>{throw new TypeError('T17 PATH completion: '+reason)}
+ exactKeys(record,["schemaVersion","boundaryId","state","repository","sourceHeadSha","acceptedMainSha","acceptedTreeSha","mergeParents","pullRequestNumber","source","pathPolicy","ci","packages","installedUat","activeRuntime","review","local","preservation","externalEvidence","runtimeActivation","automaticCleanup","mutationAuthority","finalProgramUat","limits"],'T17 PATH completion')
+ if(record.schemaVersion!=='bob-builtin-analyze/proc-t17-path-completion/v1'||record.boundaryId!=='PROC-T17-PATH'||record.state!=='VERIFIED'||record.repository!=='katamor1/bob_builtin_analyze'||record.sourceHeadSha!==T17_PATH_SOURCE_HEAD||record.acceptedMainSha!==T17_PATH_ACCEPTED_MAIN||record.acceptedTreeSha!==T17_PATH_ACCEPTED_TREE||record.pullRequestNumber!==208)fail('accepted source identity, never metadata')
+ same(record.mergeParents,['cf96788dbdd6836b449b7a31ecd3bae4ee4302a4',T17_PATH_SOURCE_HEAD],'T17 PATH normal merge parents')
+ const observed=new Set(),paths=new Map(),ids=new Set(),key=b=>[b.path,b.bytes,b.sha256].join('\0'),external=record.externalEvidence
+ const bare=b=>{exactKeys(b,['path','bytes','sha256'],'T17 PATH byte binding');normalizedPath(b.path);if(b.path.length>4096||!Number.isSafeInteger(b.bytes)||b.bytes<=0||b.bytes>268435456)fail('positive physical byte binding');hash256(b.sha256)}
+ if(!Array.isArray(external)||external.length!==926)fail('physical observations count')
+ for(const r of external){exactKeys(r,['id','path','bytes','sha256'],'T17 PATH physical observation');if(!/^t17-path-evidence-\d{4}$/.test(r.id)||ids.has(r.id))fail('unique evidence identity');ids.add(r.id);const b={path:r.path,bytes:r.bytes,sha256:r.sha256};bare(b);const p=normalizedPath(r.path),prior=paths.get(p);if(prior&&(prior.bytes!==r.bytes||prior.sha256!==r.sha256))fail('inconsistent physical path spelling');paths.set(p,b);observed.add(key(b))}
+ if(paths.size!==922||digest(external)!=='79e95ed243ea6ba681749373bb1e25a5ae86dafbfa7a8fe109a60aca268e5b2c')fail('fixed physical observations and four consistent spellings')
+ const bound=b=>{bare(b);if(!observed.has(key(b)))fail('uncaptured physical binding')}
+ const source=record.source
+ same([source.selectedSourceItems,source.selectedSourcePaths,source.selectedSourceBlobs,source.selectedOriginRows,source.uniqueOrigins,source.remainderItems,source.unassigned],[22,22,21,22,22,675,0],'T17 PATH source partition')
+ same([source.categories,source.budgetErrorCodes,source.runtimeModules,source.compiledPayloadFiles,source.packedPayloadFiles,source.installedTypeConsumers,source.productionDependencies,source.literalSourceRows,source.literalControlRows,source.independentControls,source.additionalPrerequisites],[13,9,16,48,52,3,0,24,71,2,72],'T17 PATH actual source inventories')
+ if(source.metadataIsNotSourceSubject!==true||source.baseMainSha!==record.mergeParents[0]||digest(source)!=='861eb71a5ade95a5e2d2884b669645f270e71f91e84d471fa07e6577210df6af')fail('source coverage and literal prerequisites')
+ const policy=record.pathPolicy
+ same(policy.copyProfiles,{bazaar:'full',consistency:'full',workflowRegister:'path-only'},'T17 PATH copy profiles');same(policy.workflowRuntimeJsNames,['pathPolicy.js'],'T17 PATH Workflow path-only module')
+ same(policy.uncHostPolicy,{scope:'isolated_host_user_data',allowedHosts:['127.0.0.1'],globalUserSettingsChanged:false},'T17 PATH narrow host policy')
+ if(policy.timeOfCheckUseRaceEliminated!==false||policy.allReparseTagsRecognized!==false||policy.networkAtomicityGuaranteed!==false||policy.windowsNativeUncRequired!==true||!Array.isArray(policy.requiredHostCases)||policy.requiredHostCases.length!==49||digest(policy)!=='42ad9056524c033c5572232549333b6229c6b185635063a9080600e30035d308')fail('fixed path semantics and honest filesystem limits')
+  const ci=record.ci;exactKeys(ci,['mode','allRequiredGatesSucceeded','waiver','workflowEvidenceByteParity','candidate','actualMain'],'T17 actual CI')
+ if(ci.mode!=='actual_exact_head_success'||ci.allRequiredGatesSucceeded!==true||ci.waiver!==null)fail('fresh actual CI, no old waiver');bound(ci.workflowEvidenceByteParity)
+ const runIds=new Set(),jobIds=new Set()
+ for(const[scope,head,event,success,skips]of [[ci.candidate,T17_PATH_SOURCE_HEAD,'pull_request',18,0],[ci.actualMain,T17_PATH_ACCEPTED_MAIN,'push',17,1]]){
+  exactKeys(scope,['head','tree','counts','collection','artifactCapture','portableReplay','workflows'],'T17 CI scope');if(scope.head!==head||scope.tree!==T17_PATH_ACCEPTED_TREE)fail('actual checkout source role');same(scope.counts,{workflows:5,rows:18,success,skipped:skips},'T17 five workflow/eighteen event rows');for(const n of ['collection','artifactCapture','portableReplay'])bound(scope[n]);same(scope.workflows.map(w=>w.id),Object.keys(T13_CI_JOBS),'T17 required workflows');let actual=0,skip=0
+  for(const w of scope.workflows){if(w.path!=='.github/workflows/'+w.id+'.yml'||w.head!==head||w.event!==event||w.conclusion!=='success'||!Number.isSafeInteger(w.runId)||w.runId<=0||runIds.has(w.runId)||!Number.isSafeInteger(w.attempt)||w.attempt<1||w.url!=='https://github.com/katamor1/bob_builtin_analyze/actions/runs/'+w.runId)fail('actual workflow identity');runIds.add(w.runId);bound(w.rawRun);bound(w.rawArtifacts);same(w.jobs.map(j=>j.name),T13_CI_JOBS[w.id],'T17 exact job inventory')
+   for(const j of w.jobs){if(j.workflowId!==w.id||j.workflowPath!==w.path||j.runId!==w.runId||j.attempt!==w.attempt||j.event!==event||j.head!==head||!Number.isSafeInteger(j.jobId)||j.jobId<=0||jobIds.has(j.jobId))fail('actual job provenance');jobIds.add(j.jobId);bound(j.rawJobs)
+    if(event==='push'&&j.name==='Extension source metrics'){if(j.conclusion!=='skipped'||j.expectedConclusion!=='skipped'||j.guard!==null||j.log!==null)fail('only non-PR metrics skip');skip++;continue}
+    if(j.conclusion!=='success'||j.expectedConclusion!=='success'||!Number.isSafeInteger(j.runnerId)||j.runnerId<=0||typeof j.runnerName!=='string'||!j.runnerName||!Number.isFinite(Date.parse(j.started))||!Number.isFinite(Date.parse(j.completed))||Date.parse(j.completed)<Date.parse(j.started))fail('assigned runner actual success')
+    const runner=j.name.startsWith('Windows / ')||j.name==='Real-machine environment contracts'||j.name.endsWith('/ windows-latest')?'windows-latest':'ubuntu-latest';if(!Array.isArray(j.runnerLabels)||!j.runnerLabels.includes(runner))fail('runner OS')
+    const g=j.guard;if(!g||g.step?.name!=='Verify checked-out commit'||g.step.conclusion!=='success'||g.checkoutStep?.conclusion!=='success'||Date.parse(g.checkoutStep.completed_at)>Date.parse(g.step.started_at))fail('checkout and unconditional guard')
+    same({event:g.observation.event,expectedHeadSha:g.observation.expectedHeadSha,actualHeadSha:g.observation.actualHeadSha},{event,expectedHeadSha:head,actualHeadSha:head},'T17 exact logged guard');const at=Date.parse(g.observation.at);if(!Number.isFinite(at)||at<Date.parse(g.step.started_at)-1000||at>=Date.parse(g.step.completed_at)+1000)fail('guard timestamp');bound(j.log);actual++
+   }
+  }same([actual,skip],[success,skips],'T17 actual event totals')
+ }
+ if(digest(ci)!=='e49c39ceb8a49f894d2da159d0cc4cf442cd9b352ce0757ef482a06a4bee97a3')fail('original actual CI observations')
+
+ const installed=record.installedUat;exactKeys(installed,['kind','state','candidate','actualMain','productActivation','productDeactivation','visualOperator','liveBob','finalProgramUat'],'T17 PATH isolated host')
+ if(installed.kind!=='isolated_artifact_extension_host'||installed.state!=='passed')fail('installed host state');for(const n of ['productActivation','productDeactivation','visualOperator','liveBob','finalProgramUat'])if(installed[n]!=='not_run')fail('unexecuted product/visual/live UAT')
+ const artifactIds=new Set(),canonicalCompiled=installed.candidate.platforms[0].compiledModuleDigest
+ for(const[scope,head,c]of [[installed.candidate,T17_PATH_SOURCE_HEAD,ci.candidate],[installed.actualMain,T17_PATH_ACCEPTED_MAIN,ci.actualMain]]){
+  if(scope.sourceHeadSha!==head||scope.sourceTreeSha!==T17_PATH_ACCEPTED_TREE)fail('installed source role');same(scope.replay,c.portableReplay,'T17 PATH raw/portable role');bound(scope.replay);same(scope.platforms.map(p=>p.os),['linux','win32'],'T17 PATH actual both OS')
+  for(const p of scope.platforms){
+   const w=c.workflows.find(w=>w.id==='processing-budget-runtime');if(p.head!==head||p.tree!==T17_PATH_ACCEPTED_TREE||p.runId!==w.runId||p.attempt!==w.attempt||p.hostExecutionRepeated!==false||p.mode!=='actual_ci_execution_plus_portable_byte_validation'||!Number.isSafeInteger(p.artifactId)||p.artifactId<=0||artifactIds.has(p.artifactId))fail('actual native host provenance');artifactIds.add(p.artifactId)
+   same([p.cases,p.runtimeModules,p.parserModules,p.pinnedParserFiles,p.compiledFiles,p.tarballFiles,p.typeConsumers],[49,33,8,583,48,52,3],'T17 PATH actual host/package inventory');for(const n of ['archive','originalManifest','originalExecution','originalHost','portableManifest','pathMap','tarball'])bound(p[n]);if(p.githubDigest!=='sha256:'+p.archive.sha256)fail('GitHub archive digest');hash256(p.compiledModuleDigest);if(p.compiledModuleDigest!==canonicalCompiled)fail('canonical runtime bytes across scopes and OS')
+   same(p.vsix.map(v=>v.id),['local.bob-bazaar-review','local.bob-code-consistency-review','local.workflow-register'],'T17 PATH three actual VSIX');for(const v of p.vsix)bound(v.vsix)
+   same(p.caseResults.map(x=>x.name),policy.requiredHostCases,'T17 PATH exact host case order');if(p.caseResults.slice(0,48).some(x=>x.state!=='passed'))fail('all applicable host cases must pass')
+   const last=p.caseResults[48]
+   if(p.os==='linux'){if(p.casePass!==48||p.uncState!=='not_applicable'||p.nativeUnc!==null||last.state!=='not_applicable'||last.detail.mode!=='posix'||last.detail.reason!=='posix_no_native_unc')fail('only POSIX native UNC inapplicability');continue}
+   const u=p.nativeUnc;if(p.casePass!==49||p.uncState!=='passed'||last.state!=='passed'||last.detail.mode!=='native_unc'||!u||u.state!=='passed_and_disposed'||u.executionMode!=='native_windows_runner'||u.sourceHeadSha!==head||u.sourceTreeSha!==T17_PATH_ACCEPTED_TREE||u.createdByThisInvocation!==true||u.removed!==true||u.fixtureFilesRetained!==true||u.linkRejections!==3)fail('Windows native UNC success and owned disposal')
+   if(!/^[a-f0-9]{32}$/.test(u.nonce)||u.shareName!=='bob-t17path-'+u.nonce||u.rootReportedPath!=='\\\\127.0.0.1\\'+u.shareName||last.detail.nonce!==u.nonce||last.detail.root!==u.rootReportedPath||last.detail.rejections!==3||typeof u.runnerPrincipal!=='string'||!u.runnerPrincipal||!/^S-1-/.test(u.runnerSid))fail('Windows native UNC exact fixture identity')
+   if(u.prepareTranscripts.length!==4||u.cleanupTranscripts.length!==3)fail('Windows native UNC complete preparation and cleanup');for(const n of ['fixture','observations','cleanup','ownerMarker','probeFile','nestedProbeFile'])bound(u[n]);for(const b of [...u.prepareTranscripts,...u.cleanupTranscripts])bound(b)
+   if(!u.hostPolicy||u.hostPolicy.scope!=='isolated_host_user_data'||!u.hostPolicy.record||!u.hostPolicy.settings)fail('UNC host policy isolated bytes');same(u.hostPolicy.allowedHosts,['127.0.0.1'],'T17 PATH UNC host policy narrow allowlist');bound(u.hostPolicy.record);bound(u.hostPolicy.settings)
+  }
+ }
+ if(digest(installed)!=='81be7e674d726fc43edd55e2cb89e722d16877274500c59adb19dff9c71bc0b4')fail('fixed native observations and byte maps')
+ exactKeys(record.packages,['workflowRegister','bazaar','consistency'],'T17 PATH accepted packages')
+ for(const[name,id,version,cap]of [['workflowRegister','local.workflow-register','0.1.2',1200000],['bazaar','local.bob-bazaar-review','0.3.2',12000000],['consistency','local.bob-code-consistency-review','0.1.0',11000000]]){
+  const p=record.packages[name];if(p.id!==id||p.version!==version||p.sourceHeadSha!==T17_PATH_ACCEPTED_MAIN||p.sourceTreeSha!==T17_PATH_ACCEPTED_TREE||p.capBytes!==cap||p.headroomBytes!==cap-p.vsix.bytes||p.headroomBytes<0)fail('actual package identity/capacity');bound(p.vsix);bound(p.policyEvidence);same(p.vsix,installed.actualMain.platforms[0].vsix.find(v=>v.id===id).vsix,'T17 PATH same actual saved/installed VSIX input')
+  if(name==='workflowRegister'){if(p.runtimeCopyProfile!=='path-only'||p.runtimeJsFiles!==1)fail('Workflow path-only profile');same(p.runtimeJsNames,['pathPolicy.js'],'T17 PATH Workflow path-only inventory');same(p.compaction,{declaredTargets:113,presentTargets:111,absentTargets:2,pathPolicyCanonicalModuleOutsideCompaction:true},'T17 PATH unchanged compaction')}
+  else{if(p.runtimeCopyProfile!=='full'||p.runtimeJsFiles!==16||p.compiledPayload.length!==48||new Set(p.compiledPayload.map(x=>x.path)).size!==48)fail('full native runtime delivery');bound(p.parserIdentity)}
+ }
+ const runtime=record.activeRuntime;if(runtime.kind!=='real_contract_tests'||runtime.sourceHeadSha!==T17_PATH_ACCEPTED_MAIN||runtime.gateRResult.runtimeActivation!==false||runtime.gateRResult.runtimeSuitesExecuted!==15||runtime.gateRResult.runtimeSuiteState!=='PASSED'||runtime.gateRResult.archiveTestsExecuted!==0)fail('inactive actual runtime suites');bound(runtime.output);for(const n of ['providerDispatches','bobDispatches','v2ProductLeaseAcquisitions','v2ProductRunDirectoryCreations','v2ProductArtifactStages'])if(runtime.productWiring[n]!==0||runtime.gateRResult[n]!==0)fail('zero product effects')
+ const review=record.review;if(review.oneFreshSourceReview!==true||review.secondReview!==false||review.finalSourceHeadSha!==T17_PATH_SOURCE_HEAD||review.importantFixedByObservedTdd!==6)fail('one source review and observed fix pass');same(review.original,{critical:0,important:6,minor:2},'T17 PATH original findings');same(review.remaining,{critical:0,important:0,minor:1},'T17 PATH retained Minor')
+ if(record.local.allRequiredGatesSatisfied!==true||record.local.fullProductSuites.subject!=='6207d02ab3a3ab2a0330c4e23b08709892f2e283'||record.local.fullProductSuites.notRelabeled!==true||record.local.freshCandidate.nativeUnc!=='not_run')fail('historical local subjects and native UNC not-run retained')
+ const p=record.preservation;if(p.primaryVisibleBranch!=='codex/bob-auto-response-probe'||p.primaryVisibleHead!=='90f926e0045405625f1f40d20a41346a94d1981a'||p.primaryMainRef!==T17_PATH_ACCEPTED_MAIN||p.primaryCheckoutMoved!==false||p.untrackedPreserved!==15||p.protectedContentsRead!==false||p.allHashesVerified!==true||p.all18ExistingWorktreesRetained!==true||p.other17WorktreeHeadsUnchanged!==true||p.approvedExistingWorktreeCount!==18||p.oldCompletionReferences!==17||p.formalPercent!==75||p.files!==925)fail('preserved work/source-only status');bound(p.manifest);bound(p.synchronization)
+ if(record.runtimeActivation!==false||record.automaticCleanup!==false||record.mutationAuthority!==false||record.finalProgramUat!=='not_run'||!Array.isArray(record.limits)||record.limits.length!==10)fail('inactive metadata and honest limitations')
+ // Only retained local ByteBindings occur in this projection. Runner paths in
+ // case details are context strings; portable replay grants no filesystem IO.
+ function inspect(v){if(!v||typeof v!=='object')return;if(typeof v.path==='string'&&/^(?:[A-Za-z]:[\\/]|\/)/.test(v.path)&&Number.isSafeInteger(v.bytes)&&typeof v.sha256==='string')bound({path:v.path,bytes:v.bytes,sha256:v.sha256});for(const child of Object.values(v))inspect(child)}inspect(record)
+ if(digest(record)!==T17_PATH_COMPLETION_SHA256)fail('byte-fixed accepted source observation')
+}
+
 export function validateCompletionObservation(record,{programIndex,evidenceDigests}) {
   validateProgramIndex(programIndex)
   // This is a read-only recovery import, pinned after actual CI/log/archive/ref
@@ -505,6 +583,7 @@ export function validateCompletionObservation(record,{programIndex,evidenceDiges
   if(record.boundaryId==='PROC-T15-AGGREGATE')validateT15Completion(record)
   if(record.boundaryId==='PROC-T16-INPUT-PROCESS')validateT16Completion(record)
   if(record.boundaryId==='PROC-T17-DEADLINE')validateT17DeadlineCompletion(record)
+  if(record.boundaryId==='PROC-T17-PATH')validateT17PathCompletion(record)
   const registration=COMPLETION_REGISTRY.find(entry=>entry.sha256===recordDigest)
   if(!registration) throw new TypeError('unregistered completion observation')
   if(digest(evidenceDigests)!==registration.evidenceSha256) throw new TypeError('actual evidence digest registry mismatch')
@@ -531,6 +610,7 @@ function projectReferences(programIndex,decisions,completionReferences) {
     verifiedIds.add('WORKFLOW-C-SAFE-PREFIX');verifiedCapabilityIds.add('WORKFLOW-C-SAFE-PREFIX')
   }
   if(['PROC-T13-LEDGER','PROC-T14-BOUNDED-DOC','PROC-T15-AGGREGATE'].every(id=>verifiedIds.has(id)))verifiedIds.add('PROCESSING-FOUNDATION')
+  if(['PROC-T16-INPUT-PROCESS','PROC-T17-DEADLINE','PROC-T17-PATH'].every(id=>verifiedIds.has(id)))verifiedIds.add('PROCESSING-CONTROL')
   return {schemaVersion:'bob-builtin-analyze/feature-integration-status/v1',programIndexSha256:digest(programIndex),selectionLedgerSha256:LEDGER_SHA256,completionReferences:structuredClone(completionReferences),acceptedMainSha:completionReferences.at(-1)?.acceptedMainSha??null,boundaries:programIndex.planBoundaries.map(boundary=>({id:boundary.id,state:verifiedIds.has(boundary.id)?'VERIFIED':'planned'})),slices:programIndex.programAtomicSlices.map(slice=>({sliceId:slice.sliceId,ordinal:slice.ordinal,boundaryId:slice.boundaryId,state:verifiedIds.has(slice.sliceId)?'VERIFIED':'planned',observedActivationStatus:'inactive',immediatePredecessor:structuredClone(slice.immediatePredecessor)})),capabilities:decisions.map(cap=>({...cap,executionState:verifiedCapabilityIds.has(cap.id)?'VERIFIED':cap.disposition==='selected'||cap.disposition==='conditional'?'planned':'not_applicable',observedActivationStatus:'inactive'})),gateP:structuredClone(programIndex.downstreamProtocolPolicy.gateP),activeSliceIds:[],nextSliceId:wave0aVerified?programIndex.programAtomicSlices.find(slice=>!verifiedIds.has(slice.sliceId))?.sliceId??null:null,automaticCleanup:false,mutationAuthority:false,limits:'Historical observation only. Local implementation is not VERIFIED. Descriptor derivation is not human approval or execution permission.'}
 }
 
